@@ -1,7 +1,7 @@
 from sqlalchemy import Column, ForeignKey, String, DateTime, Index
 from sqlalchemy.dialects.postgresql import ARRAY
 
-from base import Base
+from .base import Base
 
 
 class Cp(Base):

@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, DateTime, CheckConstraint
 from sqlalchemy.dialects.postgresql import INET
 
-from base import Base
+from .base import Base
 
 
 class User(Base):
