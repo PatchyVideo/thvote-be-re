@@ -7,5 +7,6 @@ dependencies = [
     "sqlalchemy",
     "redis",
     "aioredis",
-    "redis-om"
+    "redis-om",
+    "fastapi",
 ]
