@@ -10,6 +10,13 @@ from .user import User
 from .cp import Cp
 from .questionnaire import Questionnaire
 from .music import Music
+from .raw_submit import (
+    RawCharacterSubmit,
+    RawMusicSubmit,
+    RawCPSubmit,
+    RawPaperSubmit,
+    RawDojinSubmit,
+)
 
 __version__ = "1.0.0"
 __author__ = "FunnyAWM"
@@ -19,5 +26,10 @@ __all__ = [
     "Base",
     "Cp",
     "Questionnaire",
-    "Music"
+    "Music",
+    "RawCharacterSubmit",
+    "RawMusicSubmit",
+    "RawCPSubmit",
+    "RawPaperSubmit",
+    "RawDojinSubmit",
 ]

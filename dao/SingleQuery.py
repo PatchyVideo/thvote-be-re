@@ -1,4 +1,4 @@
-from BaseQuery import BaseQuery
+from .BaseQuery import BaseQuery
 
 
 class SingleQuery(BaseQuery):

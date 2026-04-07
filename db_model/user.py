@@ -1,5 +1,4 @@
 from sqlalchemy import Column, String, DateTime, CheckConstraint
-from sqlalchemy.dialects.postgresql import INET
 
 from .base import Base
 
@@ -20,8 +19,8 @@ class User(Base):
     # register_date DATETIME NOT NULL
     register_date = Column(DateTime, nullable=False)
 
-    # register_ip_addr INET NOT NULL
-    register_ip_address = Column(INET, nullable=False)
+    # register_ip_addr TEXT NOT NULL (cross-database compatibility)
+    register_ip_address = Column(String, nullable=False)
 
     __table_args__ = (
         CheckConstraint(
