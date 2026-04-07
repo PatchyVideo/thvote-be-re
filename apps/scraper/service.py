@@ -1,5 +1,6 @@
 """Scraper service layer."""
 
+from apps.scraper.process import get_data
 from apps.scraper.schemas import RespBody
 
 
@@ -7,7 +8,12 @@ class ScraperService:
     """Service for scraping operations."""
 
     async def scrape_url(self, url: str) -> RespBody:
-        """Scrape data from a URL."""
-        # TODO: Implement actual scraping logic
-        # This is a placeholder - integrate with scraper sites
-        raise NotImplementedError("Scraper functionality not yet implemented")
+        """Scrape data from a URL.
+
+        Args:
+            url: URL to scrape
+
+        Returns:
+            RespBody containing scraped data or error status
+        """
+        return await get_data(url)
