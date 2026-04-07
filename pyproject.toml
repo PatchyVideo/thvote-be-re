@@ -1,7 +1,7 @@
 [project]
 name = "thvote-be-re"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "THVote Backend - Python refactored version"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi",
@@ -19,4 +19,20 @@ dependencies = [
     "python-dotenv",
     "pytest",
     "pytest-asyncio",
+    "strawberry-graphql[fastapi]>=0.219.0",
+    "dependency-injector>=4.41.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = [
+    "common*",
+    "apps*",
+    "api*",
+]
+exclude = [
+    "local_db*",
+    ".github*",
+    ".idea*",
+    "tests*",
 ]

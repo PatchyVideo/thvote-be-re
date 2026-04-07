@@ -177,21 +177,36 @@ isProject: false
 
 ---
 
-## 六、GraphQL支持（可选）- 优先级：低
+## 六、GraphQL支持 - 优先级：高（进行中）
 
-### 6.1 GraphQL端点
+### 6.1 GraphQL端点（进行中）
 
-- 添加 `strawberry-graphql` 或 `graphene` 依赖
-- 实现 `app/graphql/` 目录
-- Schema定义（Query/Mutation）
-- `/graphql` 端点
-- `/playground` 图形化界面
+- 添加 `strawberry-graphql` 依赖（已完成）
+- 实现 `app_router/graphql/` 目录（已完成）
+  - `types.py` - GraphQL 类型定义（已完成）
+  - `schema.py` - 主Schema，含Query和Mutation（已完成）
+  - `__init__.py` - 模块导出（已完成）
+- `/graphql` 端点（已完成）
+- `/playground` 图形化界面（待添加）
 
 ### 6.2 GraphQL模块
 
-- `graphql/schema.py` - 主Schema
-- `graphql/context.py` - 上下文（IP、用户）
-- `graphql/services.py` - GraphQL服务
+- `graphql/schema.py` - 主Schema（已完成）
+- `graphql/types.py` - GraphQL 类型定义（已完成）
+- 支持的Query:
+  - `get_character_submit(voteId)` - 获取角色提交
+  - `get_music_submit(voteId)` - 获取音乐提交
+  - `get_cp_submit(voteId)` - 获取CP提交
+  - `get_paper_submit(voteId)` - 获取问卷提交
+  - `get_dojin_submit(voteId)` - 获取同人作品提交
+  - `get_voting_status(voteId)` - 获取投票状态
+  - `get_voting_statistics` - 获取投票统计
+- 支持的Mutation:
+  - `submitCharacter(input)` - 提交角色投票
+  - `submitMusic(input)` - 提交音乐投票
+  - `submitCP(input)` - 提交CP投票
+  - `submitPaper(input)` - 提交问卷
+  - `submitDojin(input)` - 提交同人作品
 
 ---
 
@@ -315,14 +330,14 @@ flowchart TB
 
 | 模块      | 完成度 | 备注           |
 | ------- | --- | ------------ |
-| 项目结构    | 60% | 基础架构(1.1/1.2/1.3)已完成，待测试  |
+| 项目结构    | 75% | 基础架构已完成，删除旧文件（dao/services/app_router）  |
 | 数据库模型   | 65% | 通用关系型连接 + raw submit模型已完成，待测试  |
 | DAO模型   | 50% | 大部分已定义       |
 | 路由层     | 45%  | submit-handler 路由已实现，待测试 |
 | 服务层     | 35%  | submit service/validator/rate limit 已实现，待测试 |
 | 缓存层     | 0%  | 未开始          |
 | 用户认证    | 0%  | 未开始          |
-| GraphQL | 0%  | 未开始          |
+| GraphQL | 80% | 已完成类型定义和解析器，待测试  |
 | 测试      | 0%  | 未开始          |
 
 

@@ -2,3 +2,4 @@
 .idea
 data
 uv.lock
+*.egg-info/

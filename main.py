@@ -1,14 +1,28 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+from strawberry.fastapi import GraphQLRouter
 
-from config import get_settings
-from database import get_db_session, init_db
-from app_router import login as login_router
-from app_router import submit as submit_router
+from api.graphql.schema import schema as graphql_schema
+from api.rest.v1 import api_router
+from common.config import get_settings
+from common.database import get_db_session, init_db
+from common.middleware.logging import LoggingMiddleware
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Application lifespan handler."""
+    # Startup
+    await init_db()
+    yield
+    # Shutdown
 
 
 def create_app() -> FastAPI:
@@ -16,10 +30,14 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="THVote FastAPI Backend",
-        version="0.1.0",
+        version="0.2.0",
+        lifespan=lifespan,
     )
 
-    # CORS middleware – keep permissive for now; can be tightened later.
+    # Logging middleware
+    app.add_middleware(LoggingMiddleware)
+
+    # CORS middleware
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -28,28 +46,23 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Health check / server time style endpoint.
+    # Health check endpoint
     @app.get("/health", tags=["system"])
     async def health(db: AsyncSession = Depends(get_db_session)) -> dict:
-        # DB ping to validate connectivity across postgres/mysql/sqlite.
         await db.execute(text("SELECT 1"))
         return {
             "status": "ok",
             "vote_year": settings.vote_year,
         }
 
-    # Router registration (user manager, will expand with more routers later).
-    app.include_router(login_router.router)
-    app.include_router(submit_router.router)
+    # REST API v1 endpoints
+    app.include_router(api_router)
 
-    @app.on_event("startup")
-    async def on_startup() -> None:  # pragma: no cover - side-effect only
-        # For early development we auto-create tables.
-        # In real deployments prefer Alembic migrations instead.
-        await init_db()
+    # GraphQL endpoint (Strawberry)
+    graphql_app = GraphQLRouter(graphql_schema)
+    app.include_router(graphql_app, prefix="/graphql")
 
     return app
 
 
 app = create_app()
-
