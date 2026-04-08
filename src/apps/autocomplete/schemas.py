@@ -7,12 +7,14 @@ from pydantic import BaseModel
 
 class AutocompleteRequest(BaseModel):
     """Request schema for autocomplete."""
+
     query: str
     limit: Optional[int] = 10
 
 
 class AutocompleteSuggestion(BaseModel):
     """Autocomplete suggestion item."""
+
     name: str
     type: str
     origin: Optional[str] = None
@@ -20,4 +22,5 @@ class AutocompleteSuggestion(BaseModel):
 
 class AutocompleteResponse(BaseModel):
     """Response schema for autocomplete."""
+
     suggestions: list[AutocompleteSuggestion]

@@ -19,29 +19,37 @@ class AutocompleteService:
         results: list[AutocompleteSuggestion] = []
 
         # Search in all categories
-        characters = await self.autocomplete_dao.search_characters(request.query, request.limit)
+        characters = await self.autocomplete_dao.search_characters(
+            request.query, request.limit
+        )
         for char in characters:
-            results.append(AutocompleteSuggestion(
-                name=char.get("name", ""),
-                type="character",
-                origin=char.get("origin"),
-            ))
+            results.append(
+                AutocompleteSuggestion(
+                    name=char.get("name", ""),
+                    type="character",
+                    origin=char.get("origin"),
+                )
+            )
 
         music = await self.autocomplete_dao.search_music(request.query, request.limit)
         for m in music:
-            results.append(AutocompleteSuggestion(
-                name=m.get("name", ""),
-                type="music",
-                origin=m.get("origin"),
-            ))
+            results.append(
+                AutocompleteSuggestion(
+                    name=m.get("name", ""),
+                    type="music",
+                    origin=m.get("origin"),
+                )
+            )
 
         cps = await self.autocomplete_dao.search_cps(request.query, request.limit)
         for cp in cps:
-            results.append(AutocompleteSuggestion(
-                name=cp.get("name", ""),
-                type="cp",
-                origin=cp.get("origin"),
-            ))
+            results.append(
+                AutocompleteSuggestion(
+                    name=cp.get("name", ""),
+                    type="cp",
+                    origin=cp.get("origin"),
+                )
+            )
 
         # Limit total results
-        return AutocompleteResponse(suggestions=results[:request.limit])
+        return AutocompleteResponse(suggestions=results[: request.limit])

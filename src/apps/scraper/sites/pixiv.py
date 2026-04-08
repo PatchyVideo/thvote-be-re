@@ -86,7 +86,9 @@ async def pixdata(illust_id: str, udid: str | None = None) -> RespBody:
         if i == 0:
             url = illust.get("image_urls", {}).get("large", "")
         else:
-            url = illust.get("meta_pages", [{}])[i].get("image_urls", {}).get("large", "")
+            url = (
+                illust.get("meta_pages", [{}])[i].get("image_urls", {}).get("large", "")
+            )
         if url:
             url = url.replace("i.pximg.net", "i.pixiv.re")
             media_urls.append(url)
@@ -175,7 +177,7 @@ async def pixndata(novel_id: str, udid: str | None = None) -> RespBody:
         cover_url = cover_url.replace("i.pximg.net", "i.pixiv.re")
 
     text_length = novel.get("text_length", 0)
-    description = f"[文字数: {text_length}] {novel.get("synopsis", '')}"
+    description = f"[文字数: {text_length}] {novel.get('synopsis', '')}"
 
     scrape_data = ScrapeData(
         title=novel.get("title", ""),

@@ -68,7 +68,9 @@ async def bilidata(wid: str, udid: str | None = None) -> RespBody:
         api_url = f"https://api.bilibili.com/x/web-interface/view?aid={wid}"
 
     try:
-        response = await request_api(api_url, headers=get_header(), cookies=get_cookies())
+        response = await request_api(
+            api_url, headers=get_header(), cookies=get_cookies()
+        )
     except Exception as e:
         return RespBody(status="apierr", msg=f"请求失败: {str(e)}")
 
@@ -76,7 +78,9 @@ async def bilidata(wid: str, udid: str | None = None) -> RespBody:
     if data is None:
         if response.get("code") == -352:
             return RespBody(status="apierr", msg="biliapi: banned")
-        return RespBody(status="apierr", msg=f"biliapimsg: {response.get('message', 'unknown')}")
+        return RespBody(
+            status="apierr", msg=f"biliapimsg: {response.get('message', 'unknown')}"
+        )
 
     staffs = data.get("staff")
     if staffs:
@@ -145,12 +149,16 @@ async def biliarticledata(cv: str, udid: str | None = None) -> RespBody:
 
     api_url = f"https://api.bilibili.com/x/article/view?id={cv}"
     try:
-        response = await request_api(api_url, headers=get_header(), cookies=get_cookies())
+        response = await request_api(
+            api_url, headers=get_header(), cookies=get_cookies()
+        )
     except Exception as e:
         return RespBody(status="apierr", msg=f"请求失败: {str(e)}")
 
     if response.get("data") is None:
-        return RespBody(status="apierr", msg=f"获取文章失败: {response.get('message', 'unknown')}")
+        return RespBody(
+            status="apierr", msg=f"获取文章失败: {response.get('message', 'unknown')}"
+        )
 
     data = response["data"]
 

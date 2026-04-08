@@ -103,7 +103,9 @@ async def parse_url(url: str) -> tuple[str | None, Any | None]:
         return pixiv_match.group(1), pixdata
 
     # Pixiv novel
-    if pixn_match := re.search(r"pixiv\.net/novel/show\.php\?id=(\d+)", url, re.IGNORECASE):
+    if pixn_match := re.search(
+        r"pixiv\.net/novel/show\.php\?id=(\d+)", url, re.IGNORECASE
+    ):
         return pixn_match.group(1), pixndata
 
     return None, None

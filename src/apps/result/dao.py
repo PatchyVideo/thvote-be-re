@@ -58,7 +58,9 @@ class ResultDAO:
         # TODO: Implement actual covote query logic
         raise NotImplementedError("Covote query not yet implemented")
 
-    async def get_completion_rates(self, query: CompletionRatesQuery) -> dict[str, float]:
+    async def get_completion_rates(
+        self, query: CompletionRatesQuery
+    ) -> dict[str, float]:
         """Get voting completion rates."""
         # TODO: Implement actual completion rates query logic
         raise NotImplementedError("Completion rates query not yet implemented")
@@ -68,7 +70,9 @@ class ResultDAO:
         # TODO: Implement actual questionnaire query logic
         raise NotImplementedError("Questionnaire query not yet implemented")
 
-    async def get_questionnaire_trend(self, query: QuestionnaireTrendQuery) -> dict[str, Any]:
+    async def get_questionnaire_trend(
+        self, query: QuestionnaireTrendQuery
+    ) -> dict[str, Any]:
         """Get questionnaire trend data."""
         # TODO: Implement actual questionnaire trend query logic
         raise NotImplementedError("Questionnaire trend query not yet implemented")

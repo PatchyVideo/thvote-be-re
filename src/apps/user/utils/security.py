@@ -32,7 +32,9 @@ class AuthProvider:
         return hash_password(password)
 
     @staticmethod
-    def verify_password(password: str, password_hashed: str) -> PasswordVerificationResult:
+    def verify_password(
+        password: str, password_hashed: str
+    ) -> PasswordVerificationResult:
         """Verify an Argon2 password hash."""
         return verify_password(password, password_hashed)
 

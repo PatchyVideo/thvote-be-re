@@ -7,17 +7,20 @@ from pydantic import BaseModel
 
 class ReqBody(BaseModel):
     """Request body for scraper."""
+
     url: str
 
 
 class BaseResp(BaseModel):
     """Base response model."""
-    status: str = 'ok'
-    msg: str = ''
+
+    status: str = "ok"
+    msg: str = ""
 
 
 class ScrapeData(BaseModel):
     """Scraped data model."""
+
     title: Optional[str] = None
     udid: Optional[str] = None
     cover: Optional[str] = None
@@ -32,4 +35,5 @@ class ScrapeData(BaseModel):
 
 class RespBody(BaseResp):
     """Response body for scraper."""
+
     data: Optional[ScrapeData] = None

@@ -91,7 +91,9 @@ async def twidata(twid: str, udid: str | None = None) -> RespBody:
     author_name_list = [author_name] if author_name else []
 
     if author_username:
-        author_name_list = [f"@{author_username}"] if author_name_list else [f"@{author_username}"]
+        author_name_list = (
+            [f"@{author_username}"] if author_name_list else [f"@{author_username}"]
+        )
 
     media_urls = []
     for m in media:

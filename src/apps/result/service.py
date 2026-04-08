@@ -51,7 +51,9 @@ class ResultService:
         """Get co-vote statistics between two entities."""
         return await self.result_dao.get_covote(query)
 
-    async def get_completion_rates(self, query: CompletionRatesQuery) -> dict[str, float]:
+    async def get_completion_rates(
+        self, query: CompletionRatesQuery
+    ) -> dict[str, float]:
         """Get voting completion rates."""
         return await self.result_dao.get_completion_rates(query)
 

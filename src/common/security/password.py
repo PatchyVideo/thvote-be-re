@@ -6,7 +6,6 @@ import bcrypt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 
-
 _PASSWORD_HASHER = PasswordHasher()
 
 
@@ -33,7 +32,11 @@ def verify_password(password: str, password_hashed: str) -> PasswordVerification
     return PasswordVerificationResult(
         valid=bool(valid),
         needs_rehash=_PASSWORD_HASHER.check_needs_rehash(password_hashed),
-        upgraded_hash=hash_password(password) if _PASSWORD_HASHER.check_needs_rehash(password_hashed) else None,
+        upgraded_hash=(
+            hash_password(password)
+            if _PASSWORD_HASHER.check_needs_rehash(password_hashed)
+            else None
+        ),
     )
 
 

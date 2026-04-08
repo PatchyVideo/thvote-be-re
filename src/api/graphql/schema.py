@@ -8,12 +8,14 @@ from .resolvers.submit import SubmitMutation, SubmitQuery
 @strawberry.type
 class Query(SubmitQuery):
     """Root GraphQL Query."""
+
     pass
 
 
 @strawberry.type
 class Mutation(SubmitMutation):
     """Root GraphQL Mutation."""
+
     pass
 
 

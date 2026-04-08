@@ -9,7 +9,6 @@ from typing import Any
 from ...common.config import get_settings
 from ...common.exceptions import AppException
 
-
 SESSION_AUDIENCE = "userspace"
 VOTE_AUDIENCE = "vote"
 SESSION_EXPIRE_DAYS = 7

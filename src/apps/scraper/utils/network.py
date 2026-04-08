@@ -67,12 +67,14 @@ async def request_api(url: str, **kwargs: Any) -> dict[str, Any]:
             response = await client.post(url=url, timeout=timeout, **kwargs)
         else:
             response = await client.get(url=url, timeout=timeout, **kwargs)
-        
+
         # Debug: check if response is valid JSON
         text = response.text
         if not text or not text.strip():
-            raise ValueError(f"Empty response from {url}, status={response.status_code}")
-        
+            raise ValueError(
+                f"Empty response from {url}, status={response.status_code}"
+            )
+
         try:
             return response.json()
         except Exception as e:

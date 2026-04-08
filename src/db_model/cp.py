@@ -5,10 +5,10 @@ from .base import Base
 
 
 class Cp(Base):
-    __tablename__ = 'cp'
+    __tablename__ = "cp"
 
     # id TEXT PRIMARY KEY REFERENCES user(id)
-    id = Column(String, ForeignKey('user.id', ondelete='CASCADE'), primary_key=True)
+    id = Column(String, ForeignKey("user.id", ondelete="CASCADE"), primary_key=True)
 
     # submit_datetime DATETIME NOT NULL
     submit_datetime = Column(DateTime, nullable=False)
@@ -17,6 +17,4 @@ class Cp(Base):
     cp_list = Column(JSON, nullable=False)
 
     # Generic index for cross-database support.
-    __table_args__ = (
-        Index('idx_cp_list', 'cp_list'),
-    )
+    __table_args__ = (Index("idx_cp_list", "cp_list"),)

@@ -114,13 +114,15 @@ class SubmitService:
             return CharacterSubmitRest(characters=[], meta=SubmitMetadata())
         return CharacterSubmitRest(
             characters=row["payload"],
-            meta=scrub_metadata(SubmitMetadata(
-                vote_id=row["vote_id"],
-                attempt=row["attempt"],
-                created_at=row["created_at"],
-                user_ip=row["user_ip"],
-                additional_fingreprint=row["additional_fingreprint"],
-            )),
+            meta=scrub_metadata(
+                SubmitMetadata(
+                    vote_id=row["vote_id"],
+                    attempt=row["attempt"],
+                    created_at=row["created_at"],
+                    user_ip=row["user_ip"],
+                    additional_fingreprint=row["additional_fingreprint"],
+                )
+            ),
         )
 
     async def submit_music(self, data: MusicSubmitRest) -> int:
@@ -143,13 +145,15 @@ class SubmitService:
             return MusicSubmitRest(music=[], meta=SubmitMetadata())
         return MusicSubmitRest(
             music=row["payload"],
-            meta=scrub_metadata(SubmitMetadata(
-                vote_id=row["vote_id"],
-                attempt=row["attempt"],
-                created_at=row["created_at"],
-                user_ip=row["user_ip"],
-                additional_fingreprint=row["additional_fingreprint"],
-            )),
+            meta=scrub_metadata(
+                SubmitMetadata(
+                    vote_id=row["vote_id"],
+                    attempt=row["attempt"],
+                    created_at=row["created_at"],
+                    user_ip=row["user_ip"],
+                    additional_fingreprint=row["additional_fingreprint"],
+                )
+            ),
         )
 
     async def submit_cp(self, data: CPSubmitRest) -> int:
@@ -172,13 +176,15 @@ class SubmitService:
             return CPSubmitRest(cps=[], meta=SubmitMetadata())
         return CPSubmitRest(
             cps=row["payload"],
-            meta=scrub_metadata(SubmitMetadata(
-                vote_id=row["vote_id"],
-                attempt=row["attempt"],
-                created_at=row["created_at"],
-                user_ip=row["user_ip"],
-                additional_fingreprint=row["additional_fingreprint"],
-            )),
+            meta=scrub_metadata(
+                SubmitMetadata(
+                    vote_id=row["vote_id"],
+                    attempt=row["attempt"],
+                    created_at=row["created_at"],
+                    user_ip=row["user_ip"],
+                    additional_fingreprint=row["additional_fingreprint"],
+                )
+            ),
         )
 
     async def submit_paper(self, data: PaperSubmitRest) -> int:
@@ -201,13 +207,15 @@ class SubmitService:
             return PaperSubmitRest(papers_json="{}", meta=SubmitMetadata())
         return PaperSubmitRest(
             papers_json=row["papers_json"],
-            meta=scrub_metadata(SubmitMetadata(
-                vote_id=row["vote_id"],
-                attempt=row["attempt"],
-                created_at=row["created_at"],
-                user_ip=row["user_ip"],
-                additional_fingreprint=row["additional_fingreprint"],
-            )),
+            meta=scrub_metadata(
+                SubmitMetadata(
+                    vote_id=row["vote_id"],
+                    attempt=row["attempt"],
+                    created_at=row["created_at"],
+                    user_ip=row["user_ip"],
+                    additional_fingreprint=row["additional_fingreprint"],
+                )
+            ),
         )
 
     async def submit_dojin(self, data: DojinSubmitRest) -> int:
@@ -230,13 +238,15 @@ class SubmitService:
             return DojinSubmitRest(dojins=[], meta=SubmitMetadata())
         return DojinSubmitRest(
             dojins=row["payload"],
-            meta=scrub_metadata(SubmitMetadata(
-                vote_id=row["vote_id"],
-                attempt=row["attempt"],
-                created_at=row["created_at"],
-                user_ip=row["user_ip"],
-                additional_fingreprint=row["additional_fingreprint"],
-            )),
+            meta=scrub_metadata(
+                SubmitMetadata(
+                    vote_id=row["vote_id"],
+                    attempt=row["attempt"],
+                    created_at=row["created_at"],
+                    user_ip=row["user_ip"],
+                    additional_fingreprint=row["additional_fingreprint"],
+                )
+            ),
         )
 
     async def get_voting_status(self, vote_id: str) -> VotingStatus:

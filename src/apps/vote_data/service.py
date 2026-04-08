@@ -89,7 +89,9 @@ class VoteDataService:
         """Submit questionnaire answers for a user."""
         existing = await self.vote_data_dao.get_questionnaire_by_id(user_id)
         if existing:
-            await self.vote_data_dao.update_questionnaire(user_id, request.questionnaire_list)
+            await self.vote_data_dao.update_questionnaire(
+                user_id, request.questionnaire_list
+            )
         else:
             questionnaire = Questionnaire(
                 id=user_id,
@@ -105,10 +107,14 @@ class VoteDataService:
 
     async def get_user_vote_summary(self, user_id: str) -> VoteDataSummaryResponse:
         """Get a summary of user's vote data."""
-        has_character = await self.vote_data_dao.get_character_by_id(user_id) is not None
+        has_character = (
+            await self.vote_data_dao.get_character_by_id(user_id) is not None
+        )
         has_music = await self.vote_data_dao.get_music_by_id(user_id) is not None
         has_cp = await self.vote_data_dao.get_cp_by_id(user_id) is not None
-        has_questionnaire = await self.vote_data_dao.get_questionnaire_by_id(user_id) is not None
+        has_questionnaire = (
+            await self.vote_data_dao.get_questionnaire_by_id(user_id) is not None
+        )
 
         return VoteDataSummaryResponse(
             user_id=user_id,

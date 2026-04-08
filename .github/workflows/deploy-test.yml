@@ -59,7 +59,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: 代码格式检查 (Black)
-        run: black --check --diff src/
+        run: black --check --diff --target-version py312 src/
 
       - name: 代码风格检查 (Flake8)
         run: flake8 src/ --max-line-length=120

@@ -25,6 +25,7 @@ async def get_vote_data_service(
 ) -> VoteDataService:
     """Dependency to get VoteDataService instance."""
     from src.apps.vote_data.dao import VoteDataDAO
+
     dao = VoteDataDAO(session)
     return VoteDataService(dao)
 

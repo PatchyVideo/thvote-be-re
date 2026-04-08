@@ -85,7 +85,7 @@ def get_header() -> dict[str, str]:
     user_agent = os.getenv(
         "BILIBILI_USER_AGENT",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     )
     return {
         "User-Agent": user_agent,
@@ -132,6 +132,7 @@ def get_cookies() -> dict[str, str]:
 
     if not cookies:
         import uuid
+
         cookies["buvid3"] = str(uuid.uuid4()).upper()
 
     return cookies

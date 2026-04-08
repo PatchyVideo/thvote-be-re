@@ -63,8 +63,12 @@ async def _release_vote_lock(lock_key: str, lock_value: str) -> None:
 
 def _build_character_rest(input: CharacterSubmitMutationInput) -> CharacterSubmitRest:
     from src.apps.submit.schemas import CharacterSubmit as CharacterSubmitPydantic
+
     return CharacterSubmitRest(
-        characters=[CharacterSubmitPydantic(id=c.id, reason=c.reason, first=c.first) for c in input.characters],
+        characters=[
+            CharacterSubmitPydantic(id=c.id, reason=c.reason, first=c.first)
+            for c in input.characters
+        ],
         meta=SubmitMetadata(
             vote_id=input.meta.vote_id,
             attempt=input.meta.attempt,
@@ -77,8 +81,12 @@ def _build_character_rest(input: CharacterSubmitMutationInput) -> CharacterSubmi
 
 def _build_music_rest(input: MusicSubmitMutationInput) -> MusicSubmitRest:
     from src.apps.submit.schemas import MusicSubmit as MusicSubmitPydantic
+
     return MusicSubmitRest(
-        music=[MusicSubmitPydantic(id=m.id, reason=m.reason, first=m.first) for m in input.music],
+        music=[
+            MusicSubmitPydantic(id=m.id, reason=m.reason, first=m.first)
+            for m in input.music
+        ],
         meta=SubmitMetadata(
             vote_id=input.meta.vote_id,
             attempt=input.meta.attempt,
@@ -91,8 +99,19 @@ def _build_music_rest(input: MusicSubmitMutationInput) -> MusicSubmitRest:
 
 def _build_cp_rest(input: CPSubmitMutationInput) -> CPSubmitRest:
     from src.apps.submit.schemas import CPSubmit as CPSubmitPydantic
+
     return CPSubmitRest(
-        cps=[CPSubmitPydantic(id_a=c.id_a, id_b=c.id_b, id_c=c.id_c, active=c.active, first=c.first, reason=c.reason) for c in input.cps],
+        cps=[
+            CPSubmitPydantic(
+                id_a=c.id_a,
+                id_b=c.id_b,
+                id_c=c.id_c,
+                active=c.active,
+                first=c.first,
+                reason=c.reason,
+            )
+            for c in input.cps
+        ],
         meta=SubmitMetadata(
             vote_id=input.meta.vote_id,
             attempt=input.meta.attempt,
@@ -118,11 +137,19 @@ def _build_paper_rest(input: PaperSubmitMutationInput) -> PaperSubmitRest:
 
 def _build_dojin_rest(input: DojinSubmitMutationInput) -> DojinSubmitRest:
     from src.apps.submit.schemas import DojinSubmit as DojinSubmitPydantic
+
     return DojinSubmitRest(
-        dojins=[DojinSubmitPydantic(
-            dojin_type=d.dojin_type, url=d.url, title=d.title,
-            author=d.author, reason=d.reason, image_url=d.image_url
-        ) for d in input.dojins],
+        dojins=[
+            DojinSubmitPydantic(
+                dojin_type=d.dojin_type,
+                url=d.url,
+                title=d.title,
+                author=d.author,
+                reason=d.reason,
+                image_url=d.image_url,
+            )
+            for d in input.dojins
+        ],
         meta=SubmitMetadata(
             vote_id=input.meta.vote_id,
             attempt=input.meta.attempt,
@@ -170,7 +197,11 @@ class SubmitQuery:
         async for db in get_db_session():
             service = SubmitService(db)
             data = await service.get_paper_submit(vote_id)
-            return data.papers_json if data.papers_json and data.papers_json != "{}" else None
+            return (
+                data.papers_json
+                if data.papers_json and data.papers_json != "{}"
+                else None
+            )
 
     @strawberry.field
     async def get_dojin_submit(self, vote_id: str) -> DojinSubmitResult:
@@ -200,7 +231,9 @@ class SubmitQuery:
 @strawberry.type
 class SubmitMutation:
     @strawberry.mutation
-    async def submit_character(self, input: CharacterSubmitMutationInput) -> SubmitSuccess:
+    async def submit_character(
+        self, input: CharacterSubmitMutationInput
+    ) -> SubmitSuccess:
         redis_client = await get_redis_client()
         await rate_limit(input.meta.vote_id, redis_client)
         lock_key, lock_value = await _acquire_vote_lock(input.meta.vote_id)

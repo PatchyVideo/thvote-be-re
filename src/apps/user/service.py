@@ -112,6 +112,7 @@ class UserService:
         password_hash = self._provider.hash_password(request.password)
 
         from src.apps.user.models import User
+
         user = User(
             id=generate_user_id(),
             email=request.email,

@@ -160,6 +160,7 @@ class SubmitDAO:
 
     async def has_submit(self, vote_id: str) -> dict[str, bool]:
         """Check if any submits exist for a vote ID."""
+
         async def _has(model) -> bool:
             stmt = select(model.id).where(model.vote_id == vote_id).limit(1)
             return (await self.session.execute(stmt)).scalar_one_or_none() is not None
@@ -174,6 +175,7 @@ class SubmitDAO:
 
     async def get_statistics(self) -> dict[str, int]:
         """Get voting statistics."""
+
         async def _distinct_count(model) -> int:
             stmt = select(func.count(func.distinct(model.vote_id)))
             return int((await self.session.execute(stmt)).scalar_one() or 0)
@@ -189,7 +191,9 @@ class SubmitDAO:
             select(RawCPSubmit.vote_id),
             select(RawMusicSubmit.vote_id),
         ).subquery()
-        vote_users = (await self.session.execute(select(func.count()).select_from(q_vote))).scalar_one()
+        vote_users = (
+            await self.session.execute(select(func.count()).select_from(q_vote))
+        ).scalar_one()
 
         q_user = union(
             select(RawCharacterSubmit.vote_id),
@@ -197,7 +201,9 @@ class SubmitDAO:
             select(RawMusicSubmit.vote_id),
             select(RawPaperSubmit.vote_id),
         ).subquery()
-        all_users = (await self.session.execute(select(func.count()).select_from(q_user))).scalar_one()
+        all_users = (
+            await self.session.execute(select(func.count()).select_from(q_user))
+        ).scalar_one()
 
         return {
             "num_user": int(all_users or 0),

@@ -191,7 +191,9 @@ def pydantic_to_graphql_meta(meta: SubmitMetadataPydantic) -> SubmitMetadata:
     )
 
 
-def pydantic_to_graphql_characters(chars: list[CharacterSubmitPydantic]) -> list[CharacterSubmit]:
+def pydantic_to_graphql_characters(
+    chars: list[CharacterSubmitPydantic],
+) -> list[CharacterSubmit]:
     return [CharacterSubmit(id=c.id, reason=c.reason, first=c.first) for c in chars]
 
 
@@ -200,14 +202,31 @@ def pydantic_to_graphql_musics(musics: list[MusicSubmitPydantic]) -> list[MusicS
 
 
 def pydantic_to_graphql_cps(cps: list[CPSubmitPydantic]) -> list[CPSubmit]:
-    return [CPSubmit(id_a=c.id_a, id_b=c.id_b, id_c=c.id_c, active=c.active, first=c.first, reason=c.reason) for c in cps]
+    return [
+        CPSubmit(
+            id_a=c.id_a,
+            id_b=c.id_b,
+            id_c=c.id_c,
+            active=c.active,
+            first=c.first,
+            reason=c.reason,
+        )
+        for c in cps
+    ]
 
 
 def pydantic_to_graphql_dojins(dojins: list[DojinSubmitPydantic]) -> list[DojinSubmit]:
-    return [DojinSubmit(
-        dojin_type=d.dojin_type, url=d.url, title=d.title,
-        author=d.author, reason=d.reason, image_url=d.image_url
-    ) for d in dojins]
+    return [
+        DojinSubmit(
+            dojin_type=d.dojin_type,
+            url=d.url,
+            title=d.title,
+            author=d.author,
+            reason=d.reason,
+            image_url=d.image_url,
+        )
+        for d in dojins
+    ]
 
 
 def pydantic_to_graphql_voting_status(status: VotingStatusPydantic) -> VotingStatus:
@@ -220,7 +239,9 @@ def pydantic_to_graphql_voting_status(status: VotingStatusPydantic) -> VotingSta
     )
 
 
-def pydantic_to_graphql_voting_statistics(stats: VotingStatisticsPydantic) -> VotingStatistics:
+def pydantic_to_graphql_voting_statistics(
+    stats: VotingStatisticsPydantic,
+) -> VotingStatistics:
     return VotingStatistics(
         num_user=stats.num_user,
         num_finished_paper=stats.num_finished_paper,

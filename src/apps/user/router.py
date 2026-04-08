@@ -25,6 +25,7 @@ async def get_user_service(
 ) -> UserService:
     """Dependency to get UserService instance."""
     from src.apps.user.dao import UserDAO
+
     dao = UserDAO(session)
     return UserService(dao)
 

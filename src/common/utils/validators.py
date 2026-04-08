@@ -21,7 +21,10 @@ def validate_username(username: str) -> tuple[bool, Optional[str]]:
     if len(username) > 32:
         return False, "Username must be at most 32 characters"
     if not re.match(r"^[a-zA-Z0-9_-]+$", username):
-        return False, "Username can only contain letters, numbers, underscores, and hyphens"
+        return (
+            False,
+            "Username can only contain letters, numbers, underscores, and hyphens",
+        )
     return True, None
 
 

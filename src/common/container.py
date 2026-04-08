@@ -15,9 +15,7 @@ class DatabaseContainer(containers.DeclarativeContainer):
     engine = providers.Singleton(lambda: engine)
     session_factory = providers.Singleton(lambda: SessionLocal)
 
-    db_session = providers.Factory[AsyncGenerator[AsyncSession, None]](
-        get_db_session
-    )
+    db_session = providers.Factory[AsyncGenerator[AsyncSession, None]](get_db_session)
 
 
 class SettingsContainer(containers.DeclarativeContainer):
