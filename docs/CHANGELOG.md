@@ -14,6 +14,8 @@
 - 在合并远端壳子代码时保留 `src/app` 作为唯一正式结构，并将可复用的配置、异步数据库和 `submit` 原始提交快照能力迁入正式目录。
 - 将 `.env` 和本地 SQLite 数据文件移出版本控制，补强忽略规则以避免敏感信息和本地产物再次进入提交。
 - 同步更新 README / 架构文档 / 迁移计划，明确当前真实进度是 `submit` 已部分迁入、GraphQL 仍未接入、正式 API 仍待补齐。
+- 新增 `docs/auth/implementation-plan.md`，单独约定 Rust `user-manager` 到 Python `modules/auth` 的实现计划、数据模型、双 token 语义和分阶段落地顺序。
+- 在 `docs/auth/implementation-plan.md` 中补充阿里云短信服务与阿里云邮件推送的服务商选择、配置项、环境变量和 provider 接入约定。
 
 ## Compatibility
 

@@ -90,7 +90,7 @@
 
 下一阶段建议直接推进：
 
-1. 补齐 `modules/auth` 的最小登录闭环。
+1. 按 `docs/auth/implementation-plan.md` 补齐 `modules/auth` 的最小登录闭环。
 2. 将 `modules/submit` 接入正式 REST / GraphQL API。
 3. 定义 `models/orm` 里的用户、验证码、缓存、审计模型。
 4. 明确 Alembic 与 `init_db()` 的边界，避免开发期初始化方式固化为长期方案。
