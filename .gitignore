@@ -26,10 +26,13 @@ dist/
 *.sqlite
 *.sqlite3
 *.log
+local_db/
+keys/
 
 # Environment files
 .env
 .env.*
+.envrc
 
 # IDE/editor files
 .idea/

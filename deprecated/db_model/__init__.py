@@ -4,12 +4,19 @@ PostgreSQL数据库模型定义
 定义了用于投票数据保存的数据模型。
 """
 
-from .character import Character
 from .base import Base
-from .user import User
+from .character import Character
 from .cp import Cp
-from .questionnaire import Questionnaire
 from .music import Music
+from .questionnaire import Questionnaire
+from .raw_submit import (
+    RawCharacterSubmit,
+    RawMusicSubmit,
+    RawCPSubmit,
+    RawPaperSubmit,
+    RawDojinSubmit,
+)
+from .user import User
 
 __version__ = "1.0.0"
 __author__ = "FunnyAWM"
@@ -19,5 +26,10 @@ __all__ = [
     "Base",
     "Cp",
     "Questionnaire",
-    "Music"
+    "Music",
+    "RawCharacterSubmit",
+    "RawMusicSubmit",
+    "RawCPSubmit",
+    "RawPaperSubmit",
+    "RawDojinSubmit",
 ]

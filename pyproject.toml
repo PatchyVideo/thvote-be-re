@@ -1,16 +1,25 @@
 [project]
 name = "thvote-be-re"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0"
+description = "THVote Backend - Python refactored version"
 requires-python = ">=3.12"
 dependencies = [
     "alembic",
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "pydantic-settings",
     "sqlalchemy",
+    "asyncpg",
+    "asyncmy",
+    "aiosqlite",
     "redis",
     "aioredis",
     "redis-om",
-    "fastapi",
-    "pydantic",
-    "strawberry-graphql[fastapi]",
-    "uvicorn",
+    "PyJWT",
+    "python-dotenv",
+    "httpx",
+    "email-validator",
+    "strawberry-graphql[fastapi]>=0.219.0",
+    "dependency-injector>=4.41.0",
 ]

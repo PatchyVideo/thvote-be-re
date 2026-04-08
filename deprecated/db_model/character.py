@@ -1,5 +1,5 @@
 from sqlalchemy import Column, ForeignKey, String, DateTime, Index
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.types import JSON
 
 from .base import Base
 
@@ -13,10 +13,10 @@ class Character(Base):
     # submit_datetime DATETIME NOT NULL
     submit_datetime = Column(DateTime, nullable=False)
 
-    # character_list TEXT[] NOT NULL
-    character_list = Column(ARRAY(String), nullable=False)
+    # character_list JSON NOT NULL (list of character ids)
+    character_list = Column(JSON, nullable=False)
 
-    # CREATE INDEX idx_character_list_gin ON character(character_list) USING GIN(character_list)
+    # Generic index for cross-database support.
     __table_args__ = (
-        Index('idx_character_list_gin', 'character_list', postgresql_using='gin'),
+        Index('idx_character_list', 'character_list'),
     )

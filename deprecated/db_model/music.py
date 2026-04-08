@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, ForeignKey, DateTime, Index
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.types import JSON
 
 from .base import Base
 
@@ -13,10 +13,10 @@ class Music(Base):
     # submit_datetime DATETIME NOT NULL
     submit_datetime = Column(DateTime, nullable=False)
 
-    # music_list TEXT[] NOT NULL
-    music_list = Column(ARRAY(String), nullable=False)
+    # music_list JSON NOT NULL (list of music ids)
+    music_list = Column(JSON, nullable=False)
 
-    # CREATE INDEX idx_music_list_gin ON music(music_list) USING GIN(music_list)
+    # Generic index for cross-database support.
     __table_args__ = (
-        Index('idx_music_list_gin', 'music_list', postgresql_using='gin'),
+        Index('idx_music_list', 'music_list'),
     )

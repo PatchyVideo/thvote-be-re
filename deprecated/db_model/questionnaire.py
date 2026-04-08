@@ -1,5 +1,5 @@
 from sqlalchemy import Column, ForeignKey, String, DateTime, Index
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.types import JSON
 
 from .base import Base
 
@@ -13,10 +13,10 @@ class Questionnaire(Base):
     # submit_datetime DATETIME NOT NULL
     submit_datetime = Column(DateTime, nullable=False)
 
-    # questionnaire_list JSONB NOT NULL
-    questionnaire_list = Column(JSONB, nullable=False)
+    # questionnaire_list JSON NOT NULL
+    questionnaire_list = Column(JSON, nullable=False)
 
-    # CREATE INDEX idx_questionnaire_list_gin ON questionnaire(questionnaire_list) USING GIN(questionnaire_list)
+    # Generic index for cross-database support.
     __table_args__ = (
-        Index('idx_questionnaire_list_gin', 'questionnaire_list', postgresql_using='gin'),
+        Index('idx_questionnaire_list', 'questionnaire_list'),
     )

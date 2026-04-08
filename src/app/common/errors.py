@@ -13,6 +13,20 @@ class AppError(Exception):
         self.status_code = status_code
 
 
+class NotFoundError(AppError):
+    """Raised when a requested resource cannot be found."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, status_code=404)
+
+
+class ValidationError(AppError):
+    """Raised when input validation fails at the service layer."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, status_code=422)
+
+
 async def _handle_app_error(_: Request, exc: AppError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
