@@ -1,0 +1,62 @@
+"""Scraper data access objects."""
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.apps.scraper.schemas import RespBody
+from src.apps.scraper.utils.cache import get_cache as redis_get_cache, set_cache as redis_set_cache
+
+
+class ScraperDAO:
+    """Data access object for scraper operations."""
+
+    def __init__(self, session: "AsyncSession | None" = None):
+        self.session = session
+
+    async def cache_scrape_result(self, url: str, data: RespBody) -> None:
+        """Cache scrape result to Redis.
+
+        Args:
+            url: Original URL
+            data: Scrape result to cache
+        """
+        from hashlib import md5
+
+        cache_key = f"scraper_url:{md5(url.encode()).hexdigest()}"
+        await redis_set_cache(cache_key, data)
+
+    async def get_cached_result(self, url: str) -> RespBody | None:
+        """Get cached scrape result from Redis.
+
+        Args:
+            url: Original URL
+
+        Returns:
+            Cached RespBody or None if not found
+        """
+        from hashlib import md5
+
+        cache_key = f"scraper_url:{md5(url.encode()).hexdigest()}"
+        return await redis_get_cache(cache_key)
+
+    async def cache_by_udid(self, udid: str, data: RespBody) -> None:
+        """Cache result by UDID (unique identifier).
+
+        Args:
+            udid: Unique identifier (format: site:id)
+            data: Scrape result to cache
+        """
+        await redis_set_cache(f"scraper_udid:{udid}", data)
+
+    async def get_by_udid(self, udid: str) -> RespBody | None:
+        """Get cached result by UDID.
+
+        Args:
+            udid: Unique identifier (format: site:id)
+
+        Returns:
+            Cached RespBody or None if not found
+        """
+        return await redis_get_cache(f"scraper_udid:{udid}")
