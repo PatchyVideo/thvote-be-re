@@ -10,7 +10,6 @@ from src.apps.user.schemas import (
     LoginResult,
     RegisterRequest,
     RegisterResponse,
-    RegisterResult,
     UserResponse,
 )
 from src.apps.user.service import UserService
@@ -48,7 +47,7 @@ async def login_with_email(
     try:
         result = await service.login_with_email_password(request)
         return result
-    except ValidationError as e:
+    except ValidationError:
         return LoginResult(
             user_id="",
             session_token="",
@@ -66,7 +65,7 @@ async def register(
     """Register a new user."""
     register_ip = request.client.host if request.client else ""
     try:
-        result = await service.register_user(request_body, register_ip)
+        await service.register_user(request_body, register_ip)
         return RegisterResponse(success=True, message="Registration successful")
     except ValidationError as e:
         return RegisterResponse(success=False, message=str(e))

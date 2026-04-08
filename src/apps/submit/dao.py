@@ -183,7 +183,6 @@ class SubmitDAO:
         ch = await _distinct_count(RawCharacterSubmit)
         cp = await _distinct_count(RawCPSubmit)
         music = await _distinct_count(RawMusicSubmit)
-        paper = await _distinct_count(RawPaperSubmit)
         dojin = await _distinct_count(RawDojinSubmit)
 
         q_vote = union(

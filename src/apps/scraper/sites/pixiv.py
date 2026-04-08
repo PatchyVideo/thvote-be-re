@@ -52,7 +52,7 @@ async def pixdata(illust_id: str, udid: str | None = None) -> RespBody:
     if not access_token:
         return RespBody(status="err", msg="Pixiv authentication failed")
 
-    api_url = f"https://app-api.pixiv.net/v1/illust/detail"
+    api_url = "https://app-api.pixiv.net/v1/illust/detail"
     params = {"illust_id": illust_id}
 
     headers = {**PIXIV_HEADERS, "Authorization": f"Bearer {access_token}"}
@@ -144,7 +144,7 @@ async def pixndata(novel_id: str, udid: str | None = None) -> RespBody:
     if not access_token:
         return RespBody(status="err", msg="Pixiv authentication failed")
 
-    api_url = f"https://app-api.pixiv.net/v1/novel/detail"
+    api_url = "https://app-api.pixiv.net/v1/novel/detail"
     params = {"novel_id": novel_id}
 
     headers = {**PIXIV_HEADERS, "Authorization": f"Bearer {access_token}"}

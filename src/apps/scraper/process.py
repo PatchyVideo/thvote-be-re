@@ -10,7 +10,9 @@ import re
 from typing import Any
 
 from src.apps.scraper.schemas import RespBody
-from src.apps.scraper.sites import *
+from src.apps.scraper.sites.bilibili import biliarticledata, bilidata
+from src.apps.scraper.sites.pixiv import pixdata, pixndata
+from src.apps.scraper.sites.twitter import twidata
 from src.apps.scraper.utils.network import get_redirect_url
 
 # 加载 .env 环境变量

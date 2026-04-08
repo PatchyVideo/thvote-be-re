@@ -6,10 +6,6 @@ and HTTP headers configuration.
 
 from __future__ import annotations
 
-from typing import Any
-
-from src.apps.scraper.utils.network import request_api
-
 TABLE = "fZodR9XQDSUm21yCkr6zBqiveYah8bt4xsWpHnJE7jL5VG3guMTKNPAwcF"
 TR: dict[str, int] = {TABLE[i]: i for i in range(58)}
 SALT = 11

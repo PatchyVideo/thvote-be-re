@@ -5,6 +5,7 @@ Provides HTTP request functionality for scraping.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
@@ -77,7 +78,7 @@ async def request_api(url: str, **kwargs: Any) -> dict[str, Any]:
 
         try:
             return response.json()
-        except Exception as e:
+        except Exception:
             raise ValueError(f"Invalid JSON from {url}: {text[:200]}")
 
 
@@ -97,6 +98,3 @@ async def wait_for_rate_limit(site: str, limit: float) -> None:
             await asyncio.sleep(limit - elapsed)
 
     await set_rate_limit_last(site, time.time())
-
-
-import asyncio
