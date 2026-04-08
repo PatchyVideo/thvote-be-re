@@ -1,5 +1,18 @@
-"""GraphQL schema placeholder.
+"""GraphQL Schema definition."""
 
-The GraphQL surface will be added after the base FastAPI infrastructure and
-the first module migration are stable.
-"""
+import strawberry
+
+from .resolvers.submit import SubmitMutation, SubmitQuery
+
+
+@strawberry.type
+class Query(SubmitQuery):
+    """Root GraphQL Query."""
+
+
+@strawberry.type
+class Mutation(SubmitMutation):
+    """Root GraphQL Mutation."""
+
+
+schema = strawberry.Schema(query=Query, mutation=Mutation)

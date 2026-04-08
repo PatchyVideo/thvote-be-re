@@ -90,14 +90,15 @@ src/app/
 
 当前计划采用阿里云作为验证码与通知能力提供方：
 
-- 短信：阿里云短信服务（SMS）
+- 手机验证码：阿里云号码认证服务（PNVS）下的短信认证服务
 - 邮件：阿里云邮件推送（Direct Mail）
 
 这样选择的原因：
 
 - Rust 旧实现本来就依赖独立短信/邮件服务，迁到 Python 后继续保留 provider 边界最稳。
-- 短信验证码和事务邮件都属于成熟场景，阿里云现成能力足够，不需要自建发送通道。
-- 资质、模板、发送接口、发送频控都能在同一云厂商体系内管理，后续运维成本更低。
+- 手机验证码和事务邮件都属于成熟场景，阿里云现成能力足够，不需要自建发送通道。
+- 短信认证服务适合个人开发者场景，不要求企业短信资质，和本项目当前条件更匹配。
+- 邮件推送适合承接邮箱验证码、通知邮件、找回密码邮件等事务邮件场景。
 
 实现约束：
 
@@ -105,34 +106,62 @@ src/app/
 - 验证码生成、发送冷却、验证码校验仍由 `modules/auth/service.py` 控制。
 - API 层不直接调用阿里云 SDK。
 
+重要区分：
+
+- 本项目要用的是“短信认证服务”，不是“短信服务”。
+- “短信服务”适合通用短信发送，但通常需要企业资质、签名和模板申请，不适合作为本项目当前首选方案。
+- “短信认证服务”属于 PNVS 体系，定位就是手机号验证码和核验，接入门槛更低。
+
 ## 服务商配置
 
-### 阿里云短信服务
+### 阿里云短信认证服务
 
 建议按下面顺序配置：
 
-1. 开通阿里云短信服务。
-2. 完成账号实名认证与短信资质申请。
-3. 申请短信签名。
-4. 申请验证码短信模板。
-5. 创建具备短信发送权限的 RAM 用户或 AccessKey。
-6. 在项目环境变量中配置短信相关参数。
+1. 开通阿里云号码认证服务（PNVS）。
+2. 完成阿里云账号实名认证。
+3. 创建具备号码认证调用权限的 RAM 用户或 AccessKey。
+4. 在控制台确认短信认证功能已可用。
+5. 在项目环境变量中配置认证服务相关参数。
+
+这条产品线和普通短信服务的区别：
+
+- 不需要企业短信资质。
+- 不需要单独申请短信签名。
+- 不需要单独申请短信模板。
+- 使用的是 PNVS 的认证接口，不是普通短信发送接口。
 
 项目内建议保留这些环境变量：
 
-- `ALIYUN_SMS_ACCESS_KEY_ID`
-- `ALIYUN_SMS_ACCESS_KEY_SECRET`
-- `ALIYUN_SMS_ENDPOINT`
-- `ALIYUN_SMS_SIGN_NAME`
-- `ALIYUN_SMS_TEMPLATE_CODE_LOGIN`
-- `ALIYUN_SMS_TEMPLATE_CODE_BIND`
-- `ALIYUN_SMS_REGION_ID`
+- `ALIYUN_PNVS_ACCESS_KEY_ID`
+- `ALIYUN_PNVS_ACCESS_KEY_SECRET`
+- `ALIYUN_PNVS_ENDPOINT`
+- `ALIYUN_PNVS_REGION_ID`
+- `ALIYUN_PNVS_SCHEME_NAME`
+- `ALIYUN_PNVS_SMS_SIGN_NAME`
+- `ALIYUN_PNVS_SMS_TEMPLATE_CODE`
+- `ALIYUN_PNVS_CODE_LENGTH`
+- `ALIYUN_PNVS_VALID_TIME`
+- `ALIYUN_PNVS_INTERVAL`
 
 说明：
 
-- `SIGN_NAME` 对应短信签名。
-- `TEMPLATE_CODE_*` 对应阿里云审核通过后的短信模板编号。
-- 如果后续登录验证码、绑定手机号验证码使用不同模板，应拆成不同环境变量。
+- `ENDPOINT` 应对应 PNVS / `dypnsapi` 体系，而不是普通短信服务的 `dysmsapi`。
+- `SCHEME_NAME` 对应短信认证方案名称。
+- `SMS_SIGN_NAME` 和 `SMS_TEMPLATE_CODE` 应按短信认证服务的系统赠送签名/模板能力来配置，不按普通短信服务去申请自定义模板。
+- `CODE_LENGTH`、`VALID_TIME`、`INTERVAL` 用于约束验证码长度、有效期和发送间隔。
+
+建议的实现方式：
+
+- 发送验证码：调用短信认证服务发送接口
+- 校验验证码：优先调用短信认证服务校验接口
+- 不再由本地 Redis 自己保存手机验证码明文
+
+这样做的原因：
+
+- 能直接复用服务商验证码校验能力。
+- 可以减少本地自行保管短信验证码的实现复杂度。
+- 更贴近“认证服务”而不是“消息发送服务”的产品语义。
 
 ### 阿里云邮件推送
 
@@ -173,14 +202,15 @@ src/app/
 
 建议把外部服务能力拆成两个 provider：
 
-- `AliyunSmsProvider`
+- `AliyunPnvsProvider`
 - `AliyunMailProvider`
 
 职责：
 
-- `AliyunSmsProvider`
-  - 根据模板编码和变量发送短信
-  - 屏蔽阿里云 SDK / HTTP 接口细节
+- `AliyunPnvsProvider`
+  - 调用短信认证服务发送验证码
+  - 调用短信认证服务校验验证码
+  - 屏蔽 PNVS SDK / HTTP 接口细节
   - 统一转换服务商错误为应用内异常
 - `AliyunMailProvider`
   - 发送验证码和事务邮件
@@ -199,13 +229,16 @@ src/app/
 
 建议至少增加：
 
-- `aliyun_sms_access_key_id`
-- `aliyun_sms_access_key_secret`
-- `aliyun_sms_endpoint`
-- `aliyun_sms_sign_name`
-- `aliyun_sms_template_code_login`
-- `aliyun_sms_template_code_bind`
-- `aliyun_sms_region_id`
+- `aliyun_pnvs_access_key_id`
+- `aliyun_pnvs_access_key_secret`
+- `aliyun_pnvs_endpoint`
+- `aliyun_pnvs_region_id`
+- `aliyun_pnvs_scheme_name`
+- `aliyun_pnvs_sms_sign_name`
+- `aliyun_pnvs_sms_template_code`
+- `aliyun_pnvs_code_length`
+- `aliyun_pnvs_valid_time`
+- `aliyun_pnvs_interval`
 - `aliyun_dm_access_key_id`
 - `aliyun_dm_access_key_secret`
 - `aliyun_dm_endpoint`
@@ -339,7 +372,7 @@ src/app/
 - 建立 `AuthLog` ORM
 - 补齐 `common/security/password.py`
 - 补齐 `common/security/jwt.py`
-- 在 `common/config.py` 中补齐阿里云短信 / 邮件配置项
+- 在 `common/config.py` 中补齐阿里云 PNVS / 邮件推送配置项
 - 完成邮箱 + 密码登录最小闭环
 
 ### Phase 2
@@ -355,7 +388,7 @@ src/app/
 
 目标：
 
-- 接入阿里云短信服务 provider
+- 接入阿里云短信认证服务 provider
 - 实现发送手机验证码
 - 实现手机验证码登录/自动注册
 - 补齐资料修改接口：邮箱、手机、昵称、密码

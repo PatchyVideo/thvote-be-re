@@ -25,8 +25,8 @@
 - 历史草稿已经收拢到 `deprecated/`。
 - `common` 已有配置、异步数据库 session、基础错误处理和生命周期骨架。
 - `auth` 仍只有最小占位代码。
-- `submit` 已迁入 DTO、原始提交快照 ORM、repository、service 和基本校验逻辑。
-- GraphQL 仍是占位文件，正式业务接口尚未接入应用。
+- `submit` 已迁入 DTO、原始提交快照 ORM、repository、service 和基本校验逻辑，并恢复了基础 GraphQL 接口、提交保护层和过渡 REST 兼容路由。
+- `scraper_client` 已恢复基础解析流程和内部 REST 入口。
 
 ## 遗留草稿结论
 
@@ -91,6 +91,6 @@
 下一阶段建议直接推进：
 
 1. 按 `docs/auth/implementation-plan.md` 补齐 `modules/auth` 的最小登录闭环。
-2. 将 `modules/submit` 接入正式 REST / GraphQL API。
+2. 稳定 `modules/submit` 当前恢复的 GraphQL 接线，并补最小验证。
 3. 定义 `models/orm` 里的用户、验证码、缓存、审计模型。
 4. 明确 Alembic 与 `init_db()` 的边界，避免开发期初始化方式固化为长期方案。

@@ -169,7 +169,6 @@ class SubmitRepository:
         ch = await _distinct_count(RawCharacterSubmit)
         cp = await _distinct_count(RawCPSubmit)
         music = await _distinct_count(RawMusicSubmit)
-        paper = await _distinct_count(RawPaperSubmit)
         dojin = await _distinct_count(RawDojinSubmit)
 
         q_vote = union(
@@ -189,7 +188,7 @@ class SubmitRepository:
 
         return {
             "num_user": int(all_users or 0),
-            "num_finished_paper": int(paper or 0),
+            "num_finished_paper": 0,
             "num_finished_voting": int(vote_users or 0),
             "num_character": ch,
             "num_cp": cp,

@@ -5,6 +5,8 @@ description = "THVote Backend - Python refactored version"
 requires-python = ">=3.12"
 dependencies = [
     "alembic",
+    "argon2-cffi",
+    "bcrypt",
     "fastapi",
     "uvicorn[standard]",
     "pydantic",

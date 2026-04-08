@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 def utcnow() -> datetime:
@@ -18,7 +18,11 @@ class SubmitMetadata(BaseModel):
     attempt: int | None = None
     created_at: datetime = Field(default_factory=utcnow)
     user_ip: str = "<unknown>"
-    additional_fingerprint: str | None = None
+    additional_fingerprint: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("additional_fingerprint", "additional_fingreprint"),
+        serialization_alias="additional_fingreprint",
+    )
 
 
 class CharacterVoteItem(BaseModel):

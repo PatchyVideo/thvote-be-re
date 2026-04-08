@@ -1,7 +1,9 @@
 """FastAPI application factory for thvote-be-re."""
 
 from fastapi import FastAPI
+from strawberry.fastapi import GraphQLRouter
 
+from .api.graphql.schema import schema as graphql_schema
 from .api.rest.router import router as rest_router
 from .common.errors import register_exception_handlers
 from .common.lifespan import lifespan
@@ -18,6 +20,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(rest_router)
+    app.include_router(GraphQLRouter(graphql_schema), prefix="/graphql")
     register_exception_handlers(app)
     return app
 
