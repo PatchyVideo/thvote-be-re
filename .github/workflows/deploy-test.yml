@@ -256,22 +256,22 @@ jobs:
 
           # 判断后端是否需要重新部署
           if echo "$CHANGED_FILES" | grep -qE '^(src/|requirements\.txt|Dockerfile|config/|scripts/)'; then
-            echo "::set-output name=deploy-backend::true"
+            echo "deploy-backend=true" >> $GITHUB_OUTPUT
             echo "需要重新部署: 后端"
           else
-            echo "::set-output name=deploy-backend::false"
+            echo "deploy-backend=false" >> $GITHUB_OUTPUT
           fi
 
           # 判断前端是否需要重新部署
           if echo "$CHANGED_FILES" | grep -qE '^(frontend/|scripts/)'; then
-            echo "::set-output name=deploy-frontend::true"
+            echo "deploy-frontend=true" >> $GITHUB_OUTPUT
             echo "需要重新部署: 前端"
           else
-            echo "::set-output name=deploy-frontend::false"
+            echo "deploy-frontend=false" >> $GITHUB_OUTPUT
           fi
 
           # 至少部署一个服务
-          echo "::set-output name=deploy-any::${{ always() && (needs.build-backend.outputs.backend-tag != '' || needs.build-frontend.outputs.frontend-tag != '') }}"
+          echo "deploy-any=true" >> $GITHUB_OUTPUT
 
       - name: 部署到测试服务器
         if: steps.changed-services.outputs.deploy-backend == 'true' || steps.changed-services.outputs.deploy-frontend == 'true'
