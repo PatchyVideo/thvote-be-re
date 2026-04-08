@@ -6,7 +6,7 @@ from dependency_injector import containers, providers
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.common.config import get_settings
-from src.common.database import SessionLocal, get_db_session, engine
+from src.common.database import SessionLocal, engine, get_db_session
 
 
 class DatabaseContainer(containers.DeclarativeContainer):

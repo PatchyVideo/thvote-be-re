@@ -6,10 +6,8 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.scraper.schemas import RespBody
-from src.apps.scraper.utils.cache import (
-    get_cache as redis_get_cache,
-    set_cache as redis_set_cache,
-)
+from src.apps.scraper.utils.cache import get_cache as redis_get_cache
+from src.apps.scraper.utils.cache import set_cache as redis_set_cache
 
 
 class ScraperDAO:

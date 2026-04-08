@@ -85,7 +85,7 @@ class RegisterResponse(BaseModel):
     """Response schema for registration result."""
 
     success: bool
-    user: Optional[UserResponse] = None
+    user_id: Optional[str] = None
     message: Optional[str] = None
 
 

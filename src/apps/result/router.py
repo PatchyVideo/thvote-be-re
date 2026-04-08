@@ -1,24 +1,16 @@
 """Result query API routes."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.result.dao import ResultDAO
-from src.apps.result.schemas import (
-    CompletionRatesQuery,
-    CovoteQuery,
-    GlobalStats,
-    GlobalStatsQuery,
-    QuestionnaireQuery,
-    QuestionnaireTrendQuery,
-    RankingCharacterMusic,
-    RankingQuery,
-    ReasonQuery,
-    Reasons,
-    SingleQuery,
-    TrendQuery,
-    Trends,
-)
+from src.apps.result.schemas import (CompletionRatesQuery, CovoteQuery,
+                                     GlobalStats, GlobalStatsQuery,
+                                     QuestionnaireQuery,
+                                     QuestionnaireTrendQuery,
+                                     RankingCharacterMusic, RankingQuery,
+                                     ReasonQuery, Reasons, SingleQuery,
+                                     TrendQuery, Trends)
 from src.apps.result.service import ResultService
 from src.common.database import get_db_session
 
@@ -66,7 +58,10 @@ async def get_single_entity(
     service: ResultService = Depends(get_result_service),
 ) -> dict:
     """Get a single votable entity."""
-    return await service.get_single_entity(query)
+    result = await service.get_single_entity(query)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Entity not found")
+    return result
 
 
 @router.post("/reasons/", response_model=Reasons)

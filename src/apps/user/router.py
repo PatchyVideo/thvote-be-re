@@ -3,15 +3,9 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apps.user.schemas import (
-    EmailLoginRequest,
-    LoginRequest,
-    LoginResponse,
-    LoginResult,
-    RegisterRequest,
-    RegisterResponse,
-    UserResponse,
-)
+from src.apps.user.schemas import (EmailLoginRequest, LoginRequest,
+                                   LoginResponse, LoginResult, RegisterRequest,
+                                   RegisterResponse, UserResponse)
 from src.apps.user.service import UserService
 from src.common.database import get_db_session
 from src.common.exceptions import ValidationError
@@ -65,8 +59,10 @@ async def register(
     """Register a new user."""
     register_ip = request.client.host if request.client else ""
     try:
-        await service.register_user(request_body, register_ip)
-        return RegisterResponse(success=True, message="Registration successful")
+        result = await service.register_user(request_body, register_ip)
+        return RegisterResponse(
+            success=True, user_id=result.user_id, message="Registration successful"
+        )
     except ValidationError as e:
         return RegisterResponse(success=False, message=str(e))
 

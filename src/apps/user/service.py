@@ -3,17 +3,10 @@
 from datetime import UTC, datetime
 
 from src.apps.user.dao import UserDAO
-from src.apps.user.schemas import (
-    EmailLoginRequest,
-    LoginRequest,
-    LoginResponse,
-    LoginResult,
-    RegisterRequest,
-    RegisterResponse,
-    RegisterResult,
-    UserResponse,
-    generate_user_id,
-)
+from src.apps.user.schemas import (EmailLoginRequest, LoginRequest,
+                                   LoginResponse, LoginResult, RegisterRequest,
+                                   RegisterResponse, RegisterResult,
+                                   UserResponse, generate_user_id)
 from src.apps.user.utils.security import AuthProvider
 from src.common.exceptions import NotFoundError, ValidationError
 
@@ -57,16 +50,16 @@ class UserService:
 
         result = self._provider.verify_any_password(
             password=request.password,
-            password_hashed=user.password_hash or "",
-            legacy_salt=user.legacy_salt,
+            password_hashed=str(user.password_hash) if user.password_hash else "",
+            legacy_salt=str(user.legacy_salt) if user.legacy_salt else None,
         )
 
         if not result.valid:
             raise ValidationError("Invalid email or password")
 
         if result.needs_rehash and result.upgraded_hash:
-            user.password_hash = result.upgraded_hash
-            user.legacy_salt = None
+            user.password_hash = result.upgraded_hash  # type: ignore[assignment]
+            user.legacy_salt = None  # type: ignore[assignment]
             await self.user_dao.update(user)
 
         session_token = self._provider.create_session_token(str(user.id))
@@ -74,13 +67,14 @@ class UserService:
         return LoginResult(
             user_id=str(user.id),
             session_token=session_token,
-            email=user.email,
-            phone_number=user.phone_number,
+            email=str(user.email) if user.email else None,
+            phone_number=str(user.phone_number) if user.phone_number else None,
         )
 
     async def register(self, request: RegisterRequest) -> RegisterResponse:
         """Register a new user account."""
-        return await self.register_user(request, "")
+        result = await self.register_user(request, "")
+        return RegisterResponse(success=True, user_id=result.user_id)
 
     async def register_user(
         self,
@@ -126,8 +120,10 @@ class UserService:
 
         return RegisterResult(
             user_id=str(created_user.id),
-            email=created_user.email,
-            phone_number=created_user.phone_number,
+            email=str(created_user.email) if created_user.email else None,
+            phone_number=(
+                str(created_user.phone_number) if created_user.phone_number else None
+            ),
         )
 
     async def get_user_by_id(self, user_id: str) -> UserResponse:

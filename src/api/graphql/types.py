@@ -5,15 +5,14 @@ from typing import Optional
 
 import strawberry
 
-from src.apps.submit.schemas import (
-    CharacterSubmit as CharacterSubmitPydantic,
-    CPSubmit as CPSubmitPydantic,
-    DojinSubmit as DojinSubmitPydantic,
-    MusicSubmit as MusicSubmitPydantic,
-    SubmitMetadata as SubmitMetadataPydantic,
-    VotingStatus as VotingStatusPydantic,
-    VotingStatistics as VotingStatisticsPydantic,
-)
+from src.apps.submit.schemas import CharacterSubmit as CharacterSubmitPydantic
+from src.apps.submit.schemas import CPSubmit as CPSubmitPydantic
+from src.apps.submit.schemas import DojinSubmit as DojinSubmitPydantic
+from src.apps.submit.schemas import MusicSubmit as MusicSubmitPydantic
+from src.apps.submit.schemas import SubmitMetadata as SubmitMetadataPydantic
+from src.apps.submit.schemas import \
+    VotingStatistics as VotingStatisticsPydantic
+from src.apps.submit.schemas import VotingStatus as VotingStatusPydantic
 
 
 @strawberry.type

@@ -1,11 +1,9 @@
 """Autocomplete service layer."""
 
 from src.apps.autocomplete.dao import AutocompleteDAO
-from src.apps.autocomplete.schemas import (
-    AutocompleteRequest,
-    AutocompleteResponse,
-    AutocompleteSuggestion,
-)
+from src.apps.autocomplete.schemas import (AutocompleteRequest,
+                                           AutocompleteResponse,
+                                           AutocompleteSuggestion)
 
 
 class AutocompleteService:

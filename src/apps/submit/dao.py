@@ -1,15 +1,11 @@
 """Submit data access objects."""
 
-from sqlalchemy import desc, select, func, union
+from sqlalchemy import desc, func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apps.submit.models import (
-    RawCPSubmit,
-    RawCharacterSubmit,
-    RawDojinSubmit,
-    RawMusicSubmit,
-    RawPaperSubmit,
-)
+from src.apps.submit.models import (RawCharacterSubmit, RawCPSubmit,
+                                    RawDojinSubmit, RawMusicSubmit,
+                                    RawPaperSubmit)
 
 
 class SubmitDAO:

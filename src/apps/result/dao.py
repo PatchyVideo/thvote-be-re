@@ -4,21 +4,12 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apps.result.schemas import (
-    CompletionRatesQuery,
-    CovoteQuery,
-    GlobalStatsQuery,
-    QuestionnaireQuery,
-    QuestionnaireTrendQuery,
-    RankingEntity,
-    RankingQuery,
-    ReasonQuery,
-    Reasons,
-    SingleQuery,
-    TrendQuery,
-    Trends,
-    VotableBase,
-)
+from src.apps.result.schemas import (CompletionRatesQuery, CovoteQuery,
+                                     GlobalStatsQuery, QuestionnaireQuery,
+                                     QuestionnaireTrendQuery, RankingEntity,
+                                     RankingQuery, ReasonQuery, Reasons,
+                                     SingleQuery, TrendQuery, Trends,
+                                     VotableBase)
 
 
 class ResultDAO:

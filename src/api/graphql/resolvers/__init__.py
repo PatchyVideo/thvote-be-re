@@ -1,5 +1,5 @@
 """Submit resolvers."""
 
-from .submit import SubmitQuery, SubmitMutation
+from .submit import SubmitMutation, SubmitQuery
 
 __all__ = ["SubmitQuery", "SubmitMutation"]

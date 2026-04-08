@@ -89,7 +89,8 @@ async def wait_for_rate_limit(site: str, limit: float) -> None:
         site: Site name for rate limiting
         limit: Minimum interval between requests in seconds
     """
-    from src.apps.scraper.utils.cache import get_rate_limit_last, set_rate_limit_last
+    from src.apps.scraper.utils.cache import (get_rate_limit_last,
+                                              set_rate_limit_last)
 
     last = await get_rate_limit_last(site)
     if last:

@@ -25,7 +25,9 @@ async def get_redis_client() -> Any:
     if _USE_REDIS_ASYNCIO:
         return redis_async.from_url(settings.redis_url, decode_responses=True)
     # aioredis v1 API
-    return await redis_async.create_redis_pool(settings.redis_url, encoding="utf-8")
+    return await redis_async.create_redis_pool(  # type: ignore[attr-defined]
+        settings.redis_url, encoding="utf-8"
+    )
 
 
 async def rate_limit(uid: str, conn: Any) -> None:

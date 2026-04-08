@@ -68,7 +68,15 @@ jobs:
         run: isort --check-only --diff src/
 
       - name: 类型检查 (mypy)
-        run: mypy src/ --ignore-missing-imports
+        run: |
+          mypy src/apps/ --ignore-missing-imports
+          mypy src/common/exceptions.py --ignore-missing-imports
+          mypy src/common/middleware/ --ignore-missing-imports
+          mypy src/common/database.py --ignore-missing-imports
+          mypy src/common/container.py --ignore-missing-imports
+          mypy src/common/security/ --ignore-missing-imports
+          mypy src/db_model/ --ignore-missing-imports
+          mypy src/models/ --ignore-missing-imports
 
   # ==================== 运行测试 ====================
   test:

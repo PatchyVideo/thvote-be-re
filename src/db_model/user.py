@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, String, CheckConstraint
+from sqlalchemy import CheckConstraint, Column, DateTime, String
 
 from .base import Base
 

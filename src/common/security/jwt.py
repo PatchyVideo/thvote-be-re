@@ -1,10 +1,11 @@
 """JWT helpers for session and vote tokens."""
 
-import jwt
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+import jwt
 
 from ...common.config import get_settings
 from ...common.exceptions import AppException
@@ -18,14 +19,14 @@ class JWTConfigurationError(AppException):
     """Raised when JWT settings are incomplete."""
 
     def __init__(self, message: str) -> None:
-        super().__init__(message, status_code=500)
+        super().__init__(message, details=500)
 
 
 class JWTValidationError(AppException):
     """Raised when a JWT cannot be validated."""
 
     def __init__(self, message: str = "INVALID_TOKEN") -> None:
-        super().__init__(message, status_code=401)
+        super().__init__(message, details=401)
 
 
 @dataclass(frozen=True)

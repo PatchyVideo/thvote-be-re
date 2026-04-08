@@ -1,22 +1,13 @@
 """Result service layer."""
 
 from src.apps.result.dao import ResultDAO
-from src.apps.result.schemas import (
-    CompletionRatesQuery,
-    CovoteQuery,
-    GlobalStats,
-    GlobalStatsQuery,
-    QuestionnaireQuery,
-    QuestionnaireTrendQuery,
-    RankingCharacterMusic,
-    RankingQuery,
-    ReasonQuery,
-    Reasons,
-    SingleQuery,
-    TrendQuery,
-    Trends,
-    VotableBase,
-)
+from src.apps.result.schemas import (CompletionRatesQuery, CovoteQuery,
+                                     GlobalStats, GlobalStatsQuery,
+                                     QuestionnaireQuery,
+                                     QuestionnaireTrendQuery,
+                                     RankingCharacterMusic, RankingQuery,
+                                     ReasonQuery, Reasons, SingleQuery,
+                                     TrendQuery, Trends, VotableBase)
 
 
 class ResultService:
@@ -39,9 +30,13 @@ class ResultService:
         stats = await self.result_dao.get_global_stats(query)
         return GlobalStats(**stats)
 
-    async def get_single_entity(self, query: SingleQuery) -> VotableBase | None:
+    async def get_single_entity(self, query: SingleQuery) -> dict | None:
         """Get a single votable entity."""
-        return await self.result_dao.get_single_entity(query)
+        return (
+            (await self.result_dao.get_single_entity(query)).model_dump()
+            if await self.result_dao.get_single_entity(query)
+            else None
+        )
 
     async def get_reasons(self, query: ReasonQuery) -> Reasons:
         """Get voting reasons for an entity."""
