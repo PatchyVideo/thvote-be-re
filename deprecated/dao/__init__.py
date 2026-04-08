@@ -1,7 +1,7 @@
 """
-后端的DAO模型。
+已废弃的后端 DAO 草稿模型。
 
-定义了各种需要在前后端间传输的数据类。
+这些文件只保留短期参考价值，不再作为正式 schema 层扩展。
 """
 from .LoginData import LoginData
 from .RegisterData import RegisterData
@@ -9,7 +9,7 @@ from .BaseQuery import BaseQuery
 from .CompletionRatesQuery import CompletionRatesQuery
 from .ContentSubmit import ContentSubmit
 from .CovoteQuery import CovoteQuery
-from .CPSubmit import ContentSubmit
+from .CPSubmit import CPSubmit
 from .GlobalStatsQuery import GlobalStatsQuery
 from .QuestionnaireQuery import QuestionnaireQuery
 from .QuestionnaireTrendQuery import QuestionnaireTrendQuery
@@ -23,6 +23,7 @@ from .Reasons import Reasons
 from .SingleQuery import SingleQuery
 from .TrendItem import TrendItem
 from .TrendQuery import TrendQuery
+from .Trends import Trends
 from .VotableBase import VotableBase
 from .VotableCharacter import VotableCharacter
 from .VotableMusic import VotableMusic

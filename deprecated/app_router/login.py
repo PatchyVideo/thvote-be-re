@@ -1,3 +1,9 @@
+"""Legacy FastAPI route draft.
+
+This module is kept only as a temporary reference while the real app skeleton
+is being rebuilt under the future `app/` layout.
+"""
+
 from fastapi import APIRouter
 from dao import LoginData, RegisterData
 

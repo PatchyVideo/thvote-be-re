@@ -1,0 +1,1 @@
+"""Cross-module constants placeholder."""

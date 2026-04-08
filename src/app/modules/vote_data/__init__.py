@@ -1,0 +1,1 @@
+"""Vote data module package."""
