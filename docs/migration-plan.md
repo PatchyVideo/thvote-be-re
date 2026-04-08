@@ -23,8 +23,10 @@
 
 - 正式骨架已经建立在 `src/app/`。
 - 历史草稿已经收拢到 `deprecated/`。
-- `auth` 有最小占位代码。
-- 业务逻辑仍基本未迁移完成。
+- `common` 已有配置、异步数据库 session、基础错误处理和生命周期骨架。
+- `auth` 仍只有最小占位代码。
+- `submit` 已迁入 DTO、原始提交快照 ORM、repository、service 和基本校验逻辑。
+- GraphQL 仍是占位文件，正式业务接口尚未接入应用。
 
 ## 遗留草稿结论
 
@@ -65,16 +67,15 @@
 
 推荐顺序：
 
-1. `common`
-2. `auth`
-3. `submit`
-4. `vote_data`
-5. `result_query`
+1. `auth`
+2. `submit`
+3. `vote_data`
+4. `result_query`
 
 这样安排的原因：
 
 - `auth` 是所有写操作和状态校验的前提。
-- `submit` 先落地，才能稳定后续统计的数据来源。
+- `submit` 主体逻辑已经开始落地，当前优先级是把它接入正式 API。
 - `result_query` 复杂度最高，应该最后迁入。
 
 ## 关键约束
@@ -89,7 +90,7 @@
 
 下一阶段建议直接推进：
 
-1. 完善 `common/security`、`common/database`、`common/cache`。
-2. 定义 `models/orm` 里的用户、验证码、提交、缓存、审计模型。
-3. 补齐 `modules/auth` 的最小登录闭环。
-4. 补齐 `modules/submit` 的最小提交闭环。
+1. 补齐 `modules/auth` 的最小登录闭环。
+2. 将 `modules/submit` 接入正式 REST / GraphQL API。
+3. 定义 `models/orm` 里的用户、验证码、缓存、审计模型。
+4. 明确 Alembic 与 `init_db()` 的边界，避免开发期初始化方式固化为长期方案。

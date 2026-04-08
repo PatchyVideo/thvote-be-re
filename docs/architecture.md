@@ -136,11 +136,26 @@ thvote-be-re/
 
 不再保留根目录兼容入口。
 
+## 当前实现状态
+
+截至 2026-04-08，当前正式结构下已经存在的能力是：
+
+- `main.py` 已创建 FastAPI 应用并挂载最小 REST 路由。
+- `common/config.py`、`common/database/session.py`、`common/errors.py`、`common/lifespan.py` 已形成基础设施骨架。
+- `modules/submit` 已有 DTO、ORM、repository、service 和基本校验逻辑。
+
+仍未完成的关键点：
+
+- `api/graphql/schema.py` 仍是占位文件，GraphQL 还没有挂入应用。
+- `api/rest` 当前只有 `health` 和 `internal`，还没有业务接口。
+- `modules/auth` 仍是最小占位实现，尚未接数据库、密码校验和 token 签发。
+- `modules/result_query`、`modules/vote_data`、`modules/scraper_client` 仍未开始正式迁移。
+
 ## 当前阶段优先级
 
 当前最重要的工作顺序：
 
-1. 完善 `common` 下的配置、数据库、安全和日志。
-2. 先完成 `auth` 最小闭环。
-3. 再完成 `submit` 最小闭环。
+1. 完成 `auth` 最小闭环。
+2. 把 `submit` 接入正式 REST / GraphQL API。
+3. 补齐 `common/security`、`common/cache` 和更明确的数据库迁移策略。
 4. 最后承接最复杂的 `result_query`。

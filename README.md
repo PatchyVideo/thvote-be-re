@@ -4,6 +4,13 @@
 
 当前仓库仍处于迁移早期阶段，历史草稿目录已经收拢到 `deprecated/`。正式实现应优先收敛到新的 `src/app/` 结构。
 
+当前真实进度：
+
+- `common` 已有配置、异步数据库 session、基础错误处理和生命周期骨架。
+- `auth` 仍只有最小占位 service，尚未形成可用登录闭环。
+- `submit` 已有 DTO、ORM、repository、service 和校验逻辑，但还没有接入正式 REST / GraphQL API。
+- GraphQL 目前仍是占位文件，应用实际只挂载了最小 REST 端点。
+
 项目文档已经收敛到 `docs/`，当前只保留：
 
 - `docs/architecture.md`
@@ -184,15 +191,13 @@ thvote-be-re/
 
 推荐按以下顺序推进：
 
-1. 搭建 `src/app/` 基础骨架。
-2. 建立 `common` 下的统一配置、日志、错误处理、数据库 session。
-3. 迁移 `auth` 最小闭环。
-4. 迁移 `submit` 最小闭环。
-5. 迁移 `vote_data`。
-6. 最后迁移 `result_query`。
+1. 完成 `auth` 最小闭环。
+2. 把 `submit` 接入正式 REST / GraphQL API。
+3. 迁移 `vote_data`。
+4. 最后迁移 `result_query`。
 
 ## 当前阶段注意事项
 
 - 不要继续往 `deprecated/app_router/` 和 `deprecated/dao/` 里写新代码。
 - 不要把 `deprecated/db_model/` 直接当成正式 ORM 主目录。
-- 在正式骨架建立前，优先让目录边界、命名规则和文档先稳定下来。
+- 正式骨架已经建立，但接口层仍未完成；后续重点应转向把 `auth` 和 `submit` 接成真实可调用链路。
