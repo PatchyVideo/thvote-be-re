@@ -1,0 +1,455 @@
+# ============================================================
+# THVote 生产环境 CI/CD 工作流
+#
+# 触发条件：
+# - 创建 Release (发布版本)
+# - 手动触发 (workflow_dispatch)
+#
+# 功能：
+# - 构建后端 Docker 镜像
+# - 构建前端 Docker 镜像
+# - 部署到生产环境
+# - 支持回滚
+# ============================================================
+
+name: Deploy to Production
+
+on:
+  release:
+    types: [released, published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (如 v1.0.0)，留空则使用 commit SHA'
+        required: false
+        type: string
+      skip_frontend:
+        description: '跳过前端构建'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/thvote
+  FRONTEND_REPO: https://github.com/PatchyVideo/Touhou-Vote.git
+  FRONTEND_BRANCH: main
+
+jobs:
+  # ==================== 版本确认 ====================
+  confirm:
+    name: 版本确认
+    runs-on: ubuntu-latest
+    environment: production
+    outputs:
+      version: ${{ steps.version.outputs.ver }}
+      is_release: ${{ steps.version.outputs.is_release }}
+
+    steps:
+      - name: 提取版本信息
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            echo "ver=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+            echo "触发类型: Release"
+          else
+            if [ -n "${{ inputs.version }}" ]; then
+              echo "ver=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            else
+              echo "ver=sha-$(echo '${{ github.sha }}' | cut -c1-8)" >> $GITHUB_OUTPUT
+            fi
+            echo "is_release=false" >> $GITHUB_OUTPUT
+            echo "触发类型: 手动部署"
+          fi
+          echo "部署版本: ${{ steps.version.outputs.ver }}"
+
+      - name: 部署警告
+        if: steps.version.outputs.is_release == 'false'
+        run: |
+          echo "=========================================="
+          echo "⚠️  警告：这不是正式 Release"
+          echo "⚠️  即将部署到生产环境！"
+          echo "=========================================="
+
+  # ==================== 构建后端镜像 ====================
+  build-backend:
+    name: 构建后端镜像
+    runs-on: ubuntu-latest
+    needs: confirm
+
+    outputs:
+      backend-tag: ${{ steps.meta.outputs.tags }}
+      backend-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录容器仓库
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 提取元数据
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend
+          tags: |
+            type=semver,pattern={{version}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+
+      - name: 构建并推送后端镜像
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          target: production
+
+  # ==================== 构建前端镜像 ====================
+  build-frontend:
+    name: 构建前端镜像
+    runs-on: ubuntu-latest
+    needs: confirm
+    if: inputs.skip_frontend != 'true'
+
+    outputs:
+      frontend-tag: ${{ steps.meta.outputs.tags }}
+      frontend-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录容器仓库
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 提取元数据
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend
+          tags: |
+            type=semver,pattern={{version}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+
+      - name: 构建并推送前端镜像
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          file: ./frontend/Dockerfile.prod
+          build-args: |
+            FRONTEND_BRANCH=${{ env.FRONTEND_BRANCH }}
+
+  # ==================== 部署到生产环境 ====================
+  deploy-prod:
+    name: 部署到生产环境
+    runs-on: ubuntu-latest
+    needs: [confirm, build-backend]
+    # 前端镜像在需要时可选
+    if: always() && (needs.build-frontend.result == 'success' || needs.build-frontend.result == 'skipped')
+    environment: production
+
+    steps:
+      - name: 检出部署配置
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            docker
+          sparse-checkout-cone-mode: false
+
+      - name: 部署到生产服务器
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/thvote/prod
+
+            # 登录镜像仓库
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+            # 记录回滚信息
+            echo "当前镜像版本: $(docker inspect thvote-backend-prod --format='{{.Config.Image}}' 2>/dev/null || echo 'none')" > rollback_info.txt
+            echo "部署时间: $(date)" >> rollback_info.txt
+            echo "部署版本: ${{ needs.confirm.outputs.version }}" >> rollback_info.txt
+
+            # 拉取镜像
+            echo "拉取后端镜像..."
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:latest || true
+            echo "拉取前端镜像..."
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:latest || true
+
+            # 创建环境变量和 secrets 文件
+            mkdir -p secrets
+
+            # Docker Secrets
+            echo "${{ secrets.PROD_DB_USER }}" > secrets/db_user.txt
+            echo "${{ secrets.PROD_DB_PASSWORD }}" > secrets/db_password.txt
+            echo "${{ secrets.PROD_APOLLO_DB_USER }}" > secrets/apollo_db_user.txt
+            echo "${{ secrets.PROD_APOLLO_DB_PASSWORD }}" > secrets/apollo_db_password.txt
+            echo "${{ secrets.PROD_JWT_SECRET }}" > secrets/jwt_secret_key.txt
+
+            # 创建 docker-compose 配置（使用远程镜像）
+            cat > docker-compose.yml << 'COMPOSEEOF'
+            version: "3.8"
+
+            networks:
+              thvote-prod:
+                driver: bridge
+
+            volumes:
+              postgres-prod-data:
+              redis-prod-data:
+              apollo-prod-data:
+
+            services:
+              postgres-prod:
+                image: postgres:15-alpine
+                container_name: thvote-postgres-prod
+                restart: always
+                environment:
+                  POSTGRES_DB: thvote_prod
+                  POSTGRES_USER: file:/run/secrets/db_user
+                  POSTGRES_PASSWORD: file:/run/secrets/db_password
+                secrets:
+                  - db_user
+                  - db_password
+                volumes:
+                  - postgres-prod-data:/var/lib/postgresql/data
+                networks:
+                  - thvote-prod
+                healthcheck:
+                  test: ["CMD-SHELL", "pg_isready -U $(cat /run/secrets/db_user) -d thvote_prod"]
+                  interval: 10s
+                  timeout: 5s
+                  retries: 5
+
+              redis-prod:
+                image: redis:7-alpine
+                container_name: thvote-redis-prod
+                restart: always
+                command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+                volumes:
+                  - redis-prod-data:/data
+                networks:
+                  - thvote-prod
+                healthcheck:
+                  test: ["CMD", "redis-cli", "ping"]
+                  interval: 10s
+                  timeout: 3s
+                  retries: 5
+
+              apollo-prod-db:
+                image: postgres:15-alpine
+                container_name: thvote-apollo-prod-db
+                restart: always
+                environment:
+                  POSTGRES_DB: apollo_production
+                  POSTGRES_USER: file:/run/secrets/apollo_db_user
+                  POSTGRES_PASSWORD: file:/run/secrets/apollo_db_password
+                secrets:
+                  - apollo_db_user
+                  - apollo_db_password
+                volumes:
+                  - apollo-prod-data:/var/lib/postgresql/data
+                networks:
+                  - thvote-prod
+
+              apollo-config-prod:
+                image: apolloconfig/apollo-config:2.0.0
+                container_name: thvote-apollo-config-prod
+                restart: always
+                environment:
+                  SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-prod-db:5432/apollo_production
+                  SPRING_DATASOURCE_USERNAME: file:/run/secrets/apollo_db_user
+                  SPRING_DATASOURCE_PASSWORD: file:/run/secrets/apollo_db_password
+                  APOLLO_CONFIG_PORT: 8080
+                  APOLLO_CONFIG_NAMESRV_PORT: 8081
+                secrets:
+                  - apollo_db_user
+                  - apollo_db_password
+                networks:
+                  - thvote-prod
+
+              apollo-portal-prod:
+                image: apolloconfig/apollo-portal:2.0.0
+                container_name: thvote-apollo-portal-prod
+                restart: always
+                environment:
+                  SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-prod-db:5432/apollo_production
+                  SPRING_DATASOURCE_USERNAME: file:/run/secrets/apollo_db_user
+                  SPRING_DATASOURCE_PASSWORD: file:/run/secrets/apollo_db_password
+                ports:
+                  - "8070:8070"
+                networks:
+                  - thvote-prod
+                depends_on:
+                  - apollo-config-prod
+
+              backend-prod:
+                image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:latest
+                container_name: thvote-backend-prod
+                restart: always
+                secrets:
+                  - jwt_secret_key
+                environment:
+                  APOLLO_META: http://apollo-config-prod:8081
+                  APOLLO_ENV: prod
+                  APOLLO_CLUSTER: default
+                  APOLLO_APP_ID: thvote-backend
+                  APP_HOST: "0.0.0.0"
+                  APP_PORT: "8000"
+                  JWT_SECRET_KEY_FILE: /run/secrets/jwt_secret_key
+                networks:
+                  - thvote-prod
+                depends_on:
+                  postgres-prod:
+                    condition: service_healthy
+                  redis-prod:
+                    condition: service_healthy
+
+              frontend-prod:
+                image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:latest
+                container_name: thvote-frontend-prod
+                restart: always
+                ports:
+                  - "80:80"
+                  - "443:443"
+                networks:
+                  - thvote-prod
+                depends_on:
+                  - backend-prod
+
+            secrets:
+              db_user:
+                file: ./secrets/db_user.txt
+              db_password:
+                file: ./secrets/db_password.txt
+              apollo_db_user:
+                file: ./secrets/apollo_db_user.txt
+              apollo_db_password:
+                file: ./secrets/apollo_db_password.txt
+              jwt_secret_key:
+                file: ./secrets/jwt_secret_key.txt
+            COMPOSEEOF
+
+            # 拉取最新镜像
+            docker-compose pull
+
+            # 备份数据库
+            if docker ps | grep -q thvote-postgres-prod; then
+              BACKUP_FILE="backup_pre_$(date +%Y%m%d_%H%M%S).sql"
+              docker exec thvote-postgres-prod pg_dump -U thvote_prod thvote_prod > "$BACKUP_FILE" 2>/dev/null || true
+              echo "数据库已备份: $BACKUP_FILE"
+            fi
+
+            # 停止旧服务
+            docker-compose down || true
+
+            # 启动新服务
+            docker-compose up -d
+
+            # 等待服务启动
+            echo "等待服务启动..."
+            sleep 30
+
+            # 健康检查
+            echo "执行健康检查..."
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "后端服务健康检查通过"
+            else
+              echo "后端服务健康检查失败，查看日志..."
+              docker-compose logs backend-prod | tail -20
+              exit 1
+            fi
+
+            if curl -sf http://localhost/ > /dev/null 2>&1; then
+              echo "前端服务健康检查通过"
+            else
+              echo "前端服务健康检查失败，查看日志..."
+              docker-compose logs frontend-prod | tail -20
+              exit 1
+            fi
+
+            # 清理
+            docker image prune -f
+
+            # 显示最终状态
+            echo ""
+            echo "=========================================="
+            echo "生产环境部署完成！"
+            echo "版本: ${{ needs.confirm.outputs.version }}"
+            echo "后端: http://localhost:8000"
+            echo "前端: http://localhost"
+            echo "Apollo Portal: http://localhost:8070"
+            echo "=========================================="
+
+  # ==================== 回滚脚本 ====================
+  rollback-ready:
+    name: 回滚准备就绪
+    runs-on: ubuntu-latest
+    needs: [deploy-prod]
+    if: always()
+
+    steps:
+      - name: 部署成功
+        if: needs.deploy-prod.result == 'success'
+        run: |
+          echo "=========================================="
+          echo "生产环境部署成功！"
+          echo "版本: ${{ needs.confirm.outputs.version }}"
+          echo "=========================================="
+          echo ""
+          echo "如需回滚，请执行以下命令："
+          echo ""
+          echo "  # 查看历史版本"
+          echo "  docker images | grep thvote"
+          echo ""
+          echo "  # 回滚到指定版本"
+          echo "  docker-compose down"
+          echo "  # 编辑 docker-compose.yml 中的 image 版本"
+          echo "  docker-compose up -d"
+          echo ""
+
+      - name: 部署失败
+        if: needs.deploy-prod.result == 'failure'
+        run: |
+          echo "=========================================="
+          echo "生产环境部署失败！"
+          echo "=========================================="
+          echo ""
+          echo "请手动检查："
+          echo "1. 查看服务器日志: docker-compose logs"
+          echo "2. 检查回滚信息: cat /opt/thvote/prod/rollback_info.txt"
+          echo "3. 如需回滚，执行: docker-compose down && docker-compose up -d (使用旧版本)"
+          echo ""
+          exit 1

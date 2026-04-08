@@ -1,0 +1,212 @@
+# ============================================================
+# THVote 测试环境 Docker Compose 配置
+#
+# 完整隔离环境：前端、后端、数据库、Redis、Apollo
+# ============================================================
+
+version: "3.8"
+
+networks:
+  thvote-test:
+    driver: bridge
+
+volumes:
+  postgres-test-data:
+  redis-test-data:
+  apollo-test-data:
+
+services:
+  # ==================== PostgreSQL 数据库 ====================
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: thvote-postgres-test
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: thvote_test
+      POSTGRES_USER: thvote_test
+      POSTGRES_PASSWORD: ${TEST_DB_PASSWORD:-thvote_test_pass}
+    volumes:
+      - postgres-test-data:/var/lib/postgresql/data
+    networks:
+      - thvote-test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thvote_test -d thvote_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ==================== Redis 缓存 ====================
+  redis-test:
+    image: redis:7-alpine
+    container_name: thvote-redis-test
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-test-data:/data
+    networks:
+      - thvote-test
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # ==================== Apollo 配置中心 ====================
+  apollo-test-db:
+    image: postgres:15-alpine
+    container_name: thvote-apollo-test-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: apollo_test
+      POSTGRES_USER: apollo_test
+      POSTGRES_PASSWORD: ${TEST_APOLLO_DB_PASSWORD:-apollo_test_pass}
+    volumes:
+      - apollo-test-data:/var/lib/postgresql/data
+    networks:
+      - thvote-test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apollo_test -d apollo_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  apollo-config-test:
+    image: apolloconfig/apollo-config:2.0.0
+    container_name: thvote-apollo-config-test
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-test-db:5432/apollo_test
+      SPRING_DATASOURCE_USERNAME: apollo_test
+      SPRING_DATASOURCE_PASSWORD: ${TEST_APOLLO_DB_PASSWORD:-apollo_test_pass}
+      APOLLO_CONFIG_PORT: 8080
+      APOLLO_CONFIG_NAMESRV_PORT: 8081
+    networks:
+      - thvote-test
+    depends_on:
+      apollo-test-db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  apollo-portal-test:
+    image: apolloconfig/apollo-portal:2.0.0
+    container_name: thvote-apollo-portal-test
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-test-db:5432/apollo_test
+      SPRING_DATASOURCE_USERNAME: apollo_test
+      SPRING_DATASOURCE_PASSWORD: ${TEST_APOLLO_DB_PASSWORD:-apollo_test_pass}
+    ports:
+      - "18080:8070"
+    networks:
+      - thvote-test
+    depends_on:
+      - apollo-config-test
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ==================== 后端服务 ====================
+  backend-test:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: production
+    image: thvote-backend:test
+    container_name: thvote-backend-test
+    restart: unless-stopped
+    env_file:
+      - ../.env.test
+    environment:
+      # 覆盖 .env 中的数据库连接（使用容器网络名称）
+      DATABASE_URL: postgresql+asyncpg://thvote_test:${TEST_DB_PASSWORD:-thvote_test_pass}@postgres-test:5432/thvote_test
+      REDIS_URL: redis://redis-test:6379/0
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - thvote-test
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ==================== 前端服务 ====================
+  frontend-test:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile.test
+    image: thvote-frontend:test
+    container_name: thvote-frontend-test
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    volumes:
+      - ../frontend/nginx/test.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - thvote-test
+    depends_on:
+      - backend-test
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+# ============================================================
+# 测试环境说明：
+#
+# 1. 密码通过环境变量设置（在 secrets 中设置）
+#    - TEST_DB_PASSWORD
+#    - TEST_APOLLO_DB_PASSWORD
+#
+# 2. Apollo 服务已部署但暂不使用（后续集成）
+#    - Apollo Portal: http://localhost:18080
+#    - 用于后续配置中心集成
+#
+# 3. 后端配置通过 .env.test 文件读取
+#    - .env.test 中的 DATABASE_URL/REDIS_URL 会覆盖容器内的连接
+#    - 密码从环境变量 TEST_DB_PASSWORD 读取
+#
+# 访问地址：
+#   前端: http://localhost:8082
+#   后端: http://localhost:8000
+#   Apollo Portal: http://localhost:18080
+#
+# 启动方式：
+#   docker compose up -d
+#
+# 增量部署说明：
+#   - 后端代码变更：只重启 backend-test
+#   - 前端代码变更：只重启 frontend-test
+#   - 基础服务（postgres、redis、apollo）不重启
+# ============================================================

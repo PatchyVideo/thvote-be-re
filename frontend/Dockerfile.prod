@@ -1,0 +1,55 @@
+# ============================================================
+# THVote 生产环境前端 Dockerfile
+#
+# 基于主 Dockerfile，专门构建生产环境前端镜像
+# ============================================================
+
+FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9.3.0 --activate
+WORKDIR /app
+
+# ---- 投票页面 ----
+FROM base AS vote-builder
+ARG FRONTEND_BRANCH=main
+RUN apk add --no-cache git && \
+    git clone --depth 1 --branch $FRONTEND_BRANCH https://github.com/PatchyVideo/Touhou-Vote.git /tmp/frontend && \
+    cp -r /tmp/frontend/packages/vote/. /app/vote/ && \
+    cp -r /tmp/frontend/packages/shared/. /app/shared/ && \
+    cp /tmp/frontend/package.json /tmp/frontend/pnpm-lock.yaml /app/
+WORKDIR /app
+RUN pnpm install --frozen-lockfile && \
+    cd vote && pnpm install --frozen-lockfile && \
+    pnpm build
+
+# ---- 结果页面 ----
+FROM base AS result-builder
+ARG FRONTEND_BRANCH=main
+RUN apk add --no-cache git && \
+    git clone --depth 1 --branch $FRONTEND_BRANCH https://github.com/PatchyVideo/Touhou-Vote.git /tmp/frontend && \
+    cp -r /tmp/frontend/packages/result/. /app/result/ && \
+    cp -r /tmp/frontend/packages/shared/. /app/shared/ && \
+    cp /tmp/frontend/package.json /tmp/frontend/pnpm-lock.yaml /app/
+WORKDIR /app
+RUN pnpm install --frozen-lockfile && \
+    cd result && pnpm install --frozen-lockfile && \
+    pnpm build
+
+# ---- 最终阶段 ----
+FROM nginx:alpine AS production
+
+# 复制构建产物
+COPY --from=vote-builder /app/vote/dist /usr/share/nginx/html
+COPY --from=result-builder /app/result/dist /usr/share/nginx/html/result
+
+# 复制 SSL 证书目录结构（实际证书由 docker-compose 的 volume 挂载）
+RUN mkdir -p /etc/nginx/ssl
+
+# 复制生产环境 Nginx 配置
+COPY nginx/prod.conf /etc/nginx/conf.d/default.conf
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
+
+EXPOSE 80 443
+CMD ["nginx", "-g", "daemon off;"]

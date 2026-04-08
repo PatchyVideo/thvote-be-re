@@ -1,0 +1,242 @@
+# ============================================================
+# THVote 生产环境 Docker Compose 配置
+#
+# 完整隔离环境：前端、后端、数据库、Redis、Apollo
+# 使用 Docker Secret 管理敏感信息
+# ============================================================
+
+version: "3.8"
+
+networks:
+  thvote-prod:
+    driver: bridge
+
+volumes:
+  postgres-prod-data:
+  redis-prod-data:
+  apollo-prod-data:
+
+services:
+  # ==================== PostgreSQL 数据库 ====================
+  postgres-prod:
+    image: postgres:15-alpine
+    container_name: thvote-postgres-prod
+    restart: always
+    environment:
+      POSTGRES_DB: thvote_prod
+      POSTGRES_USER: file:/run/secrets/db_user
+      POSTGRES_PASSWORD: file:/run/secrets/db_password
+    secrets:
+      - db_user
+      - db_password
+    volumes:
+      - postgres-prod-data:/var/lib/postgresql/data
+    networks:
+      - thvote-prod
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $(cat /run/secrets/db_user) -d thvote_prod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # ==================== Redis 缓存 ====================
+  redis-prod:
+    image: redis:7-alpine
+    container_name: thvote-redis-prod
+    restart: always
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-prod-data:/data
+    networks:
+      - thvote-prod
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ==================== Apollo 配置中心 ====================
+  apollo-prod-db:
+    image: postgres:15-alpine
+    container_name: thvote-apollo-prod-db
+    restart: always
+    environment:
+      POSTGRES_DB: apollo_production
+      POSTGRES_USER: file:/run/secrets/apollo_db_user
+      POSTGRES_PASSWORD: file:/run/secrets/apollo_db_password
+    secrets:
+      - apollo_db_user
+      - apollo_db_password
+    volumes:
+      - apollo-prod-data:/var/lib/postgresql/data
+    networks:
+      - thvote-prod
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $(cat /run/secrets/apollo_db_user) -d apollo_production"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  apollo-config-prod:
+    image: apolloconfig/apollo-config:2.0.0
+    container_name: thvote-apollo-config-prod
+    restart: always
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-prod-db:5432/apollo_production
+      SPRING_DATASOURCE_USERNAME: file:/run/secrets/apollo_db_user
+      SPRING_DATASOURCE_PASSWORD: file:/run/secrets/apollo_db_password
+      APOLLO_CONFIG_PORT: 8080
+      APOLLO_CONFIG_NAMESRV_PORT: 8081
+    secrets:
+      - apollo_db_user
+      - apollo_db_password
+    networks:
+      - thvote-prod
+    depends_on:
+      apollo-prod-db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  apollo-portal-prod:
+    image: apolloconfig/apollo-portal:2.0.0
+    container_name: thvote-apollo-portal-prod
+    restart: always
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-prod-db:5432/apollo_production
+      SPRING_DATASOURCE_USERNAME: file:/run/secrets/apollo_db_user
+      SPRING_DATASOURCE_PASSWORD: file:/run/secrets/apollo_db_password
+    ports:
+      - "8070:8070"
+    networks:
+      - thvote-prod
+    depends_on:
+      - apollo-config-prod
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ==================== 后端服务 ====================
+  backend-prod:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: production
+    image: thvote-backend:prod
+    container_name: thvote-backend-prod
+    restart: always
+    secrets:
+      - jwt_secret_key
+    environment:
+      # Apollo 配置
+      APOLLO_META: ${APOLLO_META:-http://apollo-config-prod:8081}
+      APOLLO_ENV: prod
+      APOLLO_CLUSTER: default
+      APOLLO_APP_ID: thvote-backend
+      # 服务配置
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "8000"
+      # JWT 配置从 Docker Secret 注入
+      JWT_SECRET_KEY_FILE: /run/secrets/jwt_secret_key
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - thvote-prod
+    depends_on:
+      postgres-prod:
+        condition: service_healthy
+      redis-prod:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # ==================== 前端服务 ====================
+  frontend-prod:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile.prod
+    image: thvote-frontend:prod
+    container_name: thvote-frontend-prod
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../frontend/nginx/ssl:/etc/nginx/ssl:ro
+    networks:
+      - thvote-prod
+    depends_on:
+      - backend-prod
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+# ============================================================
+# Docker Secrets 定义
+# ============================================================
+secrets:
+  db_user:
+    file: ./secrets/db_user.txt
+  db_password:
+    file: ./secrets/db_password.txt
+  apollo_db_user:
+    file: ./secrets/apollo_db_user.txt
+  apollo_db_password:
+    file: ./secrets/apollo_db_password.txt
+  jwt_secret_key:
+    file: ./secrets/jwt_secret_key.txt
+
+# ============================================================
+# 生产环境说明：
+#
+# 1. 配置环境变量
+#    复制 .env.test.example 为 .env.prod 并配置密码
+#
+# 2. 启动服务
+#    docker compose -f docker-compose.prod.yml up -d
+#
+# 3. 在 Apollo Portal 中配置业务配置
+#    - DATABASE_URL
+#    - REDIS_URL
+#    - JWT_SECRET_KEY
+#    - VOTE_YEAR, VOTE_START_ISO, VOTE_END_ISO
+#
+# 4. SSL 证书
+#    将证书文件放入 frontend/nginx/ssl/ 目录
+#    - server.crt: 服务器证书（含中间证书）
+#    - server.key: 私钥文件
+#
+# 访问地址：
+#   前端: http://localhost (HTTPS: https://localhost)
+#   后端: http://localhost:8000
+#   Apollo Portal: http://localhost:8070
+# ============================================================

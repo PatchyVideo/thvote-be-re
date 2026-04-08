@@ -1,30 +1,34 @@
-from sqlalchemy import Column, String, DateTime, CheckConstraint
+from sqlalchemy import Column, DateTime, String, CheckConstraint
 
 from .base import Base
 
 
 class User(Base):
-    # CREATE TABLE user
-    __tablename__ = 'user'
+    """User database model.
 
-    # id TEXT PRIMARY KEY UNIQUE
+    Stores user account information including authentication credentials
+    and registration metadata.
+    """
+
+    __tablename__ = "user"
+
     id = Column(String, primary_key=True, unique=True)
 
-    # phone_number TEXT NULL
     phone_number = Column(String, nullable=True)
 
-    # email TEXT NULL
     email = Column(String, nullable=True)
 
-    # register_date DATETIME NOT NULL
+    password_hash = Column(String, nullable=True)
+
+    legacy_salt = Column(String, nullable=True)
+
     register_date = Column(DateTime, nullable=False)
 
-    # register_ip_addr TEXT NOT NULL (cross-database compatibility)
     register_ip_address = Column(String, nullable=False)
 
     __table_args__ = (
         CheckConstraint(
-            'phone_number IS NOT NULL OR email IS NOT NULL',
-            name='at_least_one_identifier'
+            "phone_number IS NOT NULL OR email IS NOT NULL",
+            name="at_least_one_identifier",
         ),
     )
