@@ -75,6 +75,7 @@ jobs:
           mypy src/common/database.py --ignore-missing-imports
           mypy src/common/container.py --ignore-missing-imports
           mypy src/common/security/ --ignore-missing-imports
+          mypy src/common/config.py --ignore-missing-imports
           mypy src/db_model/ --ignore-missing-imports
           mypy src/models/ --ignore-missing-imports
 

@@ -7,7 +7,7 @@ from src.apps.result.schemas import (CompletionRatesQuery, CovoteQuery,
                                      QuestionnaireTrendQuery,
                                      RankingCharacterMusic, RankingQuery,
                                      ReasonQuery, Reasons, SingleQuery,
-                                     TrendQuery, Trends, VotableBase)
+                                     TrendQuery, Trends)
 
 
 class ResultService:
