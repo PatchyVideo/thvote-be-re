@@ -1,11 +1,17 @@
 """Submit service layer."""
 
 from src.apps.submit.dao import SubmitDAO
-from src.apps.submit.schemas import (CharacterSubmitRest, CPSubmitRest,
-                                     DojinSubmitRest, MusicSubmitRest,
-                                     PaperSubmitRest, SubmitMetadata,
-                                     VotingStatistics, VotingStatus,
-                                     scrub_metadata)
+from src.apps.submit.schemas import (
+    CharacterSubmitRest,
+    CPSubmitRest,
+    DojinSubmitRest,
+    MusicSubmitRest,
+    PaperSubmitRest,
+    SubmitMetadata,
+    VotingStatistics,
+    VotingStatus,
+    scrub_metadata,
+)
 
 
 class SubmitValidator:

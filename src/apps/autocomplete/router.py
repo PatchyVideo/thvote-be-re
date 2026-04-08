@@ -4,8 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.autocomplete.dao import AutocompleteDAO
-from src.apps.autocomplete.schemas import (AutocompleteRequest,
-                                           AutocompleteResponse)
+from src.apps.autocomplete.schemas import AutocompleteRequest, AutocompleteResponse
 from src.apps.autocomplete.service import AutocompleteService
 from src.common.database import get_db_session
 

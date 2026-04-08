@@ -4,13 +4,17 @@ from datetime import datetime
 
 from src.apps.vote_data.dao import VoteDataDAO
 from src.apps.vote_data.models import Character, Cp, Music, Questionnaire
-from src.apps.vote_data.schemas import (CharacterVoteRequest,
-                                        CharacterVoteResponse, CpVoteRequest,
-                                        CpVoteResponse, MusicVoteRequest,
-                                        MusicVoteResponse,
-                                        QuestionnaireVoteRequest,
-                                        QuestionnaireVoteResponse,
-                                        VoteDataSummaryResponse)
+from src.apps.vote_data.schemas import (
+    CharacterVoteRequest,
+    CharacterVoteResponse,
+    CpVoteRequest,
+    CpVoteResponse,
+    MusicVoteRequest,
+    MusicVoteResponse,
+    QuestionnaireVoteRequest,
+    QuestionnaireVoteResponse,
+    VoteDataSummaryResponse,
+)
 
 
 class VoteDataService:

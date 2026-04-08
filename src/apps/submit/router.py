@@ -6,11 +6,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.submit.dao import SubmitDAO
-from src.apps.submit.schemas import (CharacterSubmitRest, CPSubmitRest,
-                                     DojinSubmitRest, EmptyJSON,
-                                     MusicSubmitRest, PaperSubmitRest,
-                                     QuerySubmitRequest, VotingStatistics,
-                                     VotingStatus)
+from src.apps.submit.schemas import (
+    CharacterSubmitRest,
+    CPSubmitRest,
+    DojinSubmitRest,
+    EmptyJSON,
+    MusicSubmitRest,
+    PaperSubmitRest,
+    QuerySubmitRequest,
+    VotingStatistics,
+    VotingStatus,
+)
 from src.apps.submit.service import SubmitService
 from src.common.database import get_db_session
 from src.common.middleware.rate_limit import get_redis_client, rate_limit

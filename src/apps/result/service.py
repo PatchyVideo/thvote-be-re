@@ -1,13 +1,21 @@
 """Result service layer."""
 
 from src.apps.result.dao import ResultDAO
-from src.apps.result.schemas import (CompletionRatesQuery, CovoteQuery,
-                                     GlobalStats, GlobalStatsQuery,
-                                     QuestionnaireQuery,
-                                     QuestionnaireTrendQuery,
-                                     RankingCharacterMusic, RankingQuery,
-                                     ReasonQuery, Reasons, SingleQuery,
-                                     TrendQuery, Trends)
+from src.apps.result.schemas import (
+    CompletionRatesQuery,
+    CovoteQuery,
+    GlobalStats,
+    GlobalStatsQuery,
+    QuestionnaireQuery,
+    QuestionnaireTrendQuery,
+    RankingCharacterMusic,
+    RankingQuery,
+    ReasonQuery,
+    Reasons,
+    SingleQuery,
+    TrendQuery,
+    Trends,
+)
 
 
 class ResultService:

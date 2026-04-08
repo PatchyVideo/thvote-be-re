@@ -3,9 +3,15 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apps.user.schemas import (EmailLoginRequest, LoginRequest,
-                                   LoginResponse, LoginResult, RegisterRequest,
-                                   RegisterResponse, UserResponse)
+from src.apps.user.schemas import (
+    EmailLoginRequest,
+    LoginRequest,
+    LoginResponse,
+    LoginResult,
+    RegisterRequest,
+    RegisterResponse,
+    UserResponse,
+)
 from src.apps.user.service import UserService
 from src.common.database import get_db_session
 from src.common.exceptions import ValidationError

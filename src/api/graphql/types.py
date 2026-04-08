@@ -10,8 +10,7 @@ from src.apps.submit.schemas import CPSubmit as CPSubmitPydantic
 from src.apps.submit.schemas import DojinSubmit as DojinSubmitPydantic
 from src.apps.submit.schemas import MusicSubmit as MusicSubmitPydantic
 from src.apps.submit.schemas import SubmitMetadata as SubmitMetadataPydantic
-from src.apps.submit.schemas import \
-    VotingStatistics as VotingStatisticsPydantic
+from src.apps.submit.schemas import VotingStatistics as VotingStatisticsPydantic
 from src.apps.submit.schemas import VotingStatus as VotingStatusPydantic
 
 

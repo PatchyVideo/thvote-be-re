@@ -3,10 +3,17 @@
 from datetime import UTC, datetime
 
 from src.apps.user.dao import UserDAO
-from src.apps.user.schemas import (EmailLoginRequest, LoginRequest,
-                                   LoginResponse, LoginResult, RegisterRequest,
-                                   RegisterResponse, RegisterResult,
-                                   UserResponse, generate_user_id)
+from src.apps.user.schemas import (
+    EmailLoginRequest,
+    LoginRequest,
+    LoginResponse,
+    LoginResult,
+    RegisterRequest,
+    RegisterResponse,
+    RegisterResult,
+    UserResponse,
+    generate_user_id,
+)
 from src.apps.user.utils.security import AuthProvider
 from src.common.exceptions import NotFoundError, ValidationError
 

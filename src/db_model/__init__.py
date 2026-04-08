@@ -9,8 +9,13 @@ from .character import Character
 from .cp import Cp
 from .music import Music
 from .questionnaire import Questionnaire
-from .raw_submit import (RawCharacterSubmit, RawCPSubmit, RawDojinSubmit,
-                         RawMusicSubmit, RawPaperSubmit)
+from .raw_submit import (
+    RawCharacterSubmit,
+    RawCPSubmit,
+    RawDojinSubmit,
+    RawMusicSubmit,
+    RawPaperSubmit,
+)
 from .user import User
 
 __version__ = "1.0.0"

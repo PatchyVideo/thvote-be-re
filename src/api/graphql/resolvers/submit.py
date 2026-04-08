@@ -6,23 +6,35 @@ from typing import Optional
 
 import strawberry
 
-from src.api.graphql.types import (CharacterSubmitMutationInput,
-                                   CharacterSubmitResult,
-                                   CPSubmitMutationInput, CPSubmitResult,
-                                   DojinSubmitMutationInput, DojinSubmitResult,
-                                   MusicSubmitMutationInput, MusicSubmitResult,
-                                   PaperSubmitMutationInput, SubmitSuccess,
-                                   VotingStatistics, VotingStatus,
-                                   pydantic_to_graphql_characters,
-                                   pydantic_to_graphql_cps,
-                                   pydantic_to_graphql_dojins,
-                                   pydantic_to_graphql_meta,
-                                   pydantic_to_graphql_musics,
-                                   pydantic_to_graphql_voting_statistics,
-                                   pydantic_to_graphql_voting_status)
-from src.apps.submit.schemas import (CharacterSubmitRest, CPSubmitRest,
-                                     DojinSubmitRest, MusicSubmitRest,
-                                     PaperSubmitRest, SubmitMetadata)
+from src.api.graphql.types import (
+    CharacterSubmitMutationInput,
+    CharacterSubmitResult,
+    CPSubmitMutationInput,
+    CPSubmitResult,
+    DojinSubmitMutationInput,
+    DojinSubmitResult,
+    MusicSubmitMutationInput,
+    MusicSubmitResult,
+    PaperSubmitMutationInput,
+    SubmitSuccess,
+    VotingStatistics,
+    VotingStatus,
+    pydantic_to_graphql_characters,
+    pydantic_to_graphql_cps,
+    pydantic_to_graphql_dojins,
+    pydantic_to_graphql_meta,
+    pydantic_to_graphql_musics,
+    pydantic_to_graphql_voting_statistics,
+    pydantic_to_graphql_voting_status,
+)
+from src.apps.submit.schemas import (
+    CharacterSubmitRest,
+    CPSubmitRest,
+    DojinSubmitRest,
+    MusicSubmitRest,
+    PaperSubmitRest,
+    SubmitMetadata,
+)
 from src.apps.submit.service import SubmitService
 from src.common.database import get_db_session
 from src.common.middleware.rate_limit import get_redis_client, rate_limit
@@ -50,8 +62,7 @@ async def _release_vote_lock(lock_key: str, lock_value: str) -> None:
 
 
 def _build_character_rest(input: CharacterSubmitMutationInput) -> CharacterSubmitRest:
-    from src.apps.submit.schemas import \
-        CharacterSubmit as CharacterSubmitPydantic
+    from src.apps.submit.schemas import CharacterSubmit as CharacterSubmitPydantic
 
     return CharacterSubmitRest(
         characters=[

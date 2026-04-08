@@ -3,13 +3,17 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apps.vote_data.schemas import (CharacterVoteRequest,
-                                        CharacterVoteResponse, CpVoteRequest,
-                                        CpVoteResponse, MusicVoteRequest,
-                                        MusicVoteResponse,
-                                        QuestionnaireVoteRequest,
-                                        QuestionnaireVoteResponse,
-                                        VoteDataSummaryResponse)
+from src.apps.vote_data.schemas import (
+    CharacterVoteRequest,
+    CharacterVoteResponse,
+    CpVoteRequest,
+    CpVoteResponse,
+    MusicVoteRequest,
+    MusicVoteResponse,
+    QuestionnaireVoteRequest,
+    QuestionnaireVoteResponse,
+    VoteDataSummaryResponse,
+)
 from src.apps.vote_data.service import VoteDataService
 from src.common.database import get_db_session
 

@@ -3,9 +3,13 @@
 from sqlalchemy import desc, func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apps.submit.models import (RawCharacterSubmit, RawCPSubmit,
-                                    RawDojinSubmit, RawMusicSubmit,
-                                    RawPaperSubmit)
+from src.apps.submit.models import (
+    RawCharacterSubmit,
+    RawCPSubmit,
+    RawDojinSubmit,
+    RawMusicSubmit,
+    RawPaperSubmit,
+)
 
 
 class SubmitDAO:
