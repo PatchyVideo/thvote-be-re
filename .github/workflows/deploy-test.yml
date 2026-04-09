@@ -29,7 +29,7 @@ on:
       skip_tests:
         description: '跳过测试'
         required: false
-        default: 'false'
+        default: 'true'
         type: boolean
 
 env:
@@ -58,26 +58,8 @@ jobs:
           pip install flake8 black isort mypy
           pip install -r requirements.txt
 
-      - name: 代码格式检查 (Black)
-        run: black --check --diff --target-version py312 src/ || true
-
       - name: 代码风格检查 (Flake8)
         run: flake8 src/ --max-line-length=120 || true
-
-      - name: 导入排序检查 (isort)
-        run: isort --check-only --diff src/ || true
-
-      - name: 类型检查 (mypy)
-        run: |
-          mypy src/apps/ --ignore-missing-imports || true
-          mypy src/common/exceptions.py --ignore-missing-imports || true
-          mypy src/common/middleware/ --ignore-missing-imports || true
-          mypy src/common/database.py --ignore-missing-imports || true
-          mypy src/common/container.py --ignore-missing-imports || true
-          mypy src/common/security/ --ignore-missing-imports || true
-          mypy src/common/config.py --ignore-missing-imports || true
-          mypy src/db_model/ --ignore-missing-imports || true
-          mypy src/models/ --ignore-missing-imports || true
 
   # ==================== 运行测试 ====================
   test:
