@@ -13,8 +13,8 @@ FROM node:20-alpine AS base
 # 安装 pnpm
 RUN corepack enable && corepack prepare pnpm@9.3.0 --activate
 
-# ---- 构建阶段：所有包 ----
-FROM base AS builder
+# ---- 克隆阶段 ----
+FROM base AS cloner
 
 # 克隆前端仓库
 ARG FRONTEND_REPO=https://github.com/PatchyVideo/Touhou-Vote.git
@@ -23,18 +23,18 @@ ARG FRONTEND_BRANCH=dev
 RUN apk add --no-cache git && \
     git clone --depth 1 --branch $FRONTEND_BRANCH $FRONTEND_REPO /tmp/frontend
 
-WORKDIR /app
+# ---- 构建阶段 ----
+FROM base AS builder
 
-# 复制整个 workspace 结构
-COPY --from=builder /tmp/frontend/pnpm-workspace.yaml /app/
-COPY --from=builder /tmp/frontend/package.json /app/
-COPY --from=builder /tmp/frontend/pnpm-lock.yaml /app/
-COPY --from=builder /tmp/frontend/packages/vote /app/packages/vote
-COPY --from=builder /tmp/frontend/packages/result /app/packages/result
-COPY --from=builder /tmp/frontend/packages/shared /app/packages/shared
-COPY --from=builder /tmp/frontend/packages/navigator /app/packages/navigator
+# 复制 workspace 文件
+COPY --from=cloner /tmp/frontend/pnpm-workspace.yaml /app/
+COPY --from=cloner /tmp/frontend/package.json /app/
+COPY --from=cloner /tmp/frontend/pnpm-lock.yaml /app/
+COPY --from=cloner /tmp/frontend/packages/vote /app/packages/vote
+COPY --from=cloner /tmp/frontend/packages/result /app/packages/result
+COPY --from=cloner /tmp/frontend/packages/shared /app/packages/shared
+COPY --from=cloner /tmp/frontend/packages/navigator /app/packages/navigator
 
-# 从 workspace 根目录安装依赖并构建
 WORKDIR /app
 RUN pnpm install && \
     pnpm --filter @touhou-vote/vote build && \
