@@ -16,10 +16,13 @@ RUN apk add --no-cache git && \
 # ---- 构建阶段 ----
 FROM base AS builder
 
-# 复制 workspace 文件
+# 复制所有 workspace 配置和文件
 COPY --from=cloner /tmp/frontend/pnpm-workspace.yaml /app/
 COPY --from=cloner /tmp/frontend/package.json /app/
 COPY --from=cloner /tmp/frontend/pnpm-lock.yaml /app/
+COPY --from=cloner /tmp/frontend/tsconfig.json /app/
+
+# 复制所有 packages (pnpm workspace)
 COPY --from=cloner /tmp/frontend/packages/vote /app/packages/vote
 COPY --from=cloner /tmp/frontend/packages/result /app/packages/result
 COPY --from=cloner /tmp/frontend/packages/shared /app/packages/shared
