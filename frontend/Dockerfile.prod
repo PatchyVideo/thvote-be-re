@@ -6,40 +6,34 @@
 
 FROM node:20-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9.3.0 --activate
-WORKDIR /app
 
-# ---- 投票页面 ----
-FROM base AS vote-builder
+# ---- 构建阶段：所有包 ----
+FROM base AS builder
 ARG FRONTEND_BRANCH=main
 RUN apk add --no-cache git && \
-    git clone --depth 1 --branch $FRONTEND_BRANCH https://github.com/PatchyVideo/Touhou-Vote.git /tmp/frontend && \
-    cp -r /tmp/frontend/packages/vote/. /app/vote/ && \
-    cp -r /tmp/frontend/packages/shared/. /app/shared/ && \
-    cp /tmp/frontend/package.json /tmp/frontend/pnpm-lock.yaml /app/
+    git clone --depth 1 --branch $FRONTEND_BRANCH https://github.com/PatchyVideo/Touhou-Vote.git /tmp/frontend
 WORKDIR /app
-RUN pnpm install && \
-    cd vote && pnpm install && \
-    pnpm build
 
-# ---- 结果页面 ----
-FROM base AS result-builder
-ARG FRONTEND_BRANCH=main
-RUN apk add --no-cache git && \
-    git clone --depth 1 --branch $FRONTEND_BRANCH https://github.com/PatchyVideo/Touhou-Vote.git /tmp/frontend && \
-    cp -r /tmp/frontend/packages/result/. /app/result/ && \
-    cp -r /tmp/frontend/packages/shared/. /app/shared/ && \
-    cp /tmp/frontend/package.json /tmp/frontend/pnpm-lock.yaml /app/
+# 复制整个 workspace 结构
+COPY --from=builder /tmp/frontend/pnpm-workspace.yaml /app/
+COPY --from=builder /tmp/frontend/package.json /app/
+COPY --from=builder /tmp/frontend/pnpm-lock.yaml /app/
+COPY --from=builder /tmp/frontend/packages/vote /app/packages/vote
+COPY --from=builder /tmp/frontend/packages/result /app/packages/result
+COPY --from=builder /tmp/frontend/packages/shared /app/packages/shared
+
+# 从 workspace 根目录安装依赖并构建
 WORKDIR /app
 RUN pnpm install && \
-    cd result && pnpm install && \
-    pnpm build
+    pnpm --filter @touhou-vote/vote build && \
+    pnpm --filter @touhou-vote/result build
 
 # ---- 最终阶段 ----
 FROM nginx:alpine AS production
 
 # 复制构建产物
-COPY --from=vote-builder /app/vote/dist /usr/share/nginx/html
-COPY --from=result-builder /app/result/dist /usr/share/nginx/html/result
+COPY --from=builder /app/packages/vote/dist /usr/share/nginx/html
+COPY --from=builder /app/packages/result/dist /usr/share/nginx/html/result
 
 # 复制 SSL 证书目录结构（实际证书由 docker-compose 的 volume 挂载）
 RUN mkdir -p /etc/nginx/ssl

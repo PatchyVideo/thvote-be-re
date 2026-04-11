@@ -13,75 +13,41 @@ FROM node:20-alpine AS base
 # 安装 pnpm
 RUN corepack enable && corepack prepare pnpm@9.3.0 --activate
 
-WORKDIR /app
-
-# ---- 构建阶段：投票页面 ----
-FROM base AS vote-builder
-
-# 克隆前端仓库（只获取必要部分）
-ARG FRONTEND_REPO=https://github.com/PatchyVideo/Touhou-Vote.git
-ARG FRONTEND_BRANCH=dev
-
-RUN apk add --no-cache git && \
-    git clone --depth 1 --branch $FRONTEND_BRANCH $FRONTEND_REPO /tmp/frontend && \
-    cd /tmp/frontend && \
-    cp -r packages/vote/. /app/vote/ && \
-    cp -r packages/shared/. /app/shared/ && \
-    cp package.json pnpm-lock.yaml /app/
-
-# 安装依赖并构建
-WORKDIR /app
-RUN pnpm install && \
-    cd vote && pnpm install && \
-    pnpm build
-
-# ---- 构建阶段：结果页面 ----
-FROM base AS result-builder
+# ---- 构建阶段：所有包 ----
+FROM base AS builder
 
 # 克隆前端仓库
 ARG FRONTEND_REPO=https://github.com/PatchyVideo/Touhou-Vote.git
 ARG FRONTEND_BRANCH=dev
 
 RUN apk add --no-cache git && \
-    git clone --depth 1 --branch $FRONTEND_BRANCH $FRONTEND_REPO /tmp/frontend && \
-    cd /tmp/frontend && \
-    cp -r packages/result/. /app/result/ && \
-    cp -r packages/shared/. /app/shared/ && \
-    cp package.json pnpm-lock.yaml /app/
-
-# 安装依赖并构建
-WORKDIR /app
-RUN pnpm install && \
-    cd result && pnpm install && \
-    pnpm build
-
-# ---- 构建阶段：导航页（可选）----
-FROM base AS nav-builder
-
-ARG FRONTEND_REPO=https://github.com/PatchyVideo/Touhou-Vote.git
-ARG FRONTEND_BRANCH=dev
-
-RUN apk add --no-cache git && \
-    git clone --depth 1 --branch $FRONTEND_BRANCH $FRONTEND_REPO /tmp/frontend && \
-    cd /tmp/frontend && \
-    cp -r packages/navigator/. /app/navigator/ && \
-    cp package.json pnpm-lock.yaml /app/
+    git clone --depth 1 --branch $FRONTEND_BRANCH $FRONTEND_REPO /tmp/frontend
 
 WORKDIR /app
+
+# 复制整个 workspace 结构
+COPY --from=builder /tmp/frontend/pnpm-workspace.yaml /app/
+COPY --from=builder /tmp/frontend/package.json /app/
+COPY --from=builder /tmp/frontend/pnpm-lock.yaml /app/
+COPY --from=builder /tmp/frontend/packages/vote /app/packages/vote
+COPY --from=builder /tmp/frontend/packages/result /app/packages/result
+COPY --from=builder /tmp/frontend/packages/shared /app/packages/shared
+COPY --from=builder /tmp/frontend/packages/navigator /app/packages/navigator
+
+# 从 workspace 根目录安装依赖并构建
+WORKDIR /app
 RUN pnpm install && \
-    cd navigator && pnpm install && \
-    pnpm build
+    pnpm --filter @touhou-vote/vote build && \
+    pnpm --filter @touhou-vote/result build && \
+    pnpm --filter @touhou-vote/navigator build
 
 # ---- 最终阶段：Nginx + 静态文件 ----
 FROM nginx:alpine AS production
 
 # 复制构建产物
-COPY --from=vote-builder /app/vote/dist /usr/share/nginx/html
-COPY --from=result-builder /app/result/dist /usr/share/nginx/html/result
-COPY --from=nav-builder /app/navigator/dist /usr/share/nginx/html/navigator
-
-# 复制 Nginx 配置（通过 volume 挂载，使用环境变量动态选择）
-# 此处只提供默认配置，实际配置通过 docker-compose 的 volume 挂载
+COPY --from=builder /app/packages/vote/dist /usr/share/nginx/html
+COPY --from=builder /app/packages/result/dist /usr/share/nginx/html/result
+COPY --from=builder /app/packages/navigator/dist /usr/share/nginx/html/navigator
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
