@@ -11,7 +11,7 @@
 FROM node:20-alpine AS base
 
 # 安装 pnpm
-RUN corepack enable && corepack prepare pnpm@9.3.0 --activate
+RUN corepack enable && corepack prepare pnpm@9 --activate
 
 # ---- 克隆阶段 ----
 FROM base AS cloner
