@@ -17,21 +17,13 @@ RUN apk add --no-cache git && \
 # ---- 构建阶段 ----
 FROM base AS builder
 
-# 复制所有 workspace 配置和文件
-COPY --from=cloner /tmp/frontend/pnpm-workspace.yaml /app/
-COPY --from=cloner /tmp/frontend/package.json /app/
-COPY --from=cloner /tmp/frontend/pnpm-lock.yaml /app/
-COPY --from=cloner /tmp/frontend/tsconfig.json /app/
-
-# 复制所有 packages (pnpm workspace)
-COPY --from=cloner /tmp/frontend/packages/vote /app/packages/vote
-COPY --from=cloner /tmp/frontend/packages/result /app/packages/result
-COPY --from=cloner /tmp/frontend/packages/shared /app/packages/shared
-COPY --from=cloner /tmp/frontend/packages/result-codegen /app/packages/result-codegen
-COPY --from=cloner /tmp/frontend/packages/navigator /app/packages/navigator
+# 复制整个前端仓库（确保所有依赖和脚本文件完整）
+COPY --from=cloner /tmp/frontend /app
 
 WORKDIR /app
 RUN pnpm install && \
+    pnpm --filter @touhou-vote/vote codegen && \
+    pnpm --filter @touhou-vote/result codegen && \
     pnpm --filter @touhou-vote/vote build && \
     pnpm --filter @touhou-vote/result build
 
