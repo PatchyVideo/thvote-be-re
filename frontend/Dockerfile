@@ -33,6 +33,7 @@ COPY --from=cloner /tmp/frontend/pnpm-lock.yaml /app/
 COPY --from=cloner /tmp/frontend/packages/vote /app/packages/vote
 COPY --from=cloner /tmp/frontend/packages/result /app/packages/result
 COPY --from=cloner /tmp/frontend/packages/shared /app/packages/shared
+COPY --from=cloner /tmp/frontend/packages/result-codegen /app/packages/result-codegen
 COPY --from=cloner /tmp/frontend/packages/navigator /app/packages/navigator
 
 WORKDIR /app

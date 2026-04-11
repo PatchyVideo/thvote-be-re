@@ -9,7 +9,7 @@ RUN corepack enable && corepack prepare pnpm@8 --activate
 
 # ---- 克隆阶段 ----
 FROM base AS cloner
-ARG FRONTEND_BRANCH=main
+ARG FRONTEND_BRANCH=v2.0.0
 RUN apk add --no-cache git && \
     git clone --depth 1 --branch $FRONTEND_BRANCH https://github.com/PatchyVideo/Touhou-Vote.git /tmp/frontend
 
@@ -23,6 +23,7 @@ COPY --from=cloner /tmp/frontend/pnpm-lock.yaml /app/
 COPY --from=cloner /tmp/frontend/packages/vote /app/packages/vote
 COPY --from=cloner /tmp/frontend/packages/result /app/packages/result
 COPY --from=cloner /tmp/frontend/packages/shared /app/packages/shared
+COPY --from=cloner /tmp/frontend/packages/result-codegen /app/packages/result-codegen
 
 WORKDIR /app
 RUN pnpm install && \
