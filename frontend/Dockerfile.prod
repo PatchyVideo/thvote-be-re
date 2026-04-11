@@ -13,27 +13,30 @@ ARG FRONTEND_BRANCH=v2.0.0
 RUN apk add --no-cache git && \
     git clone --depth 1 --branch $FRONTEND_BRANCH https://github.com/PatchyVideo/Touhou-Vote.git /tmp/frontend
 
-# ---- 构建阶段 ----
-FROM base AS builder
-
-# 复制整个前端仓库（确保所有依赖和脚本文件完整）
+# ---- 安装依赖阶段 ----
+FROM base AS deps
 COPY --from=cloner /tmp/frontend /app
-
 WORKDIR /app
-RUN pnpm install && \
-    pnpm --filter @touhou-vote/vote codegen && \
-    pnpm --filter @touhou-vote/result codegen && \
-    pnpm --filter @touhou-vote/vote build && \
-    pnpm --filter @touhou-vote/result build
+RUN pnpm install --frozen-lockfile
+
+# ---- 构建 vote 页面 ----
+FROM deps AS builder-vote
+WORKDIR /app/packages/vote
+RUN pnpm codegen && pnpm build
+
+# ---- 构建 result 页面 ----
+FROM deps AS builder-result
+WORKDIR /app/packages/result
+RUN pnpm codegen && pnpm build
 
 # ---- 最终阶段 ----
 FROM nginx:alpine AS production
 
 # 复制构建产物
-COPY --from=builder /app/packages/vote/dist /usr/share/nginx/html
-COPY --from=builder /app/packages/result/dist /usr/share/nginx/html/result
+COPY --from=builder-vote /app/packages/vote/dist /usr/share/nginx/html
+COPY --from=builder-result /app/packages/result/dist /usr/share/nginx/html/result
 
-# 复制 SSL 证书目录结构（实际证书由 docker-compose 的 volume 挂载）
+# 复制 SSL 证书目录结构
 RUN mkdir -p /etc/nginx/ssl
 
 # 复制生产环境 Nginx 配置
