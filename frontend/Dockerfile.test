@@ -17,8 +17,8 @@ RUN apk add --no-cache git && \
     cp -r /tmp/frontend/packages/shared/. /app/shared/ && \
     cp /tmp/frontend/package.json /tmp/frontend/pnpm-lock.yaml /app/
 WORKDIR /app
-RUN pnpm install --frozen-lockfile && \
-    cd vote && pnpm install --frozen-lockfile && \
+RUN pnpm install && \
+    cd vote && pnpm install && \
     pnpm build
 
 # ---- 结果页面 ----
@@ -30,8 +30,8 @@ RUN apk add --no-cache git && \
     cp -r /tmp/frontend/packages/shared/. /app/shared/ && \
     cp /tmp/frontend/package.json /tmp/frontend/pnpm-lock.yaml /app/
 WORKDIR /app
-RUN pnpm install --frozen-lockfile && \
-    cd result && pnpm install --frozen-lockfile && \
+RUN pnpm install && \
+    cd result && pnpm install && \
     pnpm build
 
 # ---- 最终阶段 ----

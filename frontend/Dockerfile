@@ -31,8 +31,8 @@ RUN apk add --no-cache git && \
 
 # 安装依赖并构建
 WORKDIR /app
-RUN pnpm install --frozen-lockfile && \
-    cd vote && pnpm install --frozen-lockfile && \
+RUN pnpm install && \
+    cd vote && pnpm install && \
     pnpm build
 
 # ---- 构建阶段：结果页面 ----
@@ -51,8 +51,8 @@ RUN apk add --no-cache git && \
 
 # 安装依赖并构建
 WORKDIR /app
-RUN pnpm install --frozen-lockfile && \
-    cd result && pnpm install --frozen-lockfile && \
+RUN pnpm install && \
+    cd result && pnpm install && \
     pnpm build
 
 # ---- 构建阶段：导航页（可选）----
@@ -68,8 +68,8 @@ RUN apk add --no-cache git && \
     cp package.json pnpm-lock.yaml /app/
 
 WORKDIR /app
-RUN pnpm install --frozen-lockfile && \
-    cd navigator && pnpm install --frozen-lockfile && \
+RUN pnpm install && \
+    cd navigator && pnpm install && \
     pnpm build
 
 # ---- 最终阶段：Nginx + 静态文件 ----
