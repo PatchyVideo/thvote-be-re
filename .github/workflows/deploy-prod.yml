@@ -33,7 +33,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/thvote
   FRONTEND_REPO: https://github.com/PatchyVideo/Touhou-Vote.git
-  FRONTEND_BRANCH: v2.0.0
+  FRONTEND_BRANCH: dev
 
 jobs:
   # ==================== 版本确认 ====================
