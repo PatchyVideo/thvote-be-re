@@ -30,7 +30,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="THVote FastAPI Backend",
-        version="0.2.0",
+        version="0.2.1",
         lifespan=lifespan,
     )
 
