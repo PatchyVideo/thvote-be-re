@@ -62,7 +62,7 @@ class UserService:
         )
 
         if not result.valid:
-            raise ValidationError("Invalid email or password!!!")
+            raise ValidationError("Invalid email or password")
 
         if result.needs_rehash and result.upgraded_hash:
             user.password_hash = result.upgraded_hash  # type: ignore[assignment]
