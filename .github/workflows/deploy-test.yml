@@ -20,10 +20,12 @@ on:
     branches:
       - main
       - zfq_dev
+      - zfq_dev_pipeline
   pull_request:
     branches:
       - main
       - zfq_dev
+      - zfq_dev_pipeline
   workflow_dispatch:
     inputs:
       skip_tests:
