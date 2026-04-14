@@ -184,7 +184,7 @@ jobs:
     name: 部署到测试环境
     runs-on: ubuntu-latest
     needs: [build-backend]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/zfq_dev')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/zfq_dev' || github.ref == 'refs/heads/zfq_dev_pipeline')
     environment: test
 
     steps:
