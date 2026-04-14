@@ -18,6 +18,12 @@ on:
       - main
       - zfq_dev
       - zfq_dev_pipeline
+    paths:
+      - 'src/**'
+      - 'requirements.txt'
+      - 'Dockerfile'
+      - 'scripts/**'
+      - '.github/workflows/deploy-test.yml'
   pull_request:
     branches:
       - main
@@ -195,23 +201,7 @@ jobs:
             docker
           sparse-checkout-cone-mode: false
 
-      - name: 判断变更
-        id: changed
-        run: |
-          # 遍历所有 commits 的 changed 文件
-          CHANGED_FILES=""
-          for commit in ${{ toJson(github.event.commits) }}; do
-            CHANGED_FILES="$CHANGED_FILES $(echo "$commit" | jq -r '.modified[], .added[], .removed[]' 2>/dev/null)"
-          done
-          echo "变更文件: $CHANGED_FILES"
-          if echo "$CHANGED_FILES" | grep -qE '^(src/|requirements\.txt|Dockerfile|scripts/)'; then
-            echo "deploy=true" >> $GITHUB_OUTPUT
-          else
-            echo "deploy=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: 部署到测试服务器
-        if: steps.changed.outputs.deploy == 'true'
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.TEST_SERVER_HOST }}
@@ -344,10 +334,6 @@ jobs:
 
             docker image prune -f
             echo "后端部署完成，地址: http://localhost:8000"
-
-      - name: 无需部署
-        if: steps.changed.outputs.deploy != 'true'
-        run: echo "本次变更不涉及后端代码，无需重新部署"
 
   # ==================== 通知 ====================
   notify:
