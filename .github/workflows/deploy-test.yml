@@ -33,7 +33,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner && toLower(github.repository_owner) }}/thvote
+  IMAGE_NAME: patchyvideo/thvote
 
 jobs:
   # ==================== 代码检查 ====================
