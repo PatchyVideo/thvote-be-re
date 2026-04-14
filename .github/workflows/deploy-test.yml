@@ -198,8 +198,12 @@ jobs:
       - name: 判断变更
         id: changed
         run: |
-          CHANGED_FILES=$(git diff --name-only ${{ github.event.before }}..${{ github.sha }})
-          echo "变更: $CHANGED_FILES"
+          # 遍历所有 commits 的 changed 文件
+          CHANGED_FILES=""
+          for commit in ${{ toJson(github.event.commits) }}; do
+            CHANGED_FILES="$CHANGED_FILES $(echo "$commit" | jq -r '.modified[], .added[], .removed[]' 2>/dev/null)"
+          done
+          echo "变更文件: $CHANGED_FILES"
           if echo "$CHANGED_FILES" | grep -qE '^(src/|requirements\.txt|Dockerfile|scripts/)'; then
             echo "deploy=true" >> $GITHUB_OUTPUT
           else
