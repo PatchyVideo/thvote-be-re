@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Index, String
+from sqlalchemy import Column, DateTime, ForeignKey, String
 from sqlalchemy.types import JSON
 
 from .base import Base
@@ -15,6 +15,3 @@ class Questionnaire(Base):
 
     # questionnaire_list JSON NOT NULL
     questionnaire_list = Column(JSON, nullable=False)
-
-    # Generic index for cross-database support.
-    __table_args__ = (Index("idx_questionnaire_list", "questionnaire_list"),)
