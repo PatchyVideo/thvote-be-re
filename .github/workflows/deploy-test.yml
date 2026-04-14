@@ -33,7 +33,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/thvote
+  IMAGE_NAME: ${{ github.repository_owner && toLower(github.repository_owner) }}/thvote
 
 jobs:
   # ==================== 代码检查 ====================
@@ -318,8 +318,8 @@ jobs:
             # 拉取镜像
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:test || true
 
-            # 启动后端
-            docker-compose up -d --profile backend
+            # 启动后端（直接指定 backend 服务，避免老版本 docker-compose 不支持 --profile）
+            docker-compose up -d backend
 
             # 等待健康检查
             for i in $(seq 1 30); do
