@@ -1,0 +1,430 @@
+# ============================================================
+# THVote 后端独立部署工作流
+#
+# 前后端完全解耦：
+#   1. 后端变更 → 触发本工作流 → 只部署后端
+#   2. 前端变更 → 触发前端仓库工作流 → 从已部署后端获取 schema → 构建并部署前端
+#
+# 启动方式：
+#   docker compose -f docker/docker-compose.yml --profile backend up -d
+# ============================================================
+
+name: Deploy Backend Only
+
+on:
+  release:
+    types: [released, published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（如 v1.0.0），留空则使用 commit SHA'
+        required: false
+        type: string
+      environment:
+        description: '部署环境'
+        required: false
+        default: 'prod'
+        type: choice
+        options:
+          - prod
+          - test
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/thvote
+
+jobs:
+  # ==================== 版本确认 ====================
+  confirm:
+    name: 版本确认
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.ver }}
+      is_release: ${{ steps.version.outputs.is_release }}
+      environment: ${{ inputs.environment || 'prod' }}
+
+    steps:
+      - name: 提取版本信息
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            echo "ver=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          else
+            if [ -n "${{ inputs.version }}" ]; then
+              echo "ver=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            else
+              echo "ver=sha-$(echo '${{ github.sha }}' | cut -c1-8)" >> $GITHUB_OUTPUT
+            fi
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
+          echo "部署版本: ${{ steps.version.outputs.ver }}"
+
+      - name: 部署警告
+        if: steps.version.outputs.is_release == 'false'
+        run: |
+          echo "=========================================="
+          echo "警告：这不是正式 Release"
+          echo "即将部署到 ${{ steps.confirm.outputs.environment }} 环境"
+          echo "=========================================="
+
+  # ==================== 构建后端镜像 ====================
+  build:
+    name: 构建后端镜像
+    runs-on: ubuntu-latest
+    needs: confirm
+
+    outputs:
+      backend-tag: ${{ steps.meta.outputs.tags }}
+      backend-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录容器仓库
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 提取元数据
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend
+          tags: |
+            type=semver,pattern={{version}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+            type=raw,value=${{ needs.confirm.outputs.environment }},enable=true
+
+      - name: 构建并推送后端镜像
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          target: production
+
+  # ==================== 部署到目标环境 ====================
+  deploy:
+    name: 部署到 ${{ needs.confirm.outputs.environment }}
+    runs-on: ubuntu-latest
+    needs: [confirm, build]
+
+    steps:
+      - name: 检出部署配置
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            docker
+          sparse-checkout-cone-mode: false
+
+      - name: 确定部署配置
+        id: env_config
+        run: |
+          if [ "${{ needs.confirm.outputs.environment }}" == "test" ]; then
+            echo "env_file=.env.test" >> $GITHUB_OUTPUT
+            echo "deploy_dir=${{ vars.TEST_SERVER_DIR || '/opt/thvote/test' }}" >> $GITHUB_OUTPUT
+          else
+            echo "env_file=.env.prod" >> $GITHUB_OUTPUT
+            echo "deploy_dir=${{ vars.PROD_SERVER_DIR || '/opt/thvote/prod' }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 部署到服务器
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ needs.confirm.outputs.environment == 'prod' && secrets.PROD_SERVER_HOST || secrets.TEST_SERVER_HOST }}
+          username: ${{ needs.confirm.outputs.environment == 'prod' && secrets.PROD_SERVER_USER || secrets.TEST_SERVER_USER }}
+          key: ${{ needs.confirm.outputs.environment == 'prod' && secrets.PROD_SERVER_SSH_KEY || secrets.TEST_SERVER_SSH_KEY }}
+          envs: DEPLOY_DIR,ENV_FILE,BACKEND_IMAGE
+          script: |
+            set -e
+            DEPLOY_DIR="${{ steps.env_config.outputs.deploy_dir }}"
+            ENV_FILE="${{ steps.env_config.outputs.env_file }}"
+            BACKEND_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend"
+            BACKEND_TAG="${{ needs.confirm.outputs.environment }}"
+            mkdir -p "$DEPLOY_DIR"
+
+            cd "$DEPLOY_DIR"
+
+            # 登录镜像仓库
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+            # 备份配置
+            if [ -f "$ENV_FILE" ]; then
+              cp "$ENV_FILE" "${ENV_FILE}.bak.$(date +%s)"
+            fi
+            if [ -f docker-compose.yml ]; then
+              cp docker-compose.yml docker-compose.yml.bak.$(date +%s)
+            fi
+
+            # 记录回滚信息
+            echo "版本: ${{ needs.confirm.outputs.version }}" > deploy_info.txt
+            echo "时间: $(date)" >> deploy_info.txt
+            echo "后端镜像: $BACKEND_IMAGE:$BACKEND_TAG" >> deploy_info.txt
+
+            # 创建 .env 文件
+            cat > "$ENV_FILE" << 'ENVEOF'
+            # 由 CI 自动生成，密码等敏感信息从 GitHub Secrets 注入
+            ENVEOF
+
+            # 写入敏感信息
+            if [ "${{ needs.confirm.outputs.environment }}" == "prod" ]; then
+              echo "POSTGRES_DB=thvote_prod" >> "$ENV_FILE"
+              echo "POSTGRES_USER=${{ secrets.PROD_DB_USER }}" >> "$ENV_FILE"
+              echo "POSTGRES_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}" >> "$ENV_FILE"
+              echo "JWT_SECRET_KEY=${{ secrets.PROD_JWT_SECRET }}" >> "$ENV_FILE"
+              echo "APOLLO_ENABLED=yes" >> "$ENV_FILE"
+              echo "APOLLO_DB_USER=${{ secrets.PROD_APOLLO_DB_USER }}" >> "$ENV_FILE"
+              echo "APOLLO_DB_PASSWORD=${{ secrets.PROD_APOLLO_DB_PASSWORD }}" >> "$ENV_FILE"
+            else
+              echo "POSTGRES_DB=thvote_test" >> "$ENV_FILE"
+              echo "POSTGRES_USER=thvote_test" >> "$ENV_FILE"
+              echo "POSTGRES_PASSWORD=${{ secrets.TEST_DB_PASSWORD }}" >> "$ENV_FILE"
+              echo "JWT_SECRET_KEY=${{ secrets.TEST_JWT_SECRET || 'dev-secret-do-not-use-in-prod' }}" >> "$ENV_FILE"
+              echo "APOLLO_ENABLED=no" >> "$ENV_FILE"
+            fi
+
+            echo "BACKEND_IMAGE=$BACKEND_IMAGE" >> "$ENV_FILE"
+            # 前端镜像由前端仓库 CI 管理，此处不写入
+
+            # 首次部署时创建 docker-compose.yml（仅后端基础设施）
+            # 后续部署只替换 backend 镜像 tag，不覆盖前端追加的服务
+            if ! grep -q "thvote-backend" docker-compose.yml 2>/dev/null; then
+              cat > docker-compose.yml << 'COMPOSEEOF'
+            version: "3.8"
+
+            x-common-backend: &common_backend
+              restart: unless-stopped
+              networks:
+                - thvote-net
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+                interval: 15s
+                timeout: 5s
+                retries: 5
+                start_period: 20s
+
+            services:
+              postgres:
+                image: postgres:15-alpine
+                container_name: thvote-postgres
+                <<: *common_backend
+                environment:
+                  POSTGRES_DB: ${POSTGRES_DB:-thvote}
+                  POSTGRES_USER: ${POSTGRES_USER:-thvote}
+                  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thvote_pass}
+                volumes:
+                  - postgres-data:/var/lib/postgresql/data
+                healthcheck:
+                  test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thvote} -d ${POSTGRES_DB:-thvote}"]
+                  interval: 10s
+                  timeout: 5s
+                  retries: 5
+
+              redis:
+                image: redis:7-alpine
+                container_name: thvote-redis
+                <<: *common_backend
+                command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+                volumes:
+                  - redis-data:/data
+                healthcheck:
+                  test: ["CMD", "redis-cli", "ping"]
+                  interval: 10s
+                  timeout: 3s
+                  retries: 5
+
+              apollo-db:
+                image: postgres:15-alpine
+                container_name: thvote-apollo-db
+                restart: ${APOLLO_ENABLED:-no}
+                networks:
+                  - thvote-net
+                environment:
+                  POSTGRES_DB: apollo
+                  POSTGRES_USER: ${APOLLO_DB_USER:-apollo}
+                  POSTGRES_PASSWORD: ${APOLLO_DB_PASSWORD:-apollo_pass}
+                volumes:
+                  - apollo-data:/var/lib/postgresql/data
+                profiles:
+                  - apollo
+
+              apollo-config:
+                image: apolloconfig/apollo-config:2.0.0
+                container_name: thvote-apollo-config
+                restart: ${APOLLO_ENABLED:-no}
+                networks:
+                  - thvote-net
+                environment:
+                  SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-db:5432/apollo
+                  SPRING_DATASOURCE_USERNAME: ${APOLLO_DB_USER:-apollo}
+                  SPRING_DATASOURCE_PASSWORD: ${APOLLO_DB_PASSWORD:-apollo_pass}
+                  APOLLO_CONFIG_PORT: 8080
+                  APOLLO_CONFIG_NAMESRV_PORT: 8081
+                depends_on:
+                  apollo-db:
+                    condition: service_healthy
+                profiles:
+                  - apollo
+
+              apollo-portal:
+                image: apolloconfig/apollo-portal:2.0.0
+                container_name: thvote-apollo-portal
+                restart: ${APOLLO_ENABLED:-no}
+                networks:
+                  - thvote-net
+                environment:
+                  SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-db:5432/apollo
+                  SPRING_DATASOURCE_USERNAME: ${APOLLO_DB_USER:-apollo}
+                  SPRING_DATASOURCE_PASSWORD: ${APOLLO_DB_PASSWORD:-apollo_pass}
+                ports:
+                  - "${APOLLO_PORTAL_PORT:-8070}:8070"
+                depends_on:
+                  - apollo-config
+                profiles:
+                  - apollo
+
+              backend:
+                image: ${BACKEND_IMAGE}
+                container_name: thvote-backend
+                <<: *common_backend
+                env_file:
+                  - $ENV_FILE
+                environment:
+                  DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-thvote}:${POSTGRES_PASSWORD:-thvote_pass}@postgres:5432/${POSTGRES_DB:-thvote}}
+                  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+                  APOLLO_ENABLED: ${APOLLO_ENABLED:-no}
+                  APOLLO_META: ${APOLLO_META:-http://apollo-config:8081}
+                  APOLLO_ENV: ${APOLLO_ENV:-dev}
+                  APOLLO_APP_ID: ${APOLLO_APP_ID:-thvote-backend}
+                  APP_HOST: "0.0.0.0"
+                  APP_PORT: "8000"
+                volumes:
+                  - ./logs:/app/logs
+                depends_on:
+                  postgres:
+                    condition: service_healthy
+                  redis:
+                    condition: service_healthy
+                profiles:
+                  - backend
+
+            networks:
+              thvote-net:
+                driver: bridge
+
+            volumes:
+              postgres-data:
+              redis-data:
+              apollo-data:
+            COMPOSEEOF
+              echo "docker-compose.yml 已创建（后端基础设施）"
+            else
+              # 仅替换 backend 镜像 tag，不碰文件中其他服务（vote/navigator/result 由前端 CI 管理）
+              sed -i "s|image: .*/thvote-backend:.*|image: ${BACKEND_IMAGE}:${BACKEND_TAG}|" docker-compose.yml
+              # 同步 .env 中的 BACKEND_IMAGE
+              sed -i "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${BACKEND_IMAGE}|" "$ENV_FILE"
+              echo "docker-compose.yml 已更新（仅替换 backend 镜像 tag）"
+            fi
+
+            # 拉取最新后端镜像
+            echo "拉取后端镜像 $BACKEND_IMAGE:$BACKEND_TAG..."
+            docker pull "$BACKEND_IMAGE:$BACKEND_TAG" || true
+
+            # 确保 postgres 和 redis 启动
+            docker-compose up -d postgres redis
+
+            # 等待数据库就绪
+            echo "等待数据库启动..."
+            for i in $(seq 1 30); do
+              if docker-compose exec -T postgres pg_isready -U ${POSTGRES_USER:-thvote} > /dev/null 2>&1; then
+                echo "数据库就绪"
+                break
+              fi
+              sleep 2
+            done
+
+            # 启动/重启后端
+            docker-compose up -d --profile backend
+
+            # 等待后端健康检查
+            echo "等待后端服务健康检查..."
+            BACKEND_HOST="localhost"
+            BACKEND_PORT="8000"
+            if [ "${{ needs.confirm.outputs.environment }}" == "test" ]; then
+              BACKEND_PORT="8000"
+            fi
+            for i in $(seq 1 30); do
+              if curl -sf "http://${BACKEND_HOST}:${BACKEND_PORT}/health" > /dev/null 2>&1; then
+                echo "后端服务健康"
+                break
+              fi
+              echo "等待中... ($i/30)"
+              sleep 2
+            done
+
+            # 验证后端
+            if ! curl -sf "http://${BACKEND_HOST}:${BACKEND_PORT}/health" > /dev/null 2>&1; then
+              echo "后端健康检查失败，查看日志:"
+              docker-compose logs backend | tail -30
+              exit 1
+            fi
+
+            # 验证 schema 端点可用
+            echo "验证 GraphQL schema 端点..."
+            if curl -sf "http://${BACKEND_HOST}:${BACKEND_PORT}/graphql/schema" > /dev/null 2>&1; then
+              echo "GraphQL schema 端点正常"
+            else
+              echo "警告: GraphQL schema 端点不可用，可能需要 Apollo 配置"
+            fi
+
+            # 清理
+            docker image prune -f
+
+            # 状态输出
+            echo ""
+            echo "=========================================="
+            echo "后端部署完成"
+            echo "版本: ${{ needs.confirm.outputs.version }}"
+            echo "环境: ${{ needs.confirm.outputs.environment }}"
+            echo "后端: http://${BACKEND_HOST}:${BACKEND_PORT}"
+            echo "=========================================="
+            echo ""
+            echo "前端由 Touhou-Vote 仓库独立部署。vote/navigator/result 三个服务"
+            echo "的镜像构建和配置由前端仓库 CI 管理，不在此流程中。"
+
+  # ==================== 通知 ====================
+  notify:
+    name: 部署结果
+    runs-on: ubuntu-latest
+    needs: [confirm, deploy]
+    if: always()
+
+    steps:
+      - name: 成功
+        if: needs.deploy.result == 'success'
+        run: |
+          echo "=========================================="
+          echo "后端部署成功"
+          echo "版本: ${{ needs.confirm.outputs.version }}"
+          echo "环境: ${{ needs.confirm.outputs.environment }}"
+          echo "=========================================="
+
+      - name: 失败
+        if: needs.deploy.result == 'failure'
+        run: |
+          echo "=========================================="
+          echo "后端部署失败，请检查日志"
+          echo "=========================================="
+          exit 1

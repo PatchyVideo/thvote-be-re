@@ -1,0 +1,246 @@
+# ============================================================
+# THVote 统一 Docker Compose 配置
+#
+# 使用 profiles 实现前后端解耦：
+#   默认启动（docker compose up -d）     → 基础设施 + 后端，前端不启动
+#   前端启动（--profile frontend）       → 全部服务启动
+#   仅后端（--profile backend）          → 仅基础设施 + 后端
+#
+# 环境变量：
+#   COMPOSE_PROFILES=frontend   启用前端服务
+#   COMPOSE_ENV=test|prod       选择环境，默认 prod
+# ============================================================
+
+x-common-backend: &common_backend
+  restart: unless-stopped
+  networks:
+    - thvote-net
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+    interval: 15s
+    timeout: 5s
+    retries: 5
+    start_period: 20s
+
+x-common-apollo: &common_apollo
+  restart: unless-stopped
+  networks:
+    - thvote-net
+
+services:
+  # ==================== 基础设施层 ====================
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: thvote-postgres
+    <<: *common_backend
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-thvote}
+      POSTGRES_USER: ${POSTGRES_USER:-thvote}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thvote_pass}
+      POSTGRES_HOST_AUTH_METHOD: md5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thvote} -d ${POSTGRES_DB:-thvote}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: ${POSTGRES_MEMORY:-2G}
+
+  redis:
+    image: redis:7-alpine
+    container_name: thvote-redis
+    <<: *common_backend
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ==================== Apollo 配置中心（可选） ====================
+  apollo-db:
+    image: postgres:15-alpine
+    container_name: thvote-apollo-db
+    restart: ${APOLLO_ENABLED:-no}
+    networks:
+      - thvote-net
+    environment:
+      POSTGRES_DB: apollo
+      POSTGRES_USER: ${APOLLO_DB_USER:-apollo}
+      POSTGRES_PASSWORD: ${APOLLO_DB_PASSWORD:-apollo_pass}
+    volumes:
+      - apollo-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${APOLLO_DB_USER:-apollo} -d apollo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - apollo
+
+  apollo-config:
+    image: apolloconfig/apollo-config:2.0.0
+    container_name: thvote-apollo-config
+    restart: ${APOLLO_ENABLED:-no}
+    networks:
+      - thvote-net
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-db:5432/apollo
+      SPRING_DATASOURCE_USERNAME: ${APOLLO_DB_USER:-apollo}
+      SPRING_DATASOURCE_PASSWORD: ${APOLLO_DB_PASSWORD:-apollo_pass}
+      APOLLO_CONFIG_PORT: 8080
+      APOLLO_CONFIG_NAMESRV_PORT: 8081
+    depends_on:
+      apollo-db:
+        condition: service_healthy
+    profiles:
+      - apollo
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  apollo-portal:
+    image: apolloconfig/apollo-portal:2.0.0
+    container_name: thvote-apollo-portal
+    restart: ${APOLLO_ENABLED:-no}
+    networks:
+      - thvote-net
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-db:5432/apollo
+      SPRING_DATASOURCE_USERNAME: ${APOLLO_DB_USER:-apollo}
+      SPRING_DATASOURCE_PASSWORD: ${APOLLO_DB_PASSWORD:-apollo_pass}
+    ports:
+      - "${APOLLO_PORTAL_PORT:-8070}:8070"
+    depends_on:
+      - apollo-config
+    profiles:
+      - apollo
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ==================== 后端服务（backend profile） ====================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: ${BACKEND_IMAGE:-thvote-backend:local}
+    container_name: thvote-backend
+    <<: *common_backend
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      # 数据库（支持 docker secret 文件）
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://thvote:thvote_pass@postgres:5432/thvote}
+      # Redis
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      # Apollo（可选）
+      APOLLO_ENABLED: ${APOLLO_ENABLED:-no}
+      APOLLO_META: ${APOLLO_META:-http://apollo-config:8081}
+      APOLLO_ENV: ${APOLLO_ENV:-dev}
+      APOLLO_CLUSTER: ${APOLLO_CLUSTER:-default}
+      APOLLO_APP_ID: ${APOLLO_APP_ID:-thvote-backend}
+      # 服务配置
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "8000"
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # ==================== 前端服务（frontend profile） ====================
+  # 说明：前端镜像由前端仓库的 CI 独立构建推送
+  # 此处仅负责从远程仓库拉取并运行，不参与构建
+  vote:
+    image: ${VOTE_IMAGE:-ghcr.io/patchyvideo/thvote-vote:test}
+    container_name: thvote-vote
+    restart: unless-stopped
+    ports:
+      - "${VOTE_PORT:-8082}:80"
+    networks:
+      - thvote-net
+    depends_on:
+      backend:
+        condition: service_healthy
+    profiles:
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  navigator:
+    image: ${NAVIGATOR_IMAGE:-ghcr.io/patchyvideo/thvote-navigator:test}
+    container_name: thvote-navigator
+    restart: unless-stopped
+    ports:
+      - "${NAVIGATOR_PORT:-8083}:80"
+    networks:
+      - thvote-net
+    depends_on:
+      - vote
+    profiles:
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  result:
+    image: ${RESULT_IMAGE:-ghcr.io/patchyvideo/thvote-result:test}
+    container_name: thvote-result
+    restart: unless-stopped
+    ports:
+      - "${RESULT_PORT:-8084}:80"
+    networks:
+      - thvote-net
+    depends_on:
+      - vote
+    profiles:
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# ============================================================
+# 网络和存储卷
+# ============================================================
+networks:
+  thvote-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  apollo-data:

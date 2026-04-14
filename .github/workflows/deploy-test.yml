@@ -2,18 +2,15 @@
 # THVote 测试环境 CI/CD 工作流
 #
 # 触发条件：
-# - 推送到 main 或 zfq_dev 分支
-# - PR 合并到 main 或 zfq_dev
+# - 推送到 main / zfq_dev 分支
+# - PR 合并到上述分支
+# - 手动触发 (workflow_dispatch)
 #
-# 功能：
-# - 代码检查
-# - 运行测试
-# - 构建后端 Docker 镜像
-# - 构建前端 Docker 镜像
-# - 部署到测试环境
+# 本工作流仅负责后端，不会触发前端构建。
+# 前端由 Touhou-Vote 仓库独立构建部署。
 # ============================================================
 
-name: Deploy to Test Environment
+name: Test & Deploy Backend
 
 on:
   push:
@@ -31,14 +28,12 @@ on:
       skip_tests:
         description: '跳过测试'
         required: false
-        default: 'true'
+        default: 'false'
         type: boolean
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/thvote
-  FRONTEND_REPO: https://github.com/PatchyVideo/Touhou-Vote.git
-  FRONTEND_BRANCH: dev
 
 jobs:
   # ==================== 代码检查 ====================
@@ -54,13 +49,13 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: 安装依赖
+      - name: 安装工具
         run: |
           python -m pip install --upgrade pip
           pip install flake8 black isort mypy
           pip install -r requirements.txt
 
-      - name: 代码风格检查 (Flake8)
+      - name: 代码风格检查
         run: flake8 src/ --max-line-length=120 || true
 
   # ==================== 运行测试 ====================
@@ -99,41 +94,40 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 检查测试目录是否存在
-        id: check_dir
+      - name: 检查测试目录
+        id: check_tests
         run: |
           if [ -d "tests/" ] && [ -n "$(ls -A tests/ 2>/dev/null)" ]; then
-            echo "tests_exist=true" >> $GITHUB_OUTPUT
+            echo "exist=true" >> $GITHUB_OUTPUT
           else
-            echo "tests_exist=false" >> $GITHUB_OUTPUT
+            echo "exist=false" >> $GITHUB_OUTPUT
           fi
 
       - name: 设置 Python
-        if: steps.check_dir.outputs.tests_exist == 'true'
+        if: steps.check_tests.outputs.exist == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: 安装依赖
-        if: steps.check_dir.outputs.tests_exist == 'true'
+        if: steps.check_tests.outputs.exist == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-asyncio pytest-cov httpx
 
       - name: 运行测试
-        if: steps.check_dir.outputs.tests_exist == 'true'
+        if: steps.check_tests.outputs.exist == 'true'
         env:
           DATABASE_URL: postgresql+asyncpg://test_user:test_pass@localhost:5432/thvote_test
           REDIS_URL: redis://localhost:6379/0
           JWT_SECRET_KEY: test-secret-key
-          VOTE_START_ISO: '2025-01-01T00:00:00+08:00'
-          VOTE_END_ISO: '2025-12-31T23:59:59+08:00'
-        run: |
-          pytest --cov=src --cov-report=xml tests/
+          VOTE_START_ISO: '2026-01-01T00:00:00+08:00'
+          VOTE_END_ISO: '2026-12-31T23:59:59+08:00'
+        run: pytest --cov=src --cov-report=xml tests/
 
-      - name: 上传测试覆盖率
-        if: steps.check_dir.outputs.tests_exist == 'true'
+      - name: 上传覆盖率
+        if: steps.check_tests.outputs.exist == 'true'
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
@@ -185,61 +179,12 @@ jobs:
           cache-to: type=gha,mode=max
           target: production
 
-  # ==================== 构建前端镜像 ====================
-  build-frontend:
-    name: 构建前端镜像
-    runs-on: ubuntu-latest
-    needs: [lint, test]
-    if: github.event_name == 'push'
-
-    outputs:
-      frontend-tag: ${{ steps.meta.outputs.tags }}
-      frontend-digest: ${{ steps.build.outputs.digest }}
-
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-
-      - name: 设置 Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: 登录容器仓库
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 提取元数据
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend
-          tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=raw,value=test,enable=true
-
-      - name: 构建并推送前端镜像
-        id: build
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          file: ./frontend/Dockerfile.test
-          build-args: |
-            FRONTEND_BRANCH=${{ env.FRONTEND_BRANCH }}
-
-  # ==================== 部署到测试环境 ====================
+  # ==================== 部署到测试服务器 ====================
   deploy-test:
     name: 部署到测试环境
     runs-on: ubuntu-latest
-    needs: [build-backend, build-frontend]
+    needs: [build-backend]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/zfq_dev')
-
     environment: test
 
     steps:
@@ -250,238 +195,173 @@ jobs:
             docker
           sparse-checkout-cone-mode: false
 
-      - name: 判断需要部署的服务
-        id: changed-services
+      - name: 判断变更
+        id: changed
         run: |
-          # 获取本次推送涉及的 git 差异
           CHANGED_FILES=$(git diff --name-only ${{ github.event.before }}..${{ github.sha }})
-
-          echo "=== 本次变更的文件 ==="
-          echo "$CHANGED_FILES"
-          echo ""
-
-          # 判断后端是否需要重新部署
-          if echo "$CHANGED_FILES" | grep -qE '^(src/|requirements\.txt|Dockerfile|config/|scripts/)'; then
-            echo "deploy-backend=true" >> $GITHUB_OUTPUT
-            echo "需要重新部署: 后端"
+          echo "变更: $CHANGED_FILES"
+          if echo "$CHANGED_FILES" | grep -qE '^(src/|requirements\.txt|Dockerfile|scripts/)'; then
+            echo "deploy=true" >> $GITHUB_OUTPUT
           else
-            echo "deploy-backend=false" >> $GITHUB_OUTPUT
+            echo "deploy=false" >> $GITHUB_OUTPUT
           fi
-
-          # 判断前端是否需要重新部署
-          if echo "$CHANGED_FILES" | grep -qE '^(frontend/|scripts/)'; then
-            echo "deploy-frontend=true" >> $GITHUB_OUTPUT
-            echo "需要重新部署: 前端"
-          else
-            echo "deploy-frontend=false" >> $GITHUB_OUTPUT
-          fi
-
-          # 至少部署一个服务
-          echo "deploy-any=true" >> $GITHUB_OUTPUT
 
       - name: 部署到测试服务器
-        if: steps.changed-services.outputs.deploy-backend == 'true' || steps.changed-services.outputs.deploy-frontend == 'true'
+        if: steps.changed.outputs.deploy == 'true'
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.TEST_SERVER_HOST }}
           username: ${{ secrets.TEST_SERVER_USER }}
           key: ${{ secrets.TEST_SERVER_SSH_KEY }}
-          envs:
-            DEPLOY_BACKEND,DEPLOY_FRONTEND
+          envs: DEPLOY_DIR
           script: |
             set -e
-            cd /opt/thvote/test
+            DEPLOY_DIR="${{ vars.TEST_SERVER_DIR || '/opt/thvote/test' }}"
+            mkdir -p "$DEPLOY_DIR"
+            cd "$DEPLOY_DIR"
 
-            # 登录镜像仓库
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
 
-            # 创建环境变量文件
+            # 写入 .env
             cat > .env << 'ENVEOF'
-            TEST_DB_PASSWORD=${{ secrets.TEST_DB_PASSWORD }}
-            TEST_APOLLO_DB_PASSWORD=${{ secrets.TEST_APOLLO_DB_PASSWORD }}
-            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+            POSTGRES_DB=thvote_test
+            POSTGRES_USER=thvote_test
+            POSTGRES_PASSWORD=${{ secrets.TEST_DB_PASSWORD }}
+            JWT_SECRET_KEY=${{ secrets.TEST_JWT_SECRET || 'dev-secret' }}
+            APOLLO_ENABLED=no
+            BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:test
             ENVEOF
 
-            # ==================== 首次部署：创建基础设施 ====================
-            if [ ! -f docker-compose.yml ]; then
-              echo "=== 首次部署，创建基础设施 ==="
-
+            # 首次部署时创建 docker-compose.yml（仅后端基础设施）
+            # 后续部署只替换 backend 镜像 tag，不覆盖前端追加的服务（vote/navigator/result）
+            if ! grep -q "thvote-backend" docker-compose.yml 2>/dev/null; then
               cat > docker-compose.yml << 'COMPOSEEOF'
             version: "3.8"
 
-            networks:
-              thvote-test:
-                driver: bridge
-
-            volumes:
-              postgres-test-data:
-              redis-test-data:
-              apollo-test-data:
+            x-common-backend: &common_backend
+              restart: unless-stopped
+              networks:
+                - thvote-net
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+                interval: 15s
+                timeout: 5s
+                retries: 5
+                start_period: 20s
 
             services:
-              postgres-test:
+              postgres:
                 image: postgres:15-alpine
-                container_name: thvote-postgres-test
-                restart: unless-stopped
+                container_name: thvote-postgres
+                <<: *common_backend
                 environment:
-                  POSTGRES_DB: thvote_test
-                  POSTGRES_USER: thvote_test
-                  POSTGRES_PASSWORD: ${TEST_DB_PASSWORD:-thvote_test_pass}
+                  POSTGRES_DB: ${POSTGRES_DB:-thvote}
+                  POSTGRES_USER: ${POSTGRES_USER:-thvote}
+                  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thvote_pass}
                 volumes:
-                  - postgres-test-data:/var/lib/postgresql/data
-                networks:
-                  - thvote-test
+                  - postgres-data:/var/lib/postgresql/data
                 healthcheck:
-                  test: ["CMD-SHELL", "pg_isready -U thvote_test -d thvote_test"]
+                  test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thvote} -d ${POSTGRES_DB:-thvote}"]
                   interval: 10s
                   timeout: 5s
                   retries: 5
 
-              redis-test:
+              redis:
                 image: redis:7-alpine
-                container_name: thvote-redis-test
-                restart: unless-stopped
+                container_name: thvote-redis
+                <<: *common_backend
                 command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
                 volumes:
-                  - redis-test-data:/data
-                networks:
-                  - thvote-test
+                  - redis-data:/data
                 healthcheck:
                   test: ["CMD", "redis-cli", "ping"]
                   interval: 10s
                   timeout: 3s
                   retries: 5
 
-              apollo-test-db:
-                image: postgres:15-alpine
-                container_name: thvote-apollo-test-db
-                restart: unless-stopped
+              backend:
+                image: ${BACKEND_IMAGE}
+                container_name: thvote-backend
+                <<: *common_backend
+                env_file:
+                  - .env
                 environment:
-                  POSTGRES_DB: apollo_test
-                  POSTGRES_USER: apollo_test
-                  POSTGRES_PASSWORD: ${TEST_APOLLO_DB_PASSWORD:-apollo_test_pass}
+                  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-thvote}:${POSTGRES_PASSWORD:-thvote_pass}@postgres:5432/${POSTGRES_DB:-thvote}
+                  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+                  APOLLO_ENABLED: ${APOLLO_ENABLED:-no}
+                  APP_HOST: "0.0.0.0"
+                  APP_PORT: "8000"
                 volumes:
-                  - apollo-test-data:/var/lib/postgresql/data
-                networks:
-                  - thvote-test
-
-              apollo-config-test:
-                image: apolloconfig/apollo-config:2.0.0
-                container_name: thvote-apollo-config-test
-                restart: unless-stopped
-                environment:
-                  SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-test-db:5432/apollo_test
-                  SPRING_DATASOURCE_USERNAME: apollo_test
-                  SPRING_DATASOURCE_PASSWORD: ${TEST_APOLLO_DB_PASSWORD:-apollo_test_pass}
-                  APOLLO_CONFIG_PORT: 8080
-                  APOLLO_CONFIG_NAMESRV_PORT: 8081
-                networks:
-                  - thvote-test
-
-              apollo-portal-test:
-                image: apolloconfig/apollo-portal:2.0.0
-                container_name: thvote-apollo-portal-test
-                restart: unless-stopped
-                environment:
-                  SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-test-db:5432/apollo_test
-                  SPRING_DATASOURCE_USERNAME: apollo_test
-                  SPRING_DATASOURCE_PASSWORD: ${TEST_APOLLO_DB_PASSWORD:-apollo_test_pass}
-                ports:
-                  - "18080:8070"
-                networks:
-                  - thvote-test
+                  - ./logs:/app/logs
                 depends_on:
-                  - apollo-config-test
-
-              backend-test:
-                image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:test
-                container_name: thvote-backend-test
-                restart: unless-stopped
-                environment:
-                  DATABASE_URL: postgresql+asyncpg://thvote_test:${TEST_DB_PASSWORD:-thvote_test_pass}@postgres-test:5432/thvote_test
-                  REDIS_URL: redis://redis-test:6379/0
-                networks:
-                  - thvote-test
-                depends_on:
-                  postgres-test:
+                  postgres:
                     condition: service_healthy
-                  redis-test:
+                  redis:
                     condition: service_healthy
+                profiles:
+                  - backend
 
-              frontend-test:
-                image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:test
-                container_name: thvote-frontend-test
-                restart: unless-stopped
-                ports:
-                  - "8082:80"
-                networks:
-                  - thvote-test
-                depends_on:
-                  - backend-test
+            networks:
+              thvote-net:
+                driver: bridge
+
+            volumes:
+              postgres-data:
+              redis-data:
             COMPOSEEOF
-
-              # 启动基础服务和所有应用服务
-              docker-compose up -d
-              echo "=== 首次部署完成 ==="
+              echo "docker-compose.yml 已创建（后端基础设施）"
             else
-              # ==================== 增量部署：只更新变动的服务 ====================
-              echo "=== 增量部署模式 ==="
-
-              # 确保基础服务运行
-              docker-compose up -d postgres-test redis-test apollo-test-db apollo-config-test apollo-portal-test
-
-              # 根据变更部署后端
-              if [ "$DEPLOY_BACKEND" = "true" ]; then
-                echo ">>> 重新部署后端服务..."
-                docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:test
-                docker-compose up -d --no-deps backend-test
-              fi
-
-              # 根据变更部署前端
-              if [ "$DEPLOY_FRONTEND" = "true" ]; then
-                echo ">>> 重新部署前端服务..."
-                docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:test
-                docker-compose up -d --no-deps frontend-test
-              fi
+              sed -i "s|image: .*/thvote-backend:.*|image: ${BACKEND_IMAGE}|" docker-compose.yml
+              echo "docker-compose.yml 已更新（仅替换 backend 镜像 tag）"
             fi
 
-            # 清理旧镜像
+            # 拉取镜像
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:test || true
+
+            # 启动后端
+            docker-compose up -d --profile backend
+
+            # 等待健康检查
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+                echo "后端就绪"
+                break
+              fi
+              echo "等待后端启动... ($i/30)"
+              sleep 2
+            done
+
+            # 验证
+            if ! curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "后端健康检查失败"
+              docker-compose logs backend | tail -20
+              exit 1
+            fi
+
             docker image prune -f
-
-            # 等待服务启动
-            sleep 10
-
-            # 检查服务状态
-            echo "=== 容器状态 ==="
-            docker-compose ps
-
-            echo "=== 测试环境部署完成 ==="
-            echo "访问地址: http://${{ secrets.TEST_SERVER_HOST }}:8082"
+            echo "后端部署完成，地址: http://localhost:8000"
 
       - name: 无需部署
-        if: steps.changed-services.outputs.deploy-backend != 'true' && steps.changed-services.outputs.deploy-frontend != 'true'
-        run: |
-          echo "本次推送没有代码变更，无需部署"
-          echo "变更的文件不涉及 src/、frontend/、requirements.txt 等需要部署的文件"
+        if: steps.changed.outputs.deploy != 'true'
+        run: echo "本次变更不涉及后端代码，无需重新部署"
 
   # ==================== 通知 ====================
   notify:
-    name: 部署通知
+    name: 通知
     runs-on: ubuntu-latest
     needs: [deploy-test]
     if: always()
 
     steps:
-      - name: 发送成功通知
-        if: needs.deploy-test.result == 'success'
+      - name: 成功
+        if: needs.deploy-test.result == 'success' || needs.deploy-test.result == 'skipped'
         run: |
-          echo "测试环境部署成功！"
-          echo "后端镜像: ${{ needs.build-backend.outputs.backend-tag }}"
-          echo "前端镜像: ${{ needs.build-frontend.outputs.frontend-tag }}"
-          echo "访问地址: http://${{ secrets.TEST_SERVER_HOST }}:8082"
+          echo "测试环境后端部署完成"
+          echo "镜像: ${{ needs.build-backend.outputs.backend-tag }}"
+          echo "后端: http://${{ secrets.TEST_SERVER_HOST }}:8000"
 
-      - name: 发送失败通知
+      - name: 失败
         if: needs.deploy-test.result == 'failure'
         run: |
-          echo "测试环境部署失败，请检查日志"
+          echo "测试环境后端部署失败"
           exit 1
