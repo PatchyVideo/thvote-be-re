@@ -1,5 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Index, String
-from sqlalchemy.types import JSON
+from sqlalchemy import Column, DateTime, ForeignKey, String
 
 from .base import Base
 
@@ -15,6 +14,3 @@ class Character(Base):
 
     # character_list JSON NOT NULL (list of character ids)
     character_list = Column(JSON, nullable=False)
-
-    # Generic index for cross-database support.
-    __table_args__ = (Index("idx_character_list", "character_list"),)
