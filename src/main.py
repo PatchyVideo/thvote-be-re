@@ -14,6 +14,7 @@ from .api.rest.v1 import api_router
 from .common.config import get_settings
 from .common.database import get_db_session, init_db
 from .common.middleware.logging import LoggingMiddleware
+from .common.redis import close_redis
 
 
 @asynccontextmanager
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db()
     yield
     # Shutdown
+    await close_redis()
 
 
 def create_app() -> FastAPI:
