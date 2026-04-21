@@ -228,9 +228,16 @@ jobs:
             echo "BACKEND_IMAGE=$BACKEND_IMAGE" >> "$ENV_FILE"
             # 前端镜像由前端仓库 CI 管理，此处不写入
 
-            # 首次部署时创建 docker-compose.yml（仅后端基础设施）
-            # 后续部署只替换 backend 镜像 tag，不覆盖前端追加的服务
+            # 旧版 compose 没有 Apollo MySQL 结构，需要整体重写
+            RECREATE_COMPOSE="false"
             if ! grep -q "thvote-backend" docker-compose.yml 2>/dev/null; then
+              RECREATE_COMPOSE="true"
+            elif ! grep -q "apollo-mysql" docker-compose.yml 2>/dev/null; then
+              RECREATE_COMPOSE="true"
+            fi
+
+            # 首次部署或检测到旧版 Apollo 结构时重写 docker-compose.yml
+            if [ "$RECREATE_COMPOSE" = "true" ]; then
               cat > docker-compose.yml << 'COMPOSEEOF'
             version: "3.8"
 
@@ -399,7 +406,7 @@ jobs:
               redis-data:
               apollo-mysql-data:
             COMPOSEEOF
-              echo "docker-compose.yml 已创建（后端基础设施）"
+              echo "docker-compose.yml 已按当前 Apollo 拓扑重建"
             else
               # 仅替换 backend 镜像 tag，不碰文件中其他服务（vote/navigator/result 由前端 CI 管理）
               sed -i "s|image: .*/thvote-backend:.*|image: ${BACKEND_IMAGE}:${BACKEND_TAG}|" docker-compose.yml
