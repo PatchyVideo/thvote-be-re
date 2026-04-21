@@ -54,6 +54,10 @@ def _encoding_key() -> tuple[str, str]:
     if settings.jwt_secret_key:
         return settings.jwt_secret_key, settings.jwt_algorithm
 
+    secret_key_from_file = _read_key(settings.jwt_secret_key_file)
+    if secret_key_from_file:
+        return secret_key_from_file, settings.jwt_algorithm
+
     private_key = _read_key(settings.jwt_private_key_path)
     if private_key:
         return private_key, settings.jwt_algorithm
@@ -65,6 +69,10 @@ def _decoding_key() -> tuple[str, str]:
     settings = get_settings()
     if settings.jwt_secret_key:
         return settings.jwt_secret_key, settings.jwt_algorithm
+
+    secret_key_from_file = _read_key(settings.jwt_secret_key_file)
+    if secret_key_from_file:
+        return secret_key_from_file, settings.jwt_algorithm
 
     public_key = _read_key(settings.jwt_public_key_path)
     if public_key:

@@ -184,6 +184,16 @@ jobs:
             docker
           sparse-checkout-cone-mode: false
 
+      - name: 上传 Apollo 初始化资源
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          source: "docker/apollo"
+          target: /opt/thvote/prod/docker
+          strip_components: 1
+
       - name: 部署到生产服务器
         uses: appleboy/ssh-action@v1
         with:
@@ -214,9 +224,21 @@ jobs:
             # Docker Secrets
             echo "${{ secrets.PROD_DB_USER }}" > secrets/db_user.txt
             echo "${{ secrets.PROD_DB_PASSWORD }}" > secrets/db_password.txt
-            echo "${{ secrets.PROD_APOLLO_DB_USER }}" > secrets/apollo_db_user.txt
-            echo "${{ secrets.PROD_APOLLO_DB_PASSWORD }}" > secrets/apollo_db_password.txt
             echo "${{ secrets.PROD_JWT_SECRET }}" > secrets/jwt_secret_key.txt
+
+            cat > .env << 'ENVEOF'
+            APOLLO_VERSION=2.4.0
+            APOLLO_MYSQL_ROOT_PASSWORD=${{ secrets.PROD_APOLLO_DB_PASSWORD }}
+            APOLLO_MYSQL_USER=apollo
+            APOLLO_MYSQL_PASSWORD=${{ secrets.PROD_APOLLO_DB_PASSWORD }}
+            APOLLO_META=http://apollo-configservice-prod:8080
+            APOLLO_ENV=pro
+            APOLLO_CLUSTER=default
+            APOLLO_APP_ID=thvote-backend
+            APOLLO_NAMESPACES=application
+            APOLLO_PORTAL_ENVS=pro
+            APOLLO_PORTAL_META_SERVERS={"pro":"http://apollo-configservice-prod:8080"}
+            ENVEOF
 
             # 创建 docker-compose 配置（使用远程镜像）
             cat > docker-compose.yml << 'COMPOSEEOF'
@@ -229,7 +251,7 @@ jobs:
             volumes:
               postgres-prod-data:
               redis-prod-data:
-              apollo-prod-data:
+              apollo-prod-mysql-data:
 
             services:
               postgres-prod:
@@ -238,8 +260,8 @@ jobs:
                 restart: always
                 environment:
                   POSTGRES_DB: thvote_prod
-                  POSTGRES_USER: file:/run/secrets/db_user
-                  POSTGRES_PASSWORD: file:/run/secrets/db_password
+                  POSTGRES_USER_FILE: /run/secrets/db_user
+                  POSTGRES_PASSWORD_FILE: /run/secrets/db_password
                 secrets:
                   - db_user
                   - db_password
@@ -268,52 +290,93 @@ jobs:
                   timeout: 3s
                   retries: 5
 
-              apollo-prod-db:
-                image: postgres:15-alpine
-                container_name: thvote-apollo-prod-db
+              apollo-mysql-prod:
+                image: mysql:8.0
+                container_name: thvote-apollo-mysql-prod
                 restart: always
+                command:
+                  - --default-authentication-plugin=mysql_native_password
+                  - --character-set-server=utf8mb4
+                  - --collation-server=utf8mb4_general_ci
                 environment:
-                  POSTGRES_DB: apollo_production
-                  POSTGRES_USER: file:/run/secrets/apollo_db_user
-                  POSTGRES_PASSWORD: file:/run/secrets/apollo_db_password
-                secrets:
-                  - apollo_db_user
-                  - apollo_db_password
+                  TZ: Asia/Shanghai
+                  MYSQL_ROOT_PASSWORD: ${APOLLO_MYSQL_ROOT_PASSWORD}
+                  MYSQL_USER: ${APOLLO_MYSQL_USER}
+                  MYSQL_PASSWORD: ${APOLLO_MYSQL_PASSWORD}
                 volumes:
-                  - apollo-prod-data:/var/lib/postgresql/data
+                  - apollo-prod-mysql-data:/var/lib/mysql
+                  - ./docker/apollo/sql/official:/docker-entrypoint-initdb.d:ro
                 networks:
                   - thvote-prod
+                healthcheck:
+                  test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${APOLLO_MYSQL_ROOT_PASSWORD}"]
+                  interval: 10s
+                  timeout: 5s
+                  retries: 10
 
-              apollo-config-prod:
-                image: apolloconfig/apollo-config:2.0.0
-                container_name: thvote-apollo-config-prod
+              apollo-bootstrap-prod:
+                image: mysql:8.0
+                container_name: thvote-apollo-bootstrap-prod
+                restart: "no"
+                environment:
+                  APOLLO_MYSQL_HOST: apollo-mysql-prod
+                  APOLLO_MYSQL_PORT: 3306
+                  APOLLO_MYSQL_ROOT_USER: root
+                  APOLLO_MYSQL_ROOT_PASSWORD: ${APOLLO_MYSQL_ROOT_PASSWORD}
+                  APOLLO_PORTAL_ENVS: ${APOLLO_PORTAL_ENVS}
+                  APOLLO_PORTAL_META_SERVERS: ${APOLLO_PORTAL_META_SERVERS}
+                volumes:
+                  - ./docker/apollo/sql/official:/apollo/sql/official:ro
+                  - ./docker/apollo/scripts/bootstrap.sh:/apollo/scripts/bootstrap.sh:ro
+                networks:
+                  - thvote-prod
+                depends_on:
+                  apollo-mysql-prod:
+                    condition: service_healthy
+                command: ["sh", "/apollo/scripts/bootstrap.sh"]
+
+              apollo-configservice-prod:
+                image: apolloconfig/apollo-configservice:${APOLLO_VERSION}
+                container_name: thvote-apollo-configservice-prod
                 restart: always
                 environment:
-                  SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-prod-db:5432/apollo_production
-                  SPRING_DATASOURCE_USERNAME: file:/run/secrets/apollo_db_user
-                  SPRING_DATASOURCE_PASSWORD: file:/run/secrets/apollo_db_password
-                  APOLLO_CONFIG_PORT: 8080
-                  APOLLO_CONFIG_NAMESRV_PORT: 8081
-                secrets:
-                  - apollo_db_user
-                  - apollo_db_password
+                  SPRING_DATASOURCE_URL: jdbc:mysql://apollo-mysql-prod:3306/ApolloConfigDB?characterEncoding=utf8mb4&useSSL=false&serverTimezone=Asia/Shanghai
+                  SPRING_DATASOURCE_USERNAME: ${APOLLO_MYSQL_USER}
+                  SPRING_DATASOURCE_PASSWORD: ${APOLLO_MYSQL_PASSWORD}
+                  EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://apollo-configservice-prod:8080/eureka/
                 networks:
                   - thvote-prod
+                depends_on:
+                  - apollo-bootstrap-prod
+
+              apollo-adminservice-prod:
+                image: apolloconfig/apollo-adminservice:${APOLLO_VERSION}
+                container_name: thvote-apollo-adminservice-prod
+                restart: always
+                environment:
+                  SPRING_DATASOURCE_URL: jdbc:mysql://apollo-mysql-prod:3306/ApolloConfigDB?characterEncoding=utf8mb4&useSSL=false&serverTimezone=Asia/Shanghai
+                  SPRING_DATASOURCE_USERNAME: ${APOLLO_MYSQL_USER}
+                  SPRING_DATASOURCE_PASSWORD: ${APOLLO_MYSQL_PASSWORD}
+                  EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://apollo-configservice-prod:8080/eureka/
+                networks:
+                  - thvote-prod
+                depends_on:
+                  - apollo-configservice-prod
 
               apollo-portal-prod:
-                image: apolloconfig/apollo-portal:2.0.0
+                image: apolloconfig/apollo-portal:${APOLLO_VERSION}
                 container_name: thvote-apollo-portal-prod
                 restart: always
                 environment:
-                  SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-prod-db:5432/apollo_production
-                  SPRING_DATASOURCE_USERNAME: file:/run/secrets/apollo_db_user
-                  SPRING_DATASOURCE_PASSWORD: file:/run/secrets/apollo_db_password
+                  SPRING_DATASOURCE_URL: jdbc:mysql://apollo-mysql-prod:3306/ApolloPortalDB?characterEncoding=utf8mb4&useSSL=false&serverTimezone=Asia/Shanghai
+                  SPRING_DATASOURCE_USERNAME: ${APOLLO_MYSQL_USER}
+                  SPRING_DATASOURCE_PASSWORD: ${APOLLO_MYSQL_PASSWORD}
                 ports:
                   - "8070:8070"
                 networks:
                   - thvote-prod
                 depends_on:
-                  - apollo-config-prod
+                  - apollo-adminservice-prod
 
               backend-prod:
                 image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:latest
@@ -322,10 +385,12 @@ jobs:
                 secrets:
                   - jwt_secret_key
                 environment:
-                  APOLLO_META: http://apollo-config-prod:8081
-                  APOLLO_ENV: prod
+                  APOLLO_ENABLED: "true"
+                  APOLLO_META: http://apollo-configservice-prod:8080
+                  APOLLO_ENV: pro
                   APOLLO_CLUSTER: default
                   APOLLO_APP_ID: thvote-backend
+                  APOLLO_NAMESPACES: application
                   APP_HOST: "0.0.0.0"
                   APP_PORT: "8000"
                   JWT_SECRET_KEY_FILE: /run/secrets/jwt_secret_key
@@ -354,16 +419,13 @@ jobs:
                 file: ./secrets/db_user.txt
               db_password:
                 file: ./secrets/db_password.txt
-              apollo_db_user:
-                file: ./secrets/apollo_db_user.txt
-              apollo_db_password:
-                file: ./secrets/apollo_db_password.txt
               jwt_secret_key:
                 file: ./secrets/jwt_secret_key.txt
             COMPOSEEOF
 
-            # 拉取最新镜像
-            docker-compose pull
+            # 仅拉取会随部署变更的业务镜像
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:latest || true
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:latest || true
 
             # 备份数据库
             if docker ps | grep -q thvote-postgres-prod; then
@@ -372,11 +434,13 @@ jobs:
               echo "数据库已备份: $BACKUP_FILE"
             fi
 
-            # 停止旧服务
-            docker-compose down || true
+            # 基础服务作为持久基础设施保活，不随流水线重启
+            docker-compose up -d postgres-prod redis-prod apollo-mysql-prod
+            docker-compose run --rm apollo-bootstrap-prod
+            docker-compose up -d apollo-configservice-prod apollo-adminservice-prod apollo-portal-prod
 
-            # 启动新服务
-            docker-compose up -d
+            # 更新业务服务
+            docker-compose up -d backend-prod frontend-prod
 
             # 等待服务启动
             echo "等待服务启动..."

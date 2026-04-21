@@ -6,6 +6,11 @@ from typing import Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .apollo import load_apollo_overrides
+
+
+load_apollo_overrides()
+
 
 class Settings(BaseSettings):
     """Application configuration derived from environment variables."""
@@ -22,8 +27,15 @@ class Settings(BaseSettings):
     redis_url: str = Field("redis://localhost:6379/0", env="REDIS_URL")
     jwt_algorithm: str = Field("HS256", env="JWT_ALGORITHM")
     jwt_secret_key: Optional[str] = Field(None, env="JWT_SECRET_KEY")
+    jwt_secret_key_file: Optional[str] = Field(None, env="JWT_SECRET_KEY_FILE")
     jwt_public_key_path: Optional[str] = Field(None, env="JWT_PUBLIC_KEY_PATH")
     jwt_private_key_path: Optional[str] = Field(None, env="JWT_PRIVATE_KEY_PATH")
+    apollo_enabled: bool = Field(False, env="APOLLO_ENABLED")
+    apollo_meta: str = Field("http://apollo-configservice:8080", env="APOLLO_META")
+    apollo_env: str = Field("dev", env="APOLLO_ENV")
+    apollo_cluster: str = Field("default", env="APOLLO_CLUSTER")
+    apollo_app_id: str = Field("thvote-backend", env="APOLLO_APP_ID")
+    apollo_namespaces: str = Field("application", env="APOLLO_NAMESPACES")
     vote_year: int = Field(2024, env="VOTE_YEAR")
     vote_start_iso: str = Field("2024-01-01T00:00:00Z", env="VOTE_START_ISO")
     vote_end_iso: str = Field("2024-12-31T23:59:59Z", env="VOTE_END_ISO")

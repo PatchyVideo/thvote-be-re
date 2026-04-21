@@ -1,9 +1,3 @@
-# ============================================================
-# THVote 测试环境 Docker Compose 配置
-#
-# 完整隔离环境：前端、后端、数据库、Redis、Apollo
-# ============================================================
-
 version: "3.8"
 
 networks:
@@ -13,10 +7,9 @@ networks:
 volumes:
   postgres-test-data:
   redis-test-data:
-  apollo-test-data:
+  apollo-test-mysql-data:
 
 services:
-  # ==================== PostgreSQL 数据库 ====================
   postgres-test:
     image: postgres:15-alpine
     container_name: thvote-postgres-test
@@ -34,12 +27,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    deploy:
-      resources:
-        limits:
-          memory: 1G
 
-  # ==================== Redis 缓存 ====================
   redis-test:
     image: redis:7-alpine
     container_name: thvote-redis-test
@@ -58,70 +46,100 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
-    deploy:
-      resources:
-        limits:
-          memory: 256M
 
-  # ==================== Apollo 配置中心 ====================
-  apollo-test-db:
-    image: postgres:15-alpine
-    container_name: thvote-apollo-test-db
+  apollo-mysql-test:
+    image: mysql:8.0
+    container_name: thvote-apollo-mysql-test
     restart: unless-stopped
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
     environment:
-      POSTGRES_DB: apollo_test
-      POSTGRES_USER: apollo_test
-      POSTGRES_PASSWORD: ${TEST_APOLLO_DB_PASSWORD:-apollo_test_pass}
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${TEST_APOLLO_MYSQL_ROOT_PASSWORD:-apollo_root_pass}
+      MYSQL_USER: ${TEST_APOLLO_MYSQL_USER:-apollo}
+      MYSQL_PASSWORD: ${TEST_APOLLO_MYSQL_PASSWORD:-apollo_pass}
     volumes:
-      - apollo-test-data:/var/lib/postgresql/data
+      - apollo-test-mysql-data:/var/lib/mysql
+      - ./apollo/sql/official:/docker-entrypoint-initdb.d:ro
     networks:
       - thvote-test
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U apollo_test -d apollo_test"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${TEST_APOLLO_MYSQL_ROOT_PASSWORD:-apollo_root_pass}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  apollo-config-test:
-    image: apolloconfig/apollo-config:2.0.0
-    container_name: thvote-apollo-config-test
-    restart: unless-stopped
+  apollo-bootstrap-test:
+    image: mysql:8.0
+    container_name: thvote-apollo-bootstrap-test
+    restart: "no"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-test-db:5432/apollo_test
-      SPRING_DATASOURCE_USERNAME: apollo_test
-      SPRING_DATASOURCE_PASSWORD: ${TEST_APOLLO_DB_PASSWORD:-apollo_test_pass}
-      APOLLO_CONFIG_PORT: 8080
-      APOLLO_CONFIG_NAMESRV_PORT: 8081
+      APOLLO_MYSQL_HOST: apollo-mysql-test
+      APOLLO_MYSQL_PORT: 3306
+      APOLLO_MYSQL_ROOT_USER: root
+      APOLLO_MYSQL_ROOT_PASSWORD: ${TEST_APOLLO_MYSQL_ROOT_PASSWORD:-apollo_root_pass}
+      APOLLO_PORTAL_ENVS: fat
+      APOLLO_PORTAL_META_SERVERS: '{"fat":"http://apollo-configservice-test:8080"}'
+    volumes:
+      - ./apollo/sql/official:/apollo/sql/official:ro
+      - ./apollo/scripts/bootstrap.sh:/apollo/scripts/bootstrap.sh:ro
     networks:
       - thvote-test
     depends_on:
-      apollo-test-db:
+      apollo-mysql-test:
         condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    command: ["sh", "/apollo/scripts/bootstrap.sh"]
+
+  apollo-configservice-test:
+    image: apolloconfig/apollo-configservice:${APOLLO_VERSION:-2.4.0}
+    container_name: thvote-apollo-configservice-test
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://apollo-mysql-test:3306/ApolloConfigDB?characterEncoding=utf8mb4&useSSL=false&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: ${TEST_APOLLO_MYSQL_USER:-apollo}
+      SPRING_DATASOURCE_PASSWORD: ${TEST_APOLLO_MYSQL_PASSWORD:-apollo_pass}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://apollo-configservice-test:8080/eureka/
+    networks:
+      - thvote-test
+    depends_on:
+      apollo-bootstrap-test:
+        condition: service_completed_successfully
+
+  apollo-adminservice-test:
+    image: apolloconfig/apollo-adminservice:${APOLLO_VERSION:-2.4.0}
+    container_name: thvote-apollo-adminservice-test
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://apollo-mysql-test:3306/ApolloConfigDB?characterEncoding=utf8mb4&useSSL=false&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: ${TEST_APOLLO_MYSQL_USER:-apollo}
+      SPRING_DATASOURCE_PASSWORD: ${TEST_APOLLO_MYSQL_PASSWORD:-apollo_pass}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://apollo-configservice-test:8080/eureka/
+    networks:
+      - thvote-test
+    depends_on:
+      apollo-bootstrap-test:
+        condition: service_completed_successfully
+      apollo-configservice-test:
+        condition: service_started
 
   apollo-portal-test:
-    image: apolloconfig/apollo-portal:2.0.0
+    image: apolloconfig/apollo-portal:${APOLLO_VERSION:-2.4.0}
     container_name: thvote-apollo-portal-test
     restart: unless-stopped
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://apollo-test-db:5432/apollo_test
-      SPRING_DATASOURCE_USERNAME: apollo_test
-      SPRING_DATASOURCE_PASSWORD: ${TEST_APOLLO_DB_PASSWORD:-apollo_test_pass}
+      SPRING_DATASOURCE_URL: jdbc:mysql://apollo-mysql-test:3306/ApolloPortalDB?characterEncoding=utf8mb4&useSSL=false&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: ${TEST_APOLLO_MYSQL_USER:-apollo}
+      SPRING_DATASOURCE_PASSWORD: ${TEST_APOLLO_MYSQL_PASSWORD:-apollo_pass}
     ports:
       - "18080:8070"
     networks:
       - thvote-test
     depends_on:
-      - apollo-config-test
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+      apollo-adminservice-test:
+        condition: service_started
 
-  # ==================== 后端服务 ====================
   backend-test:
     build:
       context: ..
@@ -133,9 +151,14 @@ services:
     env_file:
       - ../.env.test
     environment:
-      # 覆盖 .env 中的数据库连接（使用容器网络名称）
       DATABASE_URL: postgresql+asyncpg://thvote_test:${TEST_DB_PASSWORD:-thvote_test_pass}@postgres-test:5432/thvote_test
       REDIS_URL: redis://redis-test:6379/0
+      APOLLO_ENABLED: "true"
+      APOLLO_META: http://apollo-configservice-test:8080
+      APOLLO_ENV: fat
+      APOLLO_CLUSTER: default
+      APOLLO_APP_ID: thvote-backend
+      APOLLO_NAMESPACES: application
     volumes:
       - ../logs:/app/logs
     networks:
@@ -151,12 +174,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    deploy:
-      resources:
-        limits:
-          memory: 1G
 
-  # ==================== 前端服务 ====================
   frontend-test:
     build:
       context: ..
@@ -172,41 +190,4 @@ services:
       - thvote-test
     depends_on:
       - backend-test
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          memory: 128M
 
-# ============================================================
-# 测试环境说明：
-#
-# 1. 密码通过环境变量设置（在 secrets 中设置）
-#    - TEST_DB_PASSWORD
-#    - TEST_APOLLO_DB_PASSWORD
-#
-# 2. Apollo 服务已部署但暂不使用（后续集成）
-#    - Apollo Portal: http://localhost:18080
-#    - 用于后续配置中心集成
-#
-# 3. 后端配置通过 .env.test 文件读取
-#    - .env.test 中的 DATABASE_URL/REDIS_URL 会覆盖容器内的连接
-#    - 密码从环境变量 TEST_DB_PASSWORD 读取
-#
-# 访问地址：
-#   前端: http://localhost:8082
-#   后端: http://localhost:8000
-#   Apollo Portal: http://localhost:18080
-#
-# 启动方式：
-#   docker compose up -d
-#
-# 增量部署说明：
-#   - 后端代码变更：只重启 backend-test
-#   - 前端代码变更：只重启 frontend-test
-#   - 基础服务（postgres、redis、apollo）不重启
-# ============================================================

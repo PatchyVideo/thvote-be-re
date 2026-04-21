@@ -2,9 +2,9 @@
 # THVote Docker 环境配置
 #
 # 配置体系：
-# - 环境变量: 敏感信息（数据库密码、JWT密钥等）
+# - 环境变量: 基础连接信息和显式覆盖项
 # - .env 文件: 本地开发配置
-# - Apollo: 业务配置（后续集成）
+# - Apollo: 业务配置中心
 # ============================================================
 
 ## 目录结构
@@ -62,7 +62,7 @@ CI/CD 会根据代码变更自动判断需要部署的服务：
 | `frontend/` | 只重启前端 |
 | 其他文件 | 仅运行检查，不部署 |
 
-基础服务（PostgreSQL、Redis、Apollo）始终保持运行。
+基础服务（PostgreSQL、Redis、Apollo MySQL、Apollo Config/Admin/Portal）始终保持运行。
 
 ## 常用命令
 
@@ -89,3 +89,10 @@ cd docker
 | 后端 API | http://localhost:8000 |
 | 健康检查 | http://localhost:8000/health |
 | Apollo Portal | http://localhost:18080 |
+
+Apollo 首次启动会自动执行官方初始化 SQL：
+
+- `docker/apollo/sql/official/apolloconfigdb.sql`
+- `docker/apollo/sql/official/apolloportaldb.sql`
+
+随后由 `docker/apollo/scripts/bootstrap.sh` 幂等写入 Portal 环境映射。

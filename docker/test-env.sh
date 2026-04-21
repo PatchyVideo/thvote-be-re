@@ -45,7 +45,10 @@ ${CYAN}THVote 测试环境管理脚本${NC}
 服务:
     - postgres-test      PostgreSQL 数据库
     - redis-test        Redis 缓存
-    - apollo-config-test Apollo 配置中心
+    - apollo-mysql-test Apollo MySQL
+    - apollo-configservice-test Apollo Config Service
+    - apollo-adminservice-test Apollo Admin Service
+    - apollo-portal-test Apollo Portal
     - backend-test      后端服务
     - frontend-test     前端 + Nginx
 EOF
@@ -100,7 +103,8 @@ cmd_status() {
     echo -e "请在 Apollo Portal 中配置以下项："
     echo -e "  DATABASE_URL=postgresql+asyncpg://thvote_test:thvote_test_pass@postgres-test:5432/thvote_test"
     echo -e "  REDIS_URL=redis://redis-test:6379/0"
-    echo -e "  VOTE_YEAR=2025"
+    echo -e "  JWT_SECRET_KEY=your_test_jwt_secret_here"
+    echo -e "  VOTE_YEAR=2026"
     echo ""
 }
 
