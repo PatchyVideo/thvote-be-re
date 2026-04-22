@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     apollo_cluster: str = Field("default", env="APOLLO_CLUSTER")
     apollo_app_id: str = Field("thvote-backend", env="APOLLO_APP_ID")
     apollo_namespaces: str = Field("application", env="APOLLO_NAMESPACES")
+    apollo_access_key: Optional[str] = Field(None, env="APOLLO_ACCESS_KEY")
     vote_year: int = Field(2024, env="VOTE_YEAR")
     vote_start_iso: str = Field("2024-01-01T00:00:00Z", env="VOTE_START_ISO")
     vote_end_iso: str = Field("2024-12-31T23:59:59Z", env="VOTE_END_ISO")
@@ -89,6 +90,13 @@ def get_settings() -> Settings:
     """Return a cached Settings instance."""
 
     return Settings()
+
+
+def reload_settings() -> Settings:
+    """Clear the cache and return a new Settings instance."""
+
+    get_settings.cache_clear()
+    return get_settings()
 
 
 # Alias for backward compatibility

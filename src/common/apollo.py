@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import logging
 import os
-from typing import Any
+import time
+from typing import Any, Optional
 
 import httpx
 from dotenv import load_dotenv
@@ -10,6 +14,17 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
 _TRUTHY_VALUES = {"1", "true", "yes", "on"}
+
+
+def _generate_apollo_signature(access_key: str, timestamp_ms: int, path: str) -> str:
+    """Generate HMAC-SHA1 signature for Apollo access key authentication."""
+    message = f"{timestamp_ms}\n{path}"
+    signature = hmac.new(
+        access_key.encode("utf-8"),
+        message.encode("utf-8"),
+        hashlib.sha1,
+    ).digest()
+    return base64.b64encode(signature).decode("utf-8")
 
 
 def _env_flag(name: str, default: str = "false") -> bool:
@@ -44,6 +59,7 @@ def _fetch_namespace(
     app_id: str,
     cluster: str,
     namespace: str,
+    access_key: Optional[str] = None,
 ) -> dict[str, str]:
     namespace = namespace.strip()
     if not namespace:
@@ -54,7 +70,13 @@ def _fetch_namespace(
         f"/configfiles/json/{app_id}/{cluster}/{namespace}",
     )
     for path in candidate_paths:
-        response = client.get(path)
+        headers = {}
+        if access_key:
+            timestamp_ms = int(time.time() * 1000)
+            signature = _generate_apollo_signature(access_key, timestamp_ms, path)
+            headers["Authorization"] = f"Apollo {app_id}:{signature}"
+            headers["Timestamp"] = str(timestamp_ms)
+        response = client.get(path, headers=headers)
         if response.status_code == 404:
             continue
         response.raise_for_status()
@@ -76,26 +98,36 @@ def load_apollo_overrides() -> dict[str, str]:
     load_dotenv(override=False)
 
     if not _env_flag("APOLLO_ENABLED", "false"):
+        logger.debug("Apollo disabled (APOLLO_ENABLED != true)")
         return {}
 
     app_id = os.getenv("APOLLO_APP_ID", "thvote-backend").strip()
     cluster = os.getenv("APOLLO_CLUSTER", "default").strip()
     namespaces = _parse_namespaces(os.getenv("APOLLO_NAMESPACES"))
     meta_server = _normalize_meta_server(os.getenv("APOLLO_META"))
+    access_key = os.getenv("APOLLO_ACCESS_KEY")
     timeout = float(os.getenv("APOLLO_TIMEOUT_SECONDS", "5"))
+
+    logger.debug(
+        "Apollo config: meta=%s, app_id=%s, cluster=%s, namespaces=%s, timeout=%s",
+        meta_server, app_id, cluster, namespaces, timeout,
+    )
 
     merged: dict[str, str] = {}
     try:
         with httpx.Client(base_url=meta_server, timeout=timeout) as client:
             for namespace in namespaces:
-                merged.update(
-                    _fetch_namespace(
-                        client=client,
-                        app_id=app_id,
-                        cluster=cluster,
-                        namespace=namespace,
-                    )
+                logger.debug("Fetching Apollo namespace: %s", namespace)
+                namespace_config = _fetch_namespace(
+                    client=client,
+                    app_id=app_id,
+                    cluster=cluster,
+                    namespace=namespace,
+                    access_key=access_key,
                 )
+                if namespace_config:
+                    logger.debug("  - %s: got %d keys", namespace, len(namespace_config))
+                merged.update(namespace_config)
     except Exception as exc:
         logger.warning("Failed to load Apollo config from %s: %s", meta_server, exc)
         return {}
@@ -103,4 +135,5 @@ def load_apollo_overrides() -> dict[str, str]:
     for key, value in merged.items():
         os.environ.setdefault(key, value)
 
+    logger.info("Apollo loaded %d config values", len(merged))
     return merged
