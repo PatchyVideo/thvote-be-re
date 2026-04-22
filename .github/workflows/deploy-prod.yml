@@ -343,11 +343,12 @@ jobs:
 
             # 健康检查
             echo "执行健康检查..."
-            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+            BACKEND_HEALTH="$(docker inspect -f '{{.State.Health.Status}}' thvote-backend-prod 2>/dev/null || true)"
+            if [ "$BACKEND_HEALTH" = "healthy" ]; then
               echo "后端服务健康检查通过"
             else
-              echo "后端服务健康检查失败，查看日志..."
-              docker-compose logs backend-prod | tail -20
+              echo "后端服务健康检查失败，当前状态: ${BACKEND_HEALTH:-unknown}"
+              docker-compose logs backend-prod | tail -50
               exit 1
             fi
 

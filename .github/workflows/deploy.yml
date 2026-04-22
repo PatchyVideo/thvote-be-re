@@ -327,30 +327,32 @@ jobs:
 
             # 等待后端健康检查
             echo "等待后端服务健康检查..."
-            BACKEND_HOST="localhost"
-            BACKEND_PORT="8000"
-            if [ "${{ needs.confirm.outputs.environment }}" == "test" ]; then
-              BACKEND_PORT="8000"
-            fi
             for i in $(seq 1 30); do
-              if curl -sf "http://${BACKEND_HOST}:${BACKEND_PORT}/health" > /dev/null 2>&1; then
+              BACKEND_HEALTH="$(docker inspect -f '{{.State.Health.Status}}' thvote-backend 2>/dev/null || true)"
+              if [ "$BACKEND_HEALTH" = "healthy" ]; then
                 echo "后端服务健康"
                 break
               fi
-              echo "等待中... ($i/30)"
+              if [ "$BACKEND_HEALTH" = "unhealthy" ]; then
+                echo "后端已进入 unhealthy 状态"
+                docker-compose logs backend | tail -50
+                exit 1
+              fi
+              echo "等待中... ($i/30), 当前状态: ${BACKEND_HEALTH:-starting}"
               sleep 2
             done
 
             # 验证后端
-            if ! curl -sf "http://${BACKEND_HOST}:${BACKEND_PORT}/health" > /dev/null 2>&1; then
-              echo "后端健康检查失败，查看日志:"
+            BACKEND_HEALTH="$(docker inspect -f '{{.State.Health.Status}}' thvote-backend 2>/dev/null || true)"
+            if [ "$BACKEND_HEALTH" != "healthy" ]; then
+              echo "后端健康检查失败，当前状态: ${BACKEND_HEALTH:-unknown}"
               docker-compose logs backend | tail -30
               exit 1
             fi
 
             # 验证 schema 端点可用
             echo "验证 GraphQL schema 端点..."
-            if curl -sf "http://${BACKEND_HOST}:${BACKEND_PORT}/graphql/schema" > /dev/null 2>&1; then
+            if docker-compose exec -T backend curl -sf "http://localhost:8000/graphql/schema" > /dev/null 2>&1; then
               echo "GraphQL schema 端点正常"
             else
               echo "警告: GraphQL schema 端点不可用，可能需要 Apollo 配置"
@@ -365,7 +367,7 @@ jobs:
             echo "后端部署完成"
             echo "版本: ${{ needs.confirm.outputs.version }}"
             echo "环境: ${{ needs.confirm.outputs.environment }}"
-            echo "后端: http://${BACKEND_HOST}:${BACKEND_PORT}"
+            echo "后端容器健康状态: $BACKEND_HEALTH"
             echo "=========================================="
             echo ""
             echo "前端由 Touhou-Vote 仓库独立部署。vote/navigator/result 三个服务"
