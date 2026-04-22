@@ -189,6 +189,7 @@ jobs:
               echo "APOLLO_ENV=pro" >> "$ENV_FILE"
               echo "APOLLO_CLUSTER=default" >> "$ENV_FILE"
               echo "APOLLO_APP_ID=thvote-backend" >> "$ENV_FILE"
+              echo "APOLLO_ACCESS_KEY=${{ secrets.APOLLO_ACCESS_KEY_PROD }}" >> "$ENV_FILE"
               echo "APOLLO_NAMESPACES=application" >> "$ENV_FILE"
             else
               echo "POSTGRES_DB=thvote_test" >> "$ENV_FILE"
@@ -200,6 +201,7 @@ jobs:
               echo "APOLLO_ENV=fat" >> "$ENV_FILE"
               echo "APOLLO_CLUSTER=fat" >> "$ENV_FILE"
               echo "APOLLO_APP_ID=thvote-backend" >> "$ENV_FILE"
+              echo "APOLLO_ACCESS_KEY=${{ secrets.APOLLO_ACCESS_KEY_PROD }}" >> "$ENV_FILE"
               echo "APOLLO_NAMESPACES=application" >> "$ENV_FILE"
             fi
 

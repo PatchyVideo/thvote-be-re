@@ -227,6 +227,7 @@ jobs:
             APOLLO_ENV=fat
             APOLLO_CLUSTER=fat
             APOLLO_APP_ID=thvote-backend
+            APOLLO_ACCESS_KEY=${{ secrets.APOLLO_ACCESS_KEY_TEST }}
             APOLLO_NAMESPACES=application
             BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:test
             ENVEOF
