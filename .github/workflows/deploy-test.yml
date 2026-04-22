@@ -225,7 +225,7 @@ jobs:
             APOLLO_ENABLED=yes
             APOLLO_META=${{ vars.APOLLO_META || 'http://apollo-configservice:8080' }}
             APOLLO_ENV=fat
-            APOLLO_CLUSTER=default
+            APOLLO_CLUSTER=fat
             APOLLO_APP_ID=thvote-backend
             APOLLO_NAMESPACES=application
             BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:test
@@ -266,6 +266,8 @@ jobs:
                   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thvote_pass}
                 volumes:
                   - postgres-data:/var/lib/postgresql/data
+                ports:
+                  - "5432:5432"
                 healthcheck:
                   test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thvote} -d ${POSTGRES_DB:-thvote}"]
                   interval: 10s
