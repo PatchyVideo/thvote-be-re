@@ -198,7 +198,7 @@ jobs:
               echo "APOLLO_ENABLED=yes" >> "$ENV_FILE"
               echo "APOLLO_META=${{ vars.APOLLO_META || 'http://apollo-configservice:8080' }}" >> "$ENV_FILE"
               echo "APOLLO_ENV=fat" >> "$ENV_FILE"
-              echo "APOLLO_CLUSTER=default" >> "$ENV_FILE"
+              echo "APOLLO_CLUSTER=fat" >> "$ENV_FILE"
               echo "APOLLO_APP_ID=thvote-backend" >> "$ENV_FILE"
               echo "APOLLO_NAMESPACES=application" >> "$ENV_FILE"
             fi
@@ -311,8 +311,12 @@ jobs:
             echo "拉取后端镜像 $BACKEND_IMAGE:$BACKEND_TAG..."
             docker pull "$BACKEND_IMAGE:$BACKEND_TAG" || true
 
-            # 基础服务只做保活，不随业务发布重启；Apollo 独立部署在 /opt/apollo
-            docker-compose up -d postgres redis
+            # 仅当基础服务不存在时才启动
+            if ! docker ps -a --format '{{.Names}}' | grep -q '^thvote-postgres$'; then
+              docker-compose up -d postgres redis
+            else
+              echo "postgres 和 redis 服务已存在，跳过启动"
+            fi
 
             # 等待数据库就绪
             echo "等待数据库启动..."

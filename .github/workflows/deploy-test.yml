@@ -297,7 +297,7 @@ jobs:
                   APOLLO_ENABLED: ${APOLLO_ENABLED:-yes}
                   APOLLO_META: ${APOLLO_META:-http://apollo-configservice:8080}
                   APOLLO_ENV: ${APOLLO_ENV:-fat}
-                  APOLLO_CLUSTER: ${APOLLO_CLUSTER:-default}
+                  APOLLO_CLUSTER: ${APOLLO_CLUSTER:-fat}
                   APOLLO_APP_ID: ${APOLLO_APP_ID:-thvote-backend}
                   APOLLO_NAMESPACES: ${APOLLO_NAMESPACES:-application}
                   APP_HOST: "0.0.0.0"
@@ -332,8 +332,12 @@ jobs:
             # 拉取镜像
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:test || true
 
-            # 基础服务只做保活，不随业务发布重启；Apollo 独立部署在 /opt/apollo
-            docker-compose up -d postgres redis
+            # 仅当基础服务不存在时才启动
+            if ! docker ps -a --format '{{.Names}}' | grep -q '^thvote-postgres$'; then
+              docker-compose up -d postgres redis
+            else
+              echo "postgres 和 redis 服务已存在，跳过启动"
+            fi
 
             # 启动后端（直接指定 backend 服务，避免老版本 docker-compose 不支持 --profile）
             docker-compose up -d backend

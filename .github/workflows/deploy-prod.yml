@@ -220,7 +220,7 @@ jobs:
             APOLLO_ENABLED=yes
             APOLLO_META=${{ vars.APOLLO_META || 'http://apollo-configservice:8080' }}
             APOLLO_ENV=pro
-            APOLLO_CLUSTER=default
+            APOLLO_CLUSTER=pro
             APOLLO_APP_ID=thvote-backend
             APOLLO_NAMESPACES=application
             ENVEOF
@@ -331,8 +331,12 @@ jobs:
               echo "数据库已备份: $BACKUP_FILE"
             fi
 
-            # 基础服务作为持久基础设施保活，不随流水线重启；Apollo 独立部署在 /opt/apollo
-            docker-compose up -d postgres-prod redis-prod
+            # 仅当基础服务不存在时才启动
+            if ! docker ps -a --format '{{.Names}}' | grep -q '^thvote-postgres-prod$'; then
+              docker-compose up -d postgres-prod redis-prod
+            else
+              echo "postgres-prod 和 redis-prod 服务已存在，跳过启动"
+            fi
 
             # 更新业务服务
             docker-compose up -d backend-prod frontend-prod
