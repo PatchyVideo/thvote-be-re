@@ -66,6 +66,8 @@ services:
       APOLLO_CLUSTER: ${APOLLO_CLUSTER:-default}
       APOLLO_APP_ID: ${APOLLO_APP_ID:-thvote-backend}
       APOLLO_NAMESPACES: ${APOLLO_NAMESPACES:-application}
+    ports:
+      - "18000:8000"
     volumes:
       - ../logs:/app/logs
     networks:

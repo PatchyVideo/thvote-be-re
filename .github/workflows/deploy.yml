@@ -277,6 +277,8 @@ jobs:
                   APOLLO_NAMESPACES: ${APOLLO_NAMESPACES:-application}
                   APP_HOST: "0.0.0.0"
                   APP_PORT: "8000"
+                ports:
+                  - "18000:8000"
                 volumes:
                   - ./logs:/app/logs
                 depends_on:

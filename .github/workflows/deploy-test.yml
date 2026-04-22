@@ -302,6 +302,8 @@ jobs:
                   APOLLO_NAMESPACES: ${APOLLO_NAMESPACES:-application}
                   APP_HOST: "0.0.0.0"
                   APP_PORT: "8000"
+                ports:
+                  - "18000:8000"
                 volumes:
                   - ./logs:/app/logs
                 depends_on:
@@ -361,7 +363,7 @@ jobs:
             fi
 
             docker image prune -f
-            echo "后端部署完成，地址: http://localhost:8000"
+            echo "后端部署完成，地址: http://localhost:18000"
 
   # ==================== 通知 ====================
   notify:
