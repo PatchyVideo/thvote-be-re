@@ -140,16 +140,6 @@ jobs:
             echo "deploy_dir=${{ vars.PROD_SERVER_DIR || '/opt/thvote/prod' }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: 上传 Apollo 初始化资源
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ needs.confirm.outputs.environment == 'prod' && secrets.PROD_SERVER_HOST || secrets.TEST_SERVER_HOST }}
-          username: ${{ needs.confirm.outputs.environment == 'prod' && secrets.PROD_SERVER_USER || secrets.TEST_SERVER_USER }}
-          key: ${{ needs.confirm.outputs.environment == 'prod' && secrets.PROD_SERVER_SSH_KEY || secrets.TEST_SERVER_SSH_KEY }}
-          source: "docker/apollo"
-          target: ${{ format('{0}/docker', steps.env_config.outputs.deploy_dir) }}
-          strip_components: 1
-
       - name: 部署到服务器
         uses: appleboy/ssh-action@v1
         with:
@@ -194,49 +184,37 @@ jobs:
               echo "POSTGRES_USER=${{ secrets.PROD_DB_USER }}" >> "$ENV_FILE"
               echo "POSTGRES_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}" >> "$ENV_FILE"
               echo "JWT_SECRET_KEY=${{ secrets.PROD_JWT_SECRET }}" >> "$ENV_FILE"
-              echo "APOLLO_VERSION=2.4.0" >> "$ENV_FILE"
               echo "APOLLO_ENABLED=yes" >> "$ENV_FILE"
-              echo "APOLLO_META=http://apollo-configservice:8080" >> "$ENV_FILE"
+              echo "APOLLO_META=${{ vars.APOLLO_META || 'http://apollo-configservice:8080' }}" >> "$ENV_FILE"
               echo "APOLLO_ENV=pro" >> "$ENV_FILE"
               echo "APOLLO_CLUSTER=default" >> "$ENV_FILE"
               echo "APOLLO_APP_ID=thvote-backend" >> "$ENV_FILE"
               echo "APOLLO_NAMESPACES=application" >> "$ENV_FILE"
-              echo "APOLLO_MYSQL_ROOT_PASSWORD=${{ secrets.PROD_APOLLO_DB_PASSWORD }}" >> "$ENV_FILE"
-              echo "APOLLO_MYSQL_USER=apollo" >> "$ENV_FILE"
-              echo "APOLLO_MYSQL_PASSWORD=${{ secrets.PROD_APOLLO_DB_PASSWORD }}" >> "$ENV_FILE"
-              echo "APOLLO_PORTAL_ENVS=pro" >> "$ENV_FILE"
-              echo "APOLLO_PORTAL_META_SERVERS={\"pro\":\"http://apollo-configservice:8080\"}" >> "$ENV_FILE"
             else
               echo "POSTGRES_DB=thvote_test" >> "$ENV_FILE"
               echo "POSTGRES_USER=thvote_test" >> "$ENV_FILE"
               echo "POSTGRES_PASSWORD=${{ secrets.TEST_DB_PASSWORD }}" >> "$ENV_FILE"
               echo "JWT_SECRET_KEY=${{ secrets.TEST_JWT_SECRET || 'dev-secret-do-not-use-in-prod' }}" >> "$ENV_FILE"
-              echo "APOLLO_VERSION=2.4.0" >> "$ENV_FILE"
               echo "APOLLO_ENABLED=yes" >> "$ENV_FILE"
-              echo "APOLLO_META=http://apollo-configservice:8080" >> "$ENV_FILE"
+              echo "APOLLO_META=${{ vars.APOLLO_META || 'http://apollo-configservice:8080' }}" >> "$ENV_FILE"
               echo "APOLLO_ENV=fat" >> "$ENV_FILE"
               echo "APOLLO_CLUSTER=default" >> "$ENV_FILE"
               echo "APOLLO_APP_ID=thvote-backend" >> "$ENV_FILE"
               echo "APOLLO_NAMESPACES=application" >> "$ENV_FILE"
-              echo "APOLLO_MYSQL_ROOT_PASSWORD=${{ secrets.TEST_APOLLO_DB_PASSWORD }}" >> "$ENV_FILE"
-              echo "APOLLO_MYSQL_USER=apollo" >> "$ENV_FILE"
-              echo "APOLLO_MYSQL_PASSWORD=${{ secrets.TEST_APOLLO_DB_PASSWORD }}" >> "$ENV_FILE"
-              echo "APOLLO_PORTAL_ENVS=fat" >> "$ENV_FILE"
-              echo "APOLLO_PORTAL_META_SERVERS={\"fat\":\"http://apollo-configservice:8080\"}" >> "$ENV_FILE"
             fi
 
             echo "BACKEND_IMAGE=$BACKEND_IMAGE" >> "$ENV_FILE"
             # 前端镜像由前端仓库 CI 管理，此处不写入
 
-            # 旧版 compose 没有 Apollo MySQL 结构，需要整体重写
+            # 旧版 compose 内嵌 Apollo，需要整体重写为外部 Apollo 结构
             RECREATE_COMPOSE="false"
             if ! grep -q "thvote-backend" docker-compose.yml 2>/dev/null; then
               RECREATE_COMPOSE="true"
-            elif ! grep -q "apollo-mysql" docker-compose.yml 2>/dev/null; then
+            elif grep -q "apollo-mysql\\|apollo-configservice\\|apollo-bootstrap" docker-compose.yml 2>/dev/null; then
               RECREATE_COMPOSE="true"
             fi
 
-            # 首次部署或检测到旧版 Apollo 结构时重写 docker-compose.yml
+            # 首次部署或检测到内嵌 Apollo 结构时重写 docker-compose.yml
             if [ "$RECREATE_COMPOSE" = "true" ]; then
               cat > docker-compose.yml << 'COMPOSEEOF'
             version: "3.8"
@@ -282,94 +260,6 @@ jobs:
                   timeout: 3s
                   retries: 5
 
-              apollo-mysql:
-                image: mysql:8.0
-                container_name: thvote-apollo-mysql
-                restart: unless-stopped
-                networks:
-                  - thvote-net
-                command:
-                  - --default-authentication-plugin=mysql_native_password
-                  - --character-set-server=utf8mb4
-                  - --collation-server=utf8mb4_general_ci
-                environment:
-                  TZ: Asia/Shanghai
-                  MYSQL_ROOT_PASSWORD: ${APOLLO_MYSQL_ROOT_PASSWORD}
-                  MYSQL_USER: ${APOLLO_MYSQL_USER}
-                  MYSQL_PASSWORD: ${APOLLO_MYSQL_PASSWORD}
-                volumes:
-                  - apollo-mysql-data:/var/lib/mysql
-                  - ./docker/apollo/sql/official:/docker-entrypoint-initdb.d:ro
-                healthcheck:
-                  test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${APOLLO_MYSQL_ROOT_PASSWORD}"]
-                  interval: 10s
-                  timeout: 5s
-                  retries: 10
-
-              apollo-bootstrap:
-                image: mysql:8.0
-                container_name: thvote-apollo-bootstrap
-                restart: "no"
-                networks:
-                  - thvote-net
-                environment:
-                  APOLLO_MYSQL_HOST: apollo-mysql
-                  APOLLO_MYSQL_PORT: 3306
-                  APOLLO_MYSQL_ROOT_USER: root
-                  APOLLO_MYSQL_ROOT_PASSWORD: ${APOLLO_MYSQL_ROOT_PASSWORD}
-                  APOLLO_PORTAL_ENVS: ${APOLLO_PORTAL_ENVS}
-                  APOLLO_PORTAL_META_SERVERS: ${APOLLO_PORTAL_META_SERVERS}
-                volumes:
-                  - ./docker/apollo/sql/official:/apollo/sql/official:ro
-                  - ./docker/apollo/scripts/bootstrap.sh:/apollo/scripts/bootstrap.sh:ro
-                depends_on:
-                  apollo-mysql:
-                    condition: service_healthy
-                command: ["sh", "/apollo/scripts/bootstrap.sh"]
-
-              apollo-configservice:
-                image: apolloconfig/apollo-configservice:${APOLLO_VERSION}
-                container_name: thvote-apollo-configservice
-                restart: unless-stopped
-                networks:
-                  - thvote-net
-                environment:
-                  SPRING_DATASOURCE_URL: jdbc:mysql://apollo-mysql:3306/ApolloConfigDB?characterEncoding=utf8mb4&useSSL=false&serverTimezone=Asia/Shanghai
-                  SPRING_DATASOURCE_USERNAME: ${APOLLO_MYSQL_USER}
-                  SPRING_DATASOURCE_PASSWORD: ${APOLLO_MYSQL_PASSWORD}
-                  EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://apollo-configservice:8080/eureka/
-                depends_on:
-                  - apollo-bootstrap
-
-              apollo-adminservice:
-                image: apolloconfig/apollo-adminservice:${APOLLO_VERSION}
-                container_name: thvote-apollo-adminservice
-                restart: unless-stopped
-                networks:
-                  - thvote-net
-                environment:
-                  SPRING_DATASOURCE_URL: jdbc:mysql://apollo-mysql:3306/ApolloConfigDB?characterEncoding=utf8mb4&useSSL=false&serverTimezone=Asia/Shanghai
-                  SPRING_DATASOURCE_USERNAME: ${APOLLO_MYSQL_USER}
-                  SPRING_DATASOURCE_PASSWORD: ${APOLLO_MYSQL_PASSWORD}
-                  EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://apollo-configservice:8080/eureka/
-                depends_on:
-                  - apollo-configservice
-
-              apollo-portal:
-                image: apolloconfig/apollo-portal:${APOLLO_VERSION}
-                container_name: thvote-apollo-portal
-                restart: unless-stopped
-                networks:
-                  - thvote-net
-                environment:
-                  SPRING_DATASOURCE_URL: jdbc:mysql://apollo-mysql:3306/ApolloPortalDB?characterEncoding=utf8mb4&useSSL=false&serverTimezone=Asia/Shanghai
-                  SPRING_DATASOURCE_USERNAME: ${APOLLO_MYSQL_USER}
-                  SPRING_DATASOURCE_PASSWORD: ${APOLLO_MYSQL_PASSWORD}
-                ports:
-                  - "${APOLLO_PORTAL_PORT:-8070}:8070"
-                depends_on:
-                  - apollo-adminservice
-
               backend:
                 image: ${BACKEND_IMAGE}
                 container_name: thvote-backend
@@ -399,14 +289,14 @@ jobs:
 
             networks:
               thvote-net:
-                driver: bridge
+                name: thvote-net
+                external: true
 
             volumes:
               postgres-data:
               redis-data:
-              apollo-mysql-data:
             COMPOSEEOF
-              echo "docker-compose.yml 已按当前 Apollo 拓扑重建"
+              echo "docker-compose.yml 已按外部 Apollo 拓扑重建"
             else
               # 仅替换 backend 镜像 tag，不碰文件中其他服务（vote/navigator/result 由前端 CI 管理）
               sed -i "s|image: .*/thvote-backend:.*|image: ${BACKEND_IMAGE}:${BACKEND_TAG}|" docker-compose.yml
@@ -419,10 +309,8 @@ jobs:
             echo "拉取后端镜像 $BACKEND_IMAGE:$BACKEND_TAG..."
             docker pull "$BACKEND_IMAGE:$BACKEND_TAG" || true
 
-            # 基础服务只做保活，不随业务发布重启
-            docker-compose up -d postgres redis apollo-mysql
-            docker-compose run --rm apollo-bootstrap
-            docker-compose up -d apollo-configservice apollo-adminservice apollo-portal
+            # 基础服务只做保活，不随业务发布重启；Apollo 独立部署在 /opt/apollo
+            docker-compose up -d postgres redis
 
             # 等待数据库就绪
             echo "等待数据库启动..."

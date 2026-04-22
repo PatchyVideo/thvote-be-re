@@ -46,7 +46,7 @@ cd docker
 ```bash
 # 1. 配置 GitHub Secrets
 # - TEST_SERVER_HOST, TEST_SERVER_USER, TEST_SERVER_SSH_KEY
-# - TEST_DB_PASSWORD, TEST_APOLLO_DB_PASSWORD
+# - TEST_DB_PASSWORD
 
 # 2. 推送到 main 或 zfq_dev 分支触发部署
 git push origin zfq_dev
@@ -62,7 +62,7 @@ CI/CD 会根据代码变更自动判断需要部署的服务：
 | `frontend/` | 只重启前端 |
 | 其他文件 | 仅运行检查，不部署 |
 
-基础服务（PostgreSQL、Redis、Apollo MySQL、Apollo Config/Admin/Portal）始终保持运行。
+基础服务（PostgreSQL、Redis）始终保持运行。Apollo 独立部署在 `/opt/apollo`，不由 THVote 流水线启动或重启。
 
 ## 常用命令
 
@@ -88,11 +88,4 @@ cd docker
 | 前端 | http://localhost:8082 |
 | 后端 API | http://localhost:8000 |
 | 健康检查 | http://localhost:8000/health |
-| Apollo Portal | http://localhost:18080 |
-
-Apollo 首次启动会自动执行官方初始化 SQL：
-
-- `docker/apollo/sql/official/apolloconfigdb.sql`
-- `docker/apollo/sql/official/apolloportaldb.sql`
-
-随后由 `docker/apollo/scripts/bootstrap.sh` 幂等写入 Portal 环境映射。
+| Apollo Portal | 独立部署，默认 http://localhost:18080 |

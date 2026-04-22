@@ -1,8 +1,9 @@
 # ============================================================
-# THVote 统一 Docker Compose 配置
+# THVote unified Docker Compose
 #
-# 默认启动：基础设施 + Apollo + 后端
-# 前端启动：追加 --profile frontend
+# Apollo is managed independently under /opt/apollo. This compose only
+# starts THVote services and points the backend at the shared Apollo meta
+# server through APOLLO_META.
 # ============================================================
 
 x-common-backend: &common_backend
@@ -15,11 +16,6 @@ x-common-backend: &common_backend
     timeout: 5s
     retries: 5
     start_period: 20s
-
-x-common-apollo: &common_apollo
-  restart: unless-stopped
-  networks:
-    - thvote-net
 
 services:
   postgres:
@@ -56,93 +52,6 @@ services:
       timeout: 3s
       retries: 5
 
-  apollo-mysql:
-    image: mysql:8.0
-    container_name: thvote-apollo-mysql
-    <<: *common_apollo
-    command:
-      - --default-authentication-plugin=mysql_native_password
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_general_ci
-    environment:
-      TZ: Asia/Shanghai
-      MYSQL_ROOT_PASSWORD: ${APOLLO_MYSQL_ROOT_PASSWORD:-apollo_root_pass}
-      MYSQL_USER: ${APOLLO_MYSQL_USER:-apollo}
-      MYSQL_PASSWORD: ${APOLLO_MYSQL_PASSWORD:-apollo_pass}
-    volumes:
-      - apollo-mysql-data:/var/lib/mysql
-      - ./apollo/sql/official:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${APOLLO_MYSQL_ROOT_PASSWORD:-apollo_root_pass}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  apollo-bootstrap:
-    image: mysql:8.0
-    container_name: thvote-apollo-bootstrap
-    restart: "no"
-    networks:
-      - thvote-net
-    environment:
-      APOLLO_MYSQL_HOST: apollo-mysql
-      APOLLO_MYSQL_PORT: 3306
-      APOLLO_MYSQL_ROOT_USER: root
-      APOLLO_MYSQL_ROOT_PASSWORD: ${APOLLO_MYSQL_ROOT_PASSWORD:-apollo_root_pass}
-      APOLLO_PORTAL_ENVS: ${APOLLO_PORTAL_ENVS:-dev}
-      APOLLO_PORTAL_META_SERVERS: ${APOLLO_PORTAL_META_SERVERS:-{"dev":"http://apollo-configservice:8080"}}
-    volumes:
-      - ./apollo/sql/official:/apollo/sql/official:ro
-      - ./apollo/scripts/bootstrap.sh:/apollo/scripts/bootstrap.sh:ro
-    depends_on:
-      apollo-mysql:
-        condition: service_healthy
-    command: ["sh", "/apollo/scripts/bootstrap.sh"]
-
-  apollo-configservice:
-    image: apolloconfig/apollo-configservice:${APOLLO_VERSION:-2.4.0}
-    container_name: thvote-apollo-configservice
-    <<: *common_apollo
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://apollo-mysql:3306/ApolloConfigDB?characterEncoding=utf8mb4&useSSL=false&serverTimezone=Asia/Shanghai
-      SPRING_DATASOURCE_USERNAME: ${APOLLO_MYSQL_USER:-apollo}
-      SPRING_DATASOURCE_PASSWORD: ${APOLLO_MYSQL_PASSWORD:-apollo_pass}
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://apollo-configservice:8080/eureka/
-    depends_on:
-      apollo-bootstrap:
-        condition: service_completed_successfully
-
-  apollo-adminservice:
-    image: apolloconfig/apollo-adminservice:${APOLLO_VERSION:-2.4.0}
-    container_name: thvote-apollo-adminservice
-    <<: *common_apollo
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://apollo-mysql:3306/ApolloConfigDB?characterEncoding=utf8mb4&useSSL=false&serverTimezone=Asia/Shanghai
-      SPRING_DATASOURCE_USERNAME: ${APOLLO_MYSQL_USER:-apollo}
-      SPRING_DATASOURCE_PASSWORD: ${APOLLO_MYSQL_PASSWORD:-apollo_pass}
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://apollo-configservice:8080/eureka/
-    depends_on:
-      apollo-bootstrap:
-        condition: service_completed_successfully
-      apollo-configservice:
-        condition: service_started
-
-  apollo-portal:
-    image: apolloconfig/apollo-portal:${APOLLO_VERSION:-2.4.0}
-    container_name: thvote-apollo-portal
-    <<: *common_apollo
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://apollo-mysql:3306/ApolloPortalDB?characterEncoding=utf8mb4&useSSL=false&serverTimezone=Asia/Shanghai
-      SPRING_DATASOURCE_USERNAME: ${APOLLO_MYSQL_USER:-apollo}
-      SPRING_DATASOURCE_PASSWORD: ${APOLLO_MYSQL_PASSWORD:-apollo_pass}
-    ports:
-      - "${APOLLO_PORTAL_PORT:-8070}:8070"
-    depends_on:
-      apollo-bootstrap:
-        condition: service_completed_successfully
-      apollo-adminservice:
-        condition: service_started
-
   backend:
     build:
       context: .
@@ -158,7 +67,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       APOLLO_ENABLED: ${APOLLO_ENABLED:-yes}
       APOLLO_META: ${APOLLO_META:-http://apollo-configservice:8080}
-      APOLLO_ENV: ${APOLLO_ENV:-dev}
+      APOLLO_ENV: ${APOLLO_ENV:-fat}
       APOLLO_CLUSTER: ${APOLLO_CLUSTER:-default}
       APOLLO_APP_ID: ${APOLLO_APP_ID:-thvote-backend}
       APOLLO_NAMESPACES: ${APOLLO_NAMESPACES:-application}
@@ -216,9 +125,9 @@ services:
 
 networks:
   thvote-net:
-    driver: bridge
+    name: thvote-net
+    external: true
 
 volumes:
   postgres-data:
   redis-data:
-  apollo-mysql-data:

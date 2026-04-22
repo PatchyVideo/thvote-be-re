@@ -45,10 +45,6 @@ ${CYAN}THVote 测试环境管理脚本${NC}
 服务:
     - postgres-test      PostgreSQL 数据库
     - redis-test        Redis 缓存
-    - apollo-mysql-test Apollo MySQL
-    - apollo-configservice-test Apollo Config Service
-    - apollo-adminservice-test Apollo Admin Service
-    - apollo-portal-test Apollo Portal
     - backend-test      后端服务
     - frontend-test     前端 + Nginx
 EOF
@@ -97,7 +93,7 @@ cmd_status() {
     echo -e "前端:     ${GREEN}http://localhost:8082${NC}"
     echo -e "后端API:  ${GREEN}http://localhost:8000${NC}"
     echo -e "健康检查: ${GREEN}http://localhost:8000/health${NC}"
-    echo -e "Apollo:   ${GREEN}http://localhost:18080${NC}"
+    echo -e "Apollo:   ${GREEN}独立部署，默认 http://localhost:18080${NC}"
     echo ""
     echo -e "${CYAN}========== Apollo 配置 ==========${NC}"
     echo -e "请在 Apollo Portal 中配置以下项："
