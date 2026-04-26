@@ -17,8 +17,6 @@ import secrets
 from dataclasses import dataclass
 from functools import lru_cache
 
-from redis.asyncio import Redis
-
 from src.common.aliyun.dm_smtp_client import AliyunDmSmtpClient, get_dm_smtp_client
 from src.common.exceptions import RateLimitError, ValidationError
 from src.common.redis import get_redis
