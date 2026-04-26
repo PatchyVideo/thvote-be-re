@@ -25,3 +25,4 @@ alibabacloud_dypnsapi20170525>=2.0.0
 alibabacloud_tea_openapi>=0.3.0
 alibabacloud_tea_util>=0.3.0
 freezegun>=1.5.0
+fakeredis>=2.21.0

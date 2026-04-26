@@ -215,44 +215,48 @@ Rust 返回给前端的用户结构:
 
 ---
 
-## 四、迁移计划
+## 四、迁移计划（已完成 ✅）
 
-### 阶段 1: 数据模型补全
+> 实施完成日期：2026-04-27
+> 实施分支：`feat/user-and-verify`
+> 设计文档：`docs/superpowers/specs/2026-04-27-user-auth-design.md`
 
-- [ ] User 表新增字段: `nickname`, `phone_verified`, `email_verified`, `pfp`, `removed`
-- [ ] 新建 ActivityLog 表
-- [ ] 更新 schemas.py 中的请求/响应模型
+### 阶段 1: 数据模型补全 ✅
 
-### 阶段 2: 验证码基础设施
+- [x] User 表字段已对齐 Rust Voter（`nickname`, `phone_verified`, `email_verified`, `pfp`, `removed` 全部到位）
+- [x] ActivityLog 表已建立
+- [x] **新增**：Alembic baseline migration `0001_initial_user_and_activity_log` 把两张表正式纳入版本管理
+- [x] schemas.py 重写为 Rust 对齐的 11 个请求模型 + `VoterFE` + `LoginResponse`
 
-- [ ] 实现验证码 Redis 服务 (存取、guard 防刷)
-- [ ] 对接 SMS 发送服务
-- [ ] 对接 Email 发送服务
+### 阶段 2: 验证码基础设施 ✅
 
-### 阶段 3: 端点实现
+- [x] EmailCodeService（`src/common/verification/email_code.py`）：6 位码、Redis TTL 3600s、guard TTL 120s
+- [x] SmsCodeService（`src/common/verification/sms_code.py`）：薄封装阿里云 **PNVS**，验证码全程不入我方 Redis
+- [x] AliyunPnvsClient（`src/common/aliyun/pnvs_client.py`）：`SendSmsVerifyCode` + `CheckSmsVerifyCode`
+- [x] AliyunDmSmtpClient（`src/common/aliyun/dm_smtp_client.py`）：阿里云 DirectMail SMTP 投递
 
-- [ ] `POST /v1/send-email-code`
-- [ ] `POST /v1/send-sms-code`
-- [ ] `POST /v1/login-email` (验证码登录/注册)
-- [ ] `POST /v1/login-phone` (验证码登录/注册)
-- [ ] `POST /v1/update-email`
-- [ ] `POST /v1/update-phone`
-- [ ] `POST /v1/update-nickname`
-- [ ] `POST /v1/update-password`
-- [ ] `POST /v1/user-token-status`
-- [ ] `POST /v1/remove-voter`
+### 阶段 3: 端点实现 ✅
 
-### 阶段 4: 修正与对齐
+11 个 Rust 对齐端点 + 1 个新增 `GET /me`，全部位于 `/api/v1/user/...`，详见 `src/apps/user/router.py`。
 
-- [ ] 登录响应补充 vote_token 和 VoterFE 结构
-- [ ] 用户端点接入速率限制
-- [ ] 所有变更操作写入活动日志
-- [ ] 软删除逻辑 (removed 标志 + 清空敏感信息)
+### 阶段 4: 修正与对齐 ✅
 
-### 阶段 5: 路径对齐 (可选)
+- [x] 登录响应包含 `user: VoterFE + session_token + vote_token`，`vote_token` 受 `(email_verified or phone_verified)` 与投票期窗口约束
+- [x] 用户端点接入速率限制：login-* 5 req/60s per IP，update-* / remove-voter 5 req/60s per user_id
+- [x] 所有变更操作写入 ActivityLog（best-effort，独立事务，失败不阻断主流程）
+- [x] 软删除：`removed=TRUE` 同时清空 email/phone；CHECK 约束已放宽允许 removed 行同时 NULL
 
-当前 Python 路由前缀为 `/user/...`，Rust 为 `/v1/...`。
-决策: 是否统一路径取决于前端对接方式，若通过 gateway 代理则无需一致。
+### 阶段 5: 路径对齐 ✅
+
+最终方案：保持 `/api/v1/user/*` 子前缀，端点动作名扁平、与 Rust 一一对应（`login-email`、`send-sms-code`、`update-password` 等）。详见设计文档 §四。
+
+### 阶段 6: 测试 ✅
+
+- [x] tests/unit：JWT、VoterFE、EmailCodeService、PNVS 响应解析
+- [x] tests/integration：完整登录/注册/更新/软删流程（in-memory sqlite + fakeredis + 模拟 PNVS/DM）
+- [x] tests/contract：路由表 + VoterFE JSON 形状
+
+测试总数：43 通过。
 
 ---
 
@@ -270,7 +274,18 @@ Rust 返回给前端的用户结构:
 
 ## 六、风险与注意事项
 
-1. **数据迁移**: 若需从 MongoDB 迁移历史用户数据到 PostgreSQL，需编写迁移脚本处理 ObjectId → UUID 映射
-2. **密码兼容**: Python 已实现 bcrypt→Argon2 升级路径，与 Rust 一致，迁移后可正常登录
-3. **验证码服务依赖**: SMS/Email 发送依赖外部服务，需确认服务地址和接口格式
-4. **vote_token 时间窗口**: 依赖 config 中的 `vote_start`/`vote_end` 配置，需确保与投票周期一致
+1. **数据迁移**: 若需从 MongoDB 迁移历史用户数据到 PostgreSQL，需编写迁移脚本处理 ObjectId → UUID 映射 — 仍是 follow-up（spec §九 F4）
+2. **密码兼容**: Python 已实现 bcrypt→Argon2 升级路径，与 Rust 一致，迁移后可正常登录 — 已落地，单测覆盖
+3. **验证码服务依赖**: SMS 已迁至阿里云 PNVS（个人开发者免资质）；邮件改用阿里云 DM SMTP；不再依赖 Rust 内部 SMS / Email 微服务
+4. **vote_token 时间窗口**: `VOTE_START_ISO` / `VOTE_END_ISO` 配置就位，登录响应判定窗口；submit 模块尚未真校验 vote_token，参见 spec §九 F2
+5. **CHECK 约束变更**: `at_least_one_identifier` 已放宽支持软删除，需 `alembic upgrade head` 应用
+6. **PNVS 配置**: 需 `ALIYUN_PNVS_*` 全套环境变量（access key/secret/endpoint/scheme_name/sms_sign_name/sms_template_code）；缺失会在首次 `send-sms-code` 调用时返回 `ALIYUN_NOT_CONFIGURED` 500
+
+## 七、后续工作（不在本期）
+
+完整 Follow-up 列表见 `docs/superpowers/specs/2026-04-27-user-auth-design.md` §九 F1-F9，重点：
+- F1：修复 `submit/router.py` 的 `prefix="/v1"` 路径 bug
+- F2：submit 端点改用真 `vote_token` 校验（当前仅用 `body.meta.vote_id` 加锁，存在鉴权空洞）
+- F3：thbwiki / qq / patchyvideo SSO 接入
+- F4：MongoDB → PostgreSQL 历史用户数据回填脚本
+- F5：trusted proxies / `X-Forwarded-For` 处理

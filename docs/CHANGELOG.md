@@ -29,7 +29,8 @@
 - **破坏性**：上述移除的旧端点如有外部调用方需切换到新端点
 - **数据库**：首次部署需运行 `alembic upgrade head`；已有部署字段已对齐，无需回填
 - **配置**：要求 `ALIYUN_PNVS_*` 与 `ALIYUN_DM_*` 环境变量就位（Apollo / .env），未配置时调用对应端点会得到 `ALIYUN_NOT_CONFIGURED`
-- **依赖新增**：`alembic`、`alibabacloud_dypnsapi20170525`、`alibabacloud_tea_openapi`；测试依赖 `freezegun`
+- **依赖新增**：`alembic`、`alibabacloud_dypnsapi20170525`、`alibabacloud_tea_openapi`、`alibabacloud_tea_util`；测试依赖 `freezegun`、`fakeredis`
+- **DB 约束变更**：`user.at_least_one_identifier` CHECK 约束放宽为 `removed = TRUE OR phone_number IS NOT NULL OR email IS NOT NULL`，以支持 `remove-voter` 软删除时清空 email/phone（Rust 行为对齐）。已有部署执行 `alembic upgrade head` 即可。
 
 ### Follow-up
 见 `docs/superpowers/specs/2026-04-27-user-auth-design.md` §九 F1-F9。
