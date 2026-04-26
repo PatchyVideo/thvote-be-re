@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Index, String
+from sqlalchemy import Column, DateTime, ForeignKey, String
 from sqlalchemy.types import JSON
 
 from .base import Base
@@ -15,6 +15,3 @@ class Cp(Base):
 
     # cp_list JSON NOT NULL (list of cp ids)
     cp_list = Column(JSON, nullable=False)
-
-    # Generic index for cross-database support.
-    __table_args__ = (Index("idx_cp_list", "cp_list"),)
