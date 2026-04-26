@@ -68,12 +68,12 @@ class AuthProvider:
 
     @staticmethod
     def create_vote_token(
-        vote_id: str,
+        user_id: str,
         vote_start,
         vote_end,
     ) -> str:
         """Create a vote token constrained by the configured vote window."""
-        return create_vote_token(vote_id, vote_start, vote_end)
+        return create_vote_token(user_id, vote_start, vote_end)
 
     @staticmethod
     def decode_vote_token(token: str):
