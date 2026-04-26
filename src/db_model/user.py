@@ -38,8 +38,11 @@ class User(Base):
     )
 
     __table_args__ = (
+        # Soft-deleted rows are allowed to have both identifiers cleared
+        # (mirrors Rust remove_voter behavior).  Active rows must keep at
+        # least one identifier so we can locate them via login.
         CheckConstraint(
-            "phone_number IS NOT NULL OR email IS NOT NULL",
+            "removed = TRUE OR phone_number IS NOT NULL OR email IS NOT NULL",
             name="at_least_one_identifier",
         ),
     )

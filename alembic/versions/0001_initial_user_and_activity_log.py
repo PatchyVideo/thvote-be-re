@@ -58,7 +58,7 @@ def upgrade() -> None:
             server_default="",
         ),
         sa.CheckConstraint(
-            "phone_number IS NOT NULL OR email IS NOT NULL",
+            "removed = TRUE OR phone_number IS NOT NULL OR email IS NOT NULL",
             name="at_least_one_identifier",
         ),
     )
