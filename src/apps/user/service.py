@@ -274,11 +274,17 @@ class UserService:
                 if not verification.valid:
                     raise ValidationError("INCORRECT_PASSWORD", details=400)
 
+        # Soft delete: clear every field that could ever re-identify or
+        # re-authenticate this account.  Keeping the hash around would
+        # leave a credential artefact in the DB long after the user
+        # exercised their right to delete (GDPR / 个保法 §47).
         user.removed = True
         user.email = None
         user.phone_number = None
         user.email_verified = False
         user.phone_verified = False
+        user.password_hash = None
+        user.legacy_salt = None
         await self.user_dao.save(user)
         await self._safe_log(
             event_type="remove_voter",

@@ -151,3 +151,55 @@ async def test_remove_voter_clears_identifiers_and_blocks_lookup(user_service, p
     # Email is freed up — a new signup with the same address must succeed
     fresh = await _make_user_via_email(user_service, patch_redis, "r@example.com", "r2")
     assert fresh.user.email == "r@example.com"
+
+
+@pytest.mark.asyncio
+async def test_remove_voter_wipes_password_hash_and_legacy_salt(
+    user_service, patch_redis, session_maker
+):
+    """Soft delete must purge every credential artefact.
+
+    Keeping ``password_hash`` (or ``legacy_salt``) around after a user
+    exercises their right to delete leaves a hash that can be
+    cross-referenced against leaked password databases — the DB row's
+    only remaining role is as a tombstone.
+    """
+    from sqlalchemy import select
+
+    from src.db_model.user import User
+
+    # Set up a user with a password set
+    login = await _make_user_via_email(user_service, patch_redis, "wipe@example.com", "w")
+    await user_service.update_password(
+        UpdatePasswordRequest(
+            user_token=login.session_token,
+            new_password="willbewiped",
+            meta=Meta(),
+        )
+    )
+
+    # Confirm hash exists pre-removal (VoterFE doesn't carry user_id, so
+    # look the row up by email)
+    pre = await user_service.user_dao.get_by_email("wipe@example.com")
+    assert pre is not None
+    assert pre.password_hash is not None
+    user_id = pre.id
+
+    await user_service.remove_voter(
+        RemoveVoterRequest(user_token=login.session_token, meta=Meta())
+    )
+
+    # Inspect the soft-deleted row directly (bypassing UserDAO.get_by_id
+    # which filters out removed=True)
+    async with session_maker() as s:
+        row = (
+            await s.execute(select(User).where(User.id == user_id))
+        ).scalar_one()
+
+    assert row.removed is True
+    assert row.password_hash is None, "password_hash must be wiped on remove"
+    assert row.legacy_salt is None, "legacy_salt must be wiped on remove"
+    assert row.email is None
+    assert row.phone_number is None
+    assert row.email_verified is False
+    assert row.phone_verified is False
