@@ -338,6 +338,20 @@ jobs:
               echo "postgres-prod 和 redis-prod 服务已存在，跳过启动"
             fi
 
+            # 等 Postgres 真正可连
+            for i in $(seq 1 30); do
+              if docker exec thvote-postgres-prod pg_isready -U thvote_prod >/dev/null 2>&1; then
+                break
+              fi
+              echo "等待 postgres-prod 就绪... ($i/30)"
+              sleep 2
+            done
+
+            # 应用 Alembic 迁移（幂等：已是最新版会立即返回）
+            # 必须在 backend-prod 启动前运行，避免业务流量打到未迁移的 schema
+            echo "执行 alembic upgrade head（生产）..."
+            docker-compose run --rm backend-prod alembic upgrade head
+
             # 更新业务服务
             docker-compose up -d backend-prod frontend-prod
 

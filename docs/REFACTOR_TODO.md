@@ -13,6 +13,9 @@ isProject: false
 
 # FastAPI 重构待办事项清单
 
+> 来源：原位于仓库根目录，2026-04-27 移入 `docs/`（按 CLAUDE.md §2「文档统一收敛到 docs/」）。
+> 内容是预先存在的工作记录，未对其内部状态做修订；用户与认证模块的实际进度以 `docs/superpowers/specs/2026-04-27-user-auth-implementation-report.md` 为准。
+
 ## 一、项目基础架构（优先级：高）
 
 ### 1.1 项目初始化与配置（status: completed, waiting test）
