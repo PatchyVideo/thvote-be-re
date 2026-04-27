@@ -1,5 +1,8 @@
 # CI/CD 流水线说明
 
+> 创建日期：2026-04-27
+> 最后更新：2026-04-27（新增 §七 触发约定 + Alembic 集成 §六）
+>
 > 用途：把仓库内 4 个 GitHub Actions workflow 的职责、触发条件、关键步骤一次说清，并记录最近的改动与遗留问题。
 > 关联：[`docs/operations/aliyun-onboarding.md`](./aliyun-onboarding.md)、[`docs/superpowers/specs/2026-04-27-user-auth-implementation-report.md`](../superpowers/specs/2026-04-27-user-auth-implementation-report.md)
 

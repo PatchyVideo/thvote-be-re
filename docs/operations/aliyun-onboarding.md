@@ -1,5 +1,8 @@
 # 阿里云上线接入手册
 
+> 创建日期：2026-04-27
+> 最后更新：2026-04-27
+>
 > 用途：把用户与认证模块所依赖的两个阿里云服务（**PNVS 号码认证服务** + **DirectMail 邮件推送**）从零接通到生产，一次过完所有步骤。
 > 关联代码：`src/common/aliyun/{pnvs_client,dm_smtp_client}.py`、`src/common/verification/{sms_code,email_code}.py`
 > 关联设计：[`docs/superpowers/specs/2026-04-27-user-auth-design.md`](../superpowers/specs/2026-04-27-user-auth-design.md) §二、§七.3

@@ -1,8 +1,15 @@
 # thvote-be-re CHANGELOG
 
 > 仓库级变更记录，按 CLAUDE.md §4 维护。日期格式 `YYYY-MM-DD`。
+>
+> 创建日期：2026-04-27
+> 最后更新：2026-04-27
 
-## [Unreleased]
+## [Unreleased] — 计划合并：feat/user-and-verify 分支
+
+> 工作期间：2026-04-27
+> 包含 commits：`45d75b7` … `c75f552`（共 16 个）
+> 合并到主干后请把本节 `[Unreleased]` 改为版本号 + 合并日期
 
 ### Added
 - 用户与认证模块（feat/user-and-verify 分支）

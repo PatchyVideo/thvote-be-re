@@ -1,6 +1,8 @@
 # 数据库 Schema 管理 — 现状与演进路线图
 
-> 创建：2026-04-27
+> 创建日期：2026-04-27
+> 最后更新：2026-04-27
+>
 > 触发：本次 PR (`feat/user-and-verify`) 引入 Alembic，但只覆盖 user + activity_log，与既有 `init_db()` create_all 共存，状态混杂。本文记录现状、目标态、和分阶段演进 TODO。
 
 ---

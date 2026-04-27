@@ -1,6 +1,7 @@
 # 用户表与认证模块设计 (thvote-be-re)
 
 > 创建日期：2026-04-27
+> 最后更新：2026-04-27（self-review 后补 §7.4 限流策略 + §11 刻意差异表）
 > 作者：Claude（brainstorming 流程产物）
 > 适用范围：`thvote-be-re`（Python/FastAPI），对齐 `thvote-be/user-manager`（Rust/Actix）
 > 关联文档：[`docs/migration/user-manager.md`](../../migration/user-manager.md)
