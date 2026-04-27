@@ -14,6 +14,10 @@
 |---|---|---|
 | **U-1** | `init_db()` 与 Alembic 并存导致 schema 漂移：lifespan 启动时 `Base.metadata.create_all` 与 `alembic upgrade head` 互相覆盖，已有部署可能出现「字段在 model 里有、表里没有、alembic_version 也漂着」的不一致 | `chore(boot): gate init_db() behind DEBUG mode` —— 默认部署不再调用，仅 `DEBUG=true` 时为本地开发提供 create_all 能力 |
 | **U-4** | `remove-voter` 软删除**没清密码哈希**：`password_hash` 与 `legacy_salt` 在 removed=True 行里永久残留，DB 泄露后可与第三方撞库表交叉破解，违反 GDPR / 个保法 §47 | `fix(user): wipe password_hash and legacy_salt on remove-voter` —— 同步加 `tests/integration/test_remove_voter_wipes_password_hash_and_legacy_salt` 守护 |
+| **U-V1** | `_maybe_sign_vote_token` 解析 `VOTE_*_ISO` 失败时只 `logger.warning`，配置打错会让所有用户登录返回空 vote_token，提交全失败但运维收不到信号 | `fix(user): make vote_token config errors loud` —— 改为 `logger.error` 并打印 raw 配置值便于排查 |
+| **U-16** | `EmailCodeService.send` 在 guard 检查与 code SET 之间有窗口，并发同邮箱的两个请求都会发出邮件且第二个覆盖第一个的 code | `fix(email): make guard write atomic via SET NX EX` —— guard 用 `nx=True`，loser 立即拿 `REQUEST_TOO_FREQUENT` |
+| **U-17** | `update-*` / `remove-voter` 的 `_rate_limit_by_token` 先解 token 再限流 — garbage token 走快速 401 路径**完全绕过限流** | `fix(user): pre-decode IP rate limit on mutation endpoints` —— 在 token 解码前先 `user-mut-ip-{ip}` 30 req/60s |
+| **U-19** | `pnvs_client.check_sms_verify_code` 的 transport / API 失败错误用 `SMS_SEND_FAILED`（语义错——是 check 失败而非 send 失败） | `fix(pnvs): use SMS_VERIFY_FAILED for check transport errors` |
 
 ---
 
@@ -39,10 +43,25 @@
 | **U-13** | `Settings` 大量使用 Pydantic V1 的 `Field(..., env="X")`，pytest 输出有 20 条 `PydanticDeprecatedSince20` 告警 | 低 | 切到 V2 的 `model_config = SettingsConfigDict(...)` + `validation_alias`；属于先前代码的清理工作 |
 | **U-14** | 测试里用 in-memory sqlite + fakeredis；sqlite 不强制 `postgresql_where` 表达式，partial unique index 行为没被实际验证。CI 现在会跑 `alembic upgrade head` 在真 PG 上做 DDL 烟测，但**唯一索引的运行时行为**仍然没有专门测试 | 低 | 给 CI 加一个 PG-only 的契约测试：插两行同 email 的 user，断言第二个 INSERT 抛 IntegrityError |
 | **U-15** | `tests/integration/conftest.py` 用 `pytest.importorskip("fakeredis")`，万一 `fakeredis` 漏装，所有集成测试**静默 skip**，CI 也不会报错 | 低 | 改为 `import fakeredis` 硬依赖；`fakeredis` 已经进 `requirements.txt`，没理由再可选 |
+| **U-18** | `UserDAO.save()` 没有 `session.merge()`；如果未来有 caller 传入 detached instance 会**静默 no-op**。当前所有 caller 都来自 `_authenticate` 返回的 attached 实例，问题没暴露 | 低 | 改成 `await self.session.merge(user); await self.session.commit()` 或 `assert user in self.session` |
 
 ---
 
-## 四、与设计/实施文档的对照
+## 四、祖传问题（PR 评审期间发现，不在本 PR 范围）
+
+这些是**预先存在于 main 分支**的代码问题，本次 PR 没有引入也没有恶化它们的字面行为，但我们的新代码**间接放大了影响面**（特别是 L-2 的限流问题，因为登录端点比 submit 端点对限流的安全依赖更强）。建议**单独开 PR 处理**，不夹带在用户与认证模块 PR 里。
+
+| 编号 | 问题 | 位置 | 严重度 | 我们 PR 的影响 |
+|---|---|---|---|---|
+| **L-1** | CORS 配置 `allow_origins=["*"]` + `allow_credentials=True`。浏览器规范禁止该组合（实际无效），但**字面意图**是危险的：将来有人改成 reflected origin 即变 CSRF 入口 | `src/main.py:79-83` | 中 | 我们新增的 mutation 端点（`update-*` / `remove-voter`）是 CSRF 的潜在受害者；token 在 body 里只能挡 cookie-based CSRF，不挡 `fetch` 跨源 |
+| **L-2** | `rate_limit.py` 的 `GET → SET → DECR` 非原子，4 次独立 round-trip，并发请求可使桶跑负或窗口边界双 reset 翻倍配额 | `src/common/middleware/rate_limit.py:42-59` | **高** | 我们新增的 5 req/60s 登录限流**安全依赖**这个机制；submit 模块用的 30/60s 没那么敏感。换 Redis Lua 或 `INCR + EXPIRE NX` 才能真正闭合 |
+| **L-3** | `logging.basicConfig` 在 `src/main.py:14-19` 与 `:25-29` 各调一次（合并残留）；第二次因 root logger 已有 handler 是 no-op，但属于死代码 | `src/main.py:14-30` | 低 | 无影响，纯卫生问题 |
+
+**处理建议：** 本 PR 合并后立即开一个 `chore/legacy-cleanup` 分支专门处理这三项，特别是 L-2 必须有专项测试（并发触发限流）。L-2 修复完前，**生产环境的登录速率限制可被并发绕过**，这是个独立于我们 PR 的安全 backlog。
+
+---
+
+## 五、与设计/实施文档的对照
 
 下表把本文编号映射到已有 follow-up 列表，避免重复跟踪：
 

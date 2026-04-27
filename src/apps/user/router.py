@@ -155,7 +155,20 @@ def _user_id_from_body_token(token: str) -> str:
         raise HTTPException(status_code=401, detail="INVALID_TOKEN") from exc
 
 
-async def _rate_limit_by_token(token: str) -> None:
+async def _rate_limit_by_token(token: str, client_ip: str) -> None:
+    """Enforce a coarse per-IP limit *before* token decode, then a tight
+    per-user limit *after* decode.
+
+    Skipping the pre-decode IP limit lets an attacker spam the endpoint
+    with garbage tokens — each request takes the fast 401 path
+    (no DB / no Redis user-bucket touch) and would otherwise bypass
+    rate limiting entirely.  30 req/60s per IP is loose enough to never
+    hit a real user but tight enough to make brute-forcing tokens cost
+    something.
+    """
+    await rate_limit(
+        f"user-mut-ip-{client_ip or 'unknown'}", window=60, max_requests=30
+    )
     user_id = _user_id_from_body_token(token)
     await rate_limit(f"user-mut-{user_id}", window=60, max_requests=5)
 
@@ -166,7 +179,7 @@ async def update_email(
     client_ip: str = Depends(get_client_ip),
     service: UserService = Depends(get_user_service),
 ) -> EmptyResponse:
-    await _rate_limit_by_token(body.user_token)
+    await _rate_limit_by_token(body.user_token, client_ip)
     _override_meta_ip(body, client_ip)
     try:
         await service.update_email(body)
@@ -181,7 +194,7 @@ async def update_phone(
     client_ip: str = Depends(get_client_ip),
     service: UserService = Depends(get_user_service),
 ) -> EmptyResponse:
-    await _rate_limit_by_token(body.user_token)
+    await _rate_limit_by_token(body.user_token, client_ip)
     _override_meta_ip(body, client_ip)
     try:
         await service.update_phone(body)
@@ -196,7 +209,7 @@ async def update_nickname(
     client_ip: str = Depends(get_client_ip),
     service: UserService = Depends(get_user_service),
 ) -> EmptyResponse:
-    await _rate_limit_by_token(body.user_token)
+    await _rate_limit_by_token(body.user_token, client_ip)
     _override_meta_ip(body, client_ip)
     try:
         await service.update_nickname(body)
@@ -211,7 +224,7 @@ async def update_password(
     client_ip: str = Depends(get_client_ip),
     service: UserService = Depends(get_user_service),
 ) -> EmptyResponse:
-    await _rate_limit_by_token(body.user_token)
+    await _rate_limit_by_token(body.user_token, client_ip)
     _override_meta_ip(body, client_ip)
     try:
         await service.update_password(body)
@@ -226,7 +239,7 @@ async def remove_voter(
     client_ip: str = Depends(get_client_ip),
     service: UserService = Depends(get_user_service),
 ) -> EmptyResponse:
-    await _rate_limit_by_token(body.user_token)
+    await _rate_limit_by_token(body.user_token, client_ip)
     _override_meta_ip(body, client_ip)
     try:
         await service.remove_voter(body)

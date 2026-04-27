@@ -368,8 +368,14 @@ class UserService:
             start = datetime.fromisoformat(settings.vote_start_iso.replace("Z", "+00:00"))
             end = datetime.fromisoformat(settings.vote_end_iso.replace("Z", "+00:00"))
         except ValueError:
-            logger.warning(
-                "Invalid VOTE_START_ISO/VOTE_END_ISO; skipping vote_token issuance"
+            # Misconfigured vote window must be loud, not silent — otherwise
+            # every login succeeds with vote_token="" and submit silently
+            # fails for every user with no operator-visible signal.
+            logger.error(
+                "Invalid VOTE_START_ISO=%r or VOTE_END_ISO=%r — every login "
+                "will return an empty vote_token until config is fixed",
+                settings.vote_start_iso,
+                settings.vote_end_iso,
             )
             return ""
 

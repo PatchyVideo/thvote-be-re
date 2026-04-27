@@ -20,8 +20,12 @@ class _FakeRedis:
         v = self.store.get(key)
         return None if v is None else v[0]
 
-    async def set(self, key, value, ex=None):
+    async def set(self, key, value, ex=None, nx=False):
+        # Mirror redis-py: SET NX returns True on success, None on collision
+        if nx and key in self.store:
+            return None
         self.store[key] = (value, ex)
+        return True
 
     async def delete(self, key):
         self.store.pop(key, None)

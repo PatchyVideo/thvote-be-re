@@ -55,20 +55,31 @@ class EmailCodeService:
             ExternalAPIError("EMAIL_SEND_FAILED") if SMTP delivery fails;
                 in that case the freshly written code is removed from
                 Redis to avoid ghost codes.
+
+        Concurrency: the guard key is written with ``SET NX EX`` so two
+        concurrent sends to the same address resolve to one winner; the
+        loser sees its NX fail and raises ``REQUEST_TOO_FREQUENT``.
+        Without this, a fast double-tap would generate two codes, send
+        two emails (paying twice) and the second code would silently
+        overwrite the first in Redis.
         """
         redis = await get_redis()
-        if await redis.get(_guard_key(email)):
+        won_guard = await redis.set(
+            _guard_key(email), "guard", ex=GUARD_TTL_SECONDS, nx=True
+        )
+        if not won_guard:
             raise RateLimitError("REQUEST_TOO_FREQUENT", details=429)
 
         code = _generate_code()
         await redis.set(_code_key(email), code, ex=CODE_TTL_SECONDS)
-        await redis.set(_guard_key(email), "guard", ex=GUARD_TTL_SECONDS)
 
         try:
             await self.smtp_client.send_verification_email(recipient=email, code=code)
         except Exception:
             # SMTP failed -- drop the code so the user is not locked out
-            # with a phantom "valid" code they can never see.
+            # with a phantom "valid" code they can never see.  Keep the
+            # guard alive: anti-spam still wanted, and the failure may
+            # be transient (next attempt after 120s succeeds).
             try:
                 await redis.delete(_code_key(email))
             except Exception:
