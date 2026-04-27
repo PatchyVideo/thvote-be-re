@@ -139,6 +139,10 @@ f62a533 feat(db): introduce Alembic with baseline migration for user and activit
 | F-impl-4 | `tests/integration` 在 CI 上从 sqlite/fakeredis 切回 PG/真 Redis | 当前 conftest 用内存 sqlite + fakeredis；CI 已经起了 PG/Redis 服务，可补一个 `INTEGRATION_USE_REAL_BACKEND=1` 开关 |
 | F-impl-5 | Alembic 把现有 `raw_*` / `character` / `music` / `cp` / `questionnaire` 表纳入版本管理 | 本期 baseline 只囊括 user + activity_log；其余表仍走 `init_db()` 的 `create_all` |
 | F-impl-6 | 阿里云真接口 smoke 验证 | 自动化里坚决不打真阿里云；需手工/staging 跑一遍确认 PNVS / DM 配置正确 |
+| F-impl-7 | CI 加 `alembic upgrade head` | 已落地于 2026-04-27（commit `feat(ci): wire alembic into pipelines`） |
+| F-impl-8 | `pylint.yml` 与 `deploy-test.yml` 的 lint 步骤重复且都软门禁，需要二选一并改硬失败 | 见 `docs/operations/cicd-pipeline.md` §五 F-cicd-1 |
+| F-impl-9 | `deploy-prod.yml` 与 `deploy.yml` 都监听 release/workflow_dispatch，存在并发部署风险 | 见 `docs/operations/cicd-pipeline.md` §五 F-cicd-2 |
+| F-impl-10 | `init_db()` create_all 与 Alembic 并存，存在 `alembic_version` 缺失/野表状态的风险，特别是已有部署首次接入 Alembic 时 | 见 `docs/operations/cicd-pipeline.md` §五 F-cicd-3；上线前需要 `alembic stamp head` 一次 |
 
 ---
 

@@ -332,6 +332,10 @@ jobs:
               sleep 2
             done
 
+            # 应用 Alembic 迁移（幂等：已是最新版会立即返回）
+            echo "执行 alembic upgrade head ..."
+            docker-compose run --rm backend alembic upgrade head
+
             # 启动/重启后端
             docker-compose up -d --profile backend
 
