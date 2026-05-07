@@ -1,0 +1,135 @@
+# ============================================================
+# THVote unified Docker Compose
+#
+# Apollo is managed independently under /opt/apollo. This compose only
+# starts THVote services and points the backend at the shared Apollo meta
+# server through APOLLO_META.
+# ============================================================
+
+x-common-backend: &common_backend
+  restart: unless-stopped
+  networks:
+    - thvote-net
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+    interval: 15s
+    timeout: 5s
+    retries: 5
+    start_period: 20s
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    container_name: thvote-postgres
+    <<: *common_backend
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST_AUTH_METHOD: md5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thvote} -d ${POSTGRES_DB:-thvote}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: thvote-redis
+    <<: *common_backend
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: ${BACKEND_IMAGE:-thvote-backend:local}
+    container_name: thvote-backend
+    <<: *common_backend
+    env_file:
+      - ${ENV_FILE:-.env}
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://thvote:thvote_pass@postgres:5432/thvote}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      APOLLO_ENABLED: ${APOLLO_ENABLED:-yes}
+      APOLLO_META: ${APOLLO_META:-http://apollo-configservice:8080}
+      APOLLO_ENV: ${APOLLO_ENV:-fat}
+      APOLLO_CLUSTER: ${APOLLO_CLUSTER:-default}
+      APOLLO_APP_ID: ${APOLLO_APP_ID:-thvote-backend}
+      APOLLO_NAMESPACES: ${APOLLO_NAMESPACES:-application}
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "8000"
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles:
+      - backend
+
+  vote:
+    image: ${VOTE_IMAGE:-ghcr.io/patchyvideo/thvote-vote:test}
+    container_name: thvote-vote
+    restart: unless-stopped
+    ports:
+      - "${VOTE_PORT:-8082}:80"
+    networks:
+      - thvote-net
+    depends_on:
+      backend:
+        condition: service_healthy
+    profiles:
+      - frontend
+
+  navigator:
+    image: ${NAVIGATOR_IMAGE:-ghcr.io/patchyvideo/thvote-navigator:test}
+    container_name: thvote-navigator
+    restart: unless-stopped
+    ports:
+      - "${NAVIGATOR_PORT:-8083}:80"
+    networks:
+      - thvote-net
+    depends_on:
+      - vote
+    profiles:
+      - frontend
+
+  result:
+    image: ${RESULT_IMAGE:-ghcr.io/patchyvideo/thvote-result:test}
+    container_name: thvote-result
+    restart: unless-stopped
+    ports:
+      - "${RESULT_PORT:-8084}:80"
+    networks:
+      - thvote-net
+    depends_on:
+      - vote
+    profiles:
+      - frontend
+
+networks:
+  thvote-net:
+    name: thvote-net
+    external: true
+
+volumes:
+  postgres-data:
+  redis-data:

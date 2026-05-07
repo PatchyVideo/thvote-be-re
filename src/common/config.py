@@ -132,6 +132,7 @@ class Settings(BaseSettings):
     # JWT 配置
     jwt_algorithm: str = Field("HS256", env="JWT_ALGORITHM")
     jwt_secret_key: Optional[str] = Field(None, env="JWT_SECRET_KEY")
+    jwt_secret_key_file: Optional[str] = Field(None, env="JWT_SECRET_KEY_FILE")
     jwt_public_key_path: Optional[str] = Field(None, env="JWT_PUBLIC_KEY_PATH")
     jwt_private_key_path: Optional[str] = Field(None, env="JWT_PRIVATE_KEY_PATH")
 
@@ -144,10 +145,19 @@ class Settings(BaseSettings):
     nacos_access_key: Optional[str] = Field(None, env="NACOS_ACCESS_KEY")
     nacos_secret_key: Optional[str] = Field(None, env="NACOS_SECRET_KEY")
 
+    # Apollo 配置
+    apollo_enabled: bool = Field(False, env="APOLLO_ENABLED")
+    apollo_meta: str = Field("http://apollo-configservice:8080", env="APOLLO_META")
+    apollo_env: str = Field("dev", env="APOLLO_ENV")
+    apollo_cluster: str = Field("default", env="APOLLO_CLUSTER")
+    apollo_app_id: str = Field("thvote-backend", env="APOLLO_APP_ID")
+    apollo_namespaces: str = Field("application", env="APOLLO_NAMESPACES")
+    apollo_access_key: Optional[str] = Field(None, env="APOLLO_ACCESS_KEY")
+
     # 投票配置
-    vote_year: int = Field(2025, env="VOTE_YEAR")
-    vote_start_iso: str = Field("2025-01-01T00:00:00Z", env="VOTE_START_ISO")
-    vote_end_iso: str = Field("2025-12-31T23:59:59Z", env="VOTE_END_ISO")
+    vote_year: int = Field(2026, env="VOTE_YEAR")
+    vote_start_iso: str = Field("2026-01-01T00:00:00Z", env="VOTE_START_ISO")
+    vote_end_iso: str = Field("2026-12-31T23:59:59Z", env="VOTE_END_ISO")
 
     # 应用配置
     app_host: str = Field("0.0.0.0", env="APP_HOST")

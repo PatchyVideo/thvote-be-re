@@ -1,8 +1,23 @@
 from __future__ import annotations
 
-import logging
+import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
+
+from dotenv import load_dotenv
+
+# Load .env first so LOG_LEVEL can be set before logging.config
+load_dotenv(override=False)
+
+import logging
+
+# Configure logging level from environment
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, log_level, logging.INFO),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,8 +31,6 @@ from .common.config import get_settings, reload_settings
 from .common.database import get_db_session, init_db, reload_engine
 from .common.middleware.logging import LoggingMiddleware
 from .common.nacos import nacos_config_change_callback, start_nacos_watcher, stop_nacos_watcher
-
-logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -47,7 +60,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="THVote FastAPI Backend",
-        version="0.2.0",
+        version="0.2.1",
         lifespan=lifespan,
     )
 

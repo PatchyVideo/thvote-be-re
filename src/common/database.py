@@ -161,3 +161,8 @@ async def init_db() -> None:
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+# 兼容性别名
+engine = None  # type: ignore
+SessionLocal = None  # type: ignore

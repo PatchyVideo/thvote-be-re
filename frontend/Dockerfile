@@ -29,7 +29,7 @@ FROM base AS deps
 
 COPY --from=cloner /tmp/frontend /app
 WORKDIR /app
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # ---- 构建 vote 页面 ----
 FROM deps AS builder-vote
