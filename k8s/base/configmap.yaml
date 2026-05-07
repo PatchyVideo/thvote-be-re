@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  # Nacos 配置
+  NACOS_ENABLED: "true"
+  NACOS_SERVER_ADDRS: "http://nacos-server:8848"
+  NACOS_NAMESPACE: "test"
+  NACOS_DATA_ID: "thvote-be"
+  NACOS_GROUP: "DEFAULT_GROUP"
+  NACOS_TIMEOUT_SECONDS: "30"
+
+  # 数据库配置（非敏感）
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+  DB_NAME: "thvote"
+  DB_SCHEMA: "public"
+  DB_DRIVER: "postgresql+asyncpg"
+  DB_POOL_SIZE: "5"
+  DB_MAX_OVERFLOW: "10"
+  DB_POOL_TIMEOUT: "30"
+  DB_POOL_RECYCLE: "3600"
+  DATABASE_ECHO: "false"
+
+  # Redis 配置（非敏感）
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  REDIS_SSL: "false"

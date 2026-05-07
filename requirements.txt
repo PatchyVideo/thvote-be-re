@@ -9,5 +9,5 @@ python-dotenv==1.2.2
 bcrypt>=4.0.0
 redis>=5.0.0
 SQLAlchemy==2.0.37
-starlette>=0.40.0
 strawberry-graphql>=0.240.0
+nacos-sdk-python>=2.0.0

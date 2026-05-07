@@ -1,10 +1,116 @@
 from __future__ import annotations
 
-from functools import lru_cache
-from typing import Optional
+import logging
+import os
+from typing import Optional, Set
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from .nacos import load_nacos_overrides
+
+logger = logging.getLogger(__name__)
+
+# 加载 Nacos 配置（启动时一次性加载）
+load_nacos_overrides()
+
+# 可热更新的配置键集合（从 Nacos 加载时会动态更新）
+_hot_reloadable_keys: Set[str] = set()
+
+
+def _mark_reloadable_keys(keys: set[str]) -> None:
+    """标记哪些配置键可以从 Nacos 热更新。"""
+    global _hot_reloadable_keys
+    _hot_reloadable_keys = keys
+    logger.debug("Hot reloadable keys marked: %s", keys)
+
+
+class DatabaseSettings(BaseSettings):
+    """
+    数据库配置（支持独立配置项，热更新友好）。
+
+    可以通过 DATABASE_URL 整体配置，也可以通过单独的选项配置。
+    单独配置项优先级高于 DATABASE_URL。
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    # 传统方式：整体连接字符串
+    database_url: Optional[str] = Field(None, env="DATABASE_URL")
+
+    # 独立配置项（优先级高于 DATABASE_URL）
+    db_host: str = Field("localhost", env="DB_HOST")
+    db_port: int = Field(5432, env="DB_PORT")
+    db_user: str = Field("postgres", env="DB_USER")
+    db_password: Optional[str] = Field(None, env="DB_PASSWORD")
+    db_name: str = Field("thvote", env="DB_NAME")
+    db_schema: str = Field("public", env="DB_SCHEMA")
+    db_driver: str = Field("postgresql+asyncpg", env="DB_DRIVER")
+
+    # 连接池配置
+    db_pool_size: int = Field(5, env="DB_POOL_SIZE")
+    db_max_overflow: int = Field(10, env="DB_MAX_OVERFLOW")
+    db_pool_timeout: int = Field(30, env="DB_POOL_TIMEOUT")
+    db_pool_recycle: int = Field(3600, env="DB_POOL_RECYCLE")
+    db_echo: bool = Field(False, env="DATABASE_ECHO")
+
+    def build_url(self) -> str:
+        """
+        构建数据库连接 URL。
+
+        优先使用独立的配置项，如果没有设置则回退到 DATABASE_URL。
+        """
+        if self.database_url:
+            return self.database_url
+
+        password = self.db_password or ""
+        return (
+            f"{self.db_driver}://{self.db_user}:{password}"
+            f"@{self.db_host}:{self.db_port}/{self.db_name}"
+        )
+
+    def build_url_with_schema(self) -> str:
+        """构建包含 schema 的数据库连接 URL（PostgreSQL 专用）。"""
+        base_url = self.build_url()
+        if self.db_schema and self.db_schema != "public":
+            # PostgreSQL 支持 ?options=... 格式设置 search_path
+            return f"{base_url}?options=-csearch_path%3D{self.db_schema}"
+        return base_url
+
+
+class RedisSettings(BaseSettings):
+    """Redis 配置（支持独立配置项，热更新友好）。"""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    # 传统方式
+    redis_url: Optional[str] = Field(None, env="REDIS_URL")
+
+    # 独立配置项
+    redis_host: str = Field("localhost", env="REDIS_HOST")
+    redis_port: int = Field(6379, env="REDIS_PORT")
+    redis_db: int = Field(0, env="REDIS_DB")
+    redis_password: Optional[str] = Field(None, env="REDIS_PASSWORD")
+    redis_ssl: bool = Field(False, env="REDIS_SSL")
+
+    def build_url(self) -> str:
+        """构建 Redis 连接 URL。"""
+        if self.redis_url:
+            return self.redis_url
+
+        password_part = f":{self.redis_password}@" if self.redis_password else ""
+        ssl_part = "?ssl=1" if self.redis_ssl else ""
+        return f"redis://{password_part}{self.redis_host}:{self.redis_port}/{self.redis_db}{ssl_part}"
 
 
 class Settings(BaseSettings):
@@ -17,18 +123,37 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = Field("postgresql+async://localhost/thvote", env="DATABASE_URL")
-    database_echo: bool = Field(False, env="DATABASE_ECHO")
-    redis_url: str = Field("redis://localhost:6379/0", env="REDIS_URL")
+    # 数据库配置
+    database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+
+    # Redis 配置
+    redis: RedisSettings = Field(default_factory=RedisSettings)
+
+    # JWT 配置
     jwt_algorithm: str = Field("HS256", env="JWT_ALGORITHM")
     jwt_secret_key: Optional[str] = Field(None, env="JWT_SECRET_KEY")
     jwt_public_key_path: Optional[str] = Field(None, env="JWT_PUBLIC_KEY_PATH")
     jwt_private_key_path: Optional[str] = Field(None, env="JWT_PRIVATE_KEY_PATH")
-    vote_year: int = Field(2024, env="VOTE_YEAR")
-    vote_start_iso: str = Field("2024-01-01T00:00:00Z", env="VOTE_START_ISO")
-    vote_end_iso: str = Field("2024-12-31T23:59:59Z", env="VOTE_END_ISO")
+
+    # Nacos 配置
+    nacos_enabled: bool = Field(False, env="NACOS_ENABLED")
+    nacos_server_addrs: str = Field("http://localhost:8848", env="NACOS_SERVER_ADDRS")
+    nacos_namespace: str = Field("", env="NACOS_NAMESPACE")
+    nacos_group: str = Field("DEFAULT_GROUP", env="NACOS_GROUP")
+    nacos_data_id: str = Field("thvote-be", env="NACOS_DATA_ID")
+    nacos_access_key: Optional[str] = Field(None, env="NACOS_ACCESS_KEY")
+    nacos_secret_key: Optional[str] = Field(None, env="NACOS_SECRET_KEY")
+
+    # 投票配置
+    vote_year: int = Field(2025, env="VOTE_YEAR")
+    vote_start_iso: str = Field("2025-01-01T00:00:00Z", env="VOTE_START_ISO")
+    vote_end_iso: str = Field("2025-12-31T23:59:59Z", env="VOTE_END_ISO")
+
+    # 应用配置
     app_host: str = Field("0.0.0.0", env="APP_HOST")
     app_port: int = Field(8000, env="APP_PORT")
+
+    # 阿里云短信配置
     aliyun_pnvs_access_key_id: Optional[str] = Field(
         None, alias="ALIYUN_PNVS_ACCESS_KEY_ID"
     )
@@ -51,6 +176,8 @@ class Settings(BaseSettings):
     )
     aliyun_pnvs_valid_time: Optional[int] = Field(None, alias="ALIYUN_PNVS_VALID_TIME")
     aliyun_pnvs_interval: Optional[int] = Field(None, alias="ALIYUN_PNVS_INTERVAL")
+
+    # 阿里云邮件配置
     aliyun_dm_access_key_id: Optional[str] = Field(
         None, alias="ALIYUN_DM_ACCESS_KEY_ID"
     )
@@ -59,7 +186,9 @@ class Settings(BaseSettings):
     )
     aliyun_dm_endpoint: Optional[str] = Field(None, alias="ALIYUN_DM_ENDPOINT")
     aliyun_dm_region_id: Optional[str] = Field(None, alias="ALIYUN_DM_REGION_ID")
-    aliyun_dm_account_name: Optional[str] = Field(None, alias="ALIYUN_DM_ACCOUNT_NAME")
+    aliyun_dm_account_name: Optional[str] = Field(
+        None, alias="ALIYUN_DM_ACCOUNT_NAME"
+    )
     aliyun_dm_from_alias: Optional[str] = Field(None, alias="ALIYUN_DM_FROM_ALIAS")
     aliyun_dm_tag_name: Optional[str] = Field(None, alias="ALIYUN_DM_TAG_NAME")
     aliyun_dm_smtp_host: Optional[str] = Field(None, alias="ALIYUN_DM_SMTP_HOST")
@@ -71,13 +200,78 @@ class Settings(BaseSettings):
         None, alias="ALIYUN_DM_SMTP_PASSWORD"
     )
 
+    @property
+    def database_url(self) -> str:
+        """兼容性别段，返回数据库连接 URL。"""
+        return self.database.build_url()
 
-@lru_cache(maxsize=1)
+    @property
+    def redis_url(self) -> str:
+        """兼容性别段，返回 Redis 连接 URL。"""
+        return self.redis.build_url()
+
+    @property
+    def database_echo(self) -> bool:
+        """兼容性别段。"""
+        return self.database.db_echo
+
+
+# 缓存的设置实例
+_settings_instance: Optional[Settings] = None
+
+
 def get_settings() -> Settings:
     """Return a cached Settings instance."""
+    global _settings_instance
+    if _settings_instance is None:
+        _settings_instance = Settings()
+    return _settings_instance
 
-    return Settings()
+
+def reload_settings() -> Settings:
+    """
+    重新加载配置。
+
+    对于可热更新的配置（如数据库地址、Redis 地址等），会从环境变量重新读取。
+    对于需要完全重启的配置（如 JWT 算法变更），需要重启应用。
+    """
+    global _settings_instance
+    _settings_instance = Settings()
+    logger.info("Settings reloaded")
+    return _settings_instance
 
 
-# Alias for backward compatibility
-settings = get_settings()
+def reload_from_env(keys: set[str]) -> Settings:
+    """
+    仅从环境变量重新加载指定配置键。
+
+    Args:
+        keys: 需要重新加载的配置键集合
+
+    Returns:
+        重新加载后的 Settings 实例
+    """
+    global _settings_instance
+    new_settings = Settings()
+    _settings_instance = new_settings
+    logger.info("Partial settings reloaded for keys: %s", keys)
+    return new_settings
+
+
+# 注册热更新回调
+def _on_nacos_config_change(config: dict[str, str]) -> None:
+    """
+    Nacos 配置变更回调。
+
+    重新加载从 Nacos 获取的配置。
+    """
+    logger.info(
+        "Nacos config changed, %d keys reloaded. "
+        "Note: Some configs require application restart to take effect.",
+        len(config),
+    )
+    _mark_reloadable_keys(set(config.keys()))
+
+
+# 导出回调供外部注册
+nacos_config_change_callback = _on_nacos_config_change

@@ -1,0 +1,174 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'test'
+        type: choice
+        options:
+          - test
+          - prod
+
+env:
+  APP_NAME: toho-vote-be
+  REGISTRY: ${{ secrets.ALIYUN_ACR_REGISTRY }}
+  ACR_NAMESPACE: ${{ secrets.ALIYUN_ACR_NAMESPACE }}
+
+jobs:
+  # ==================== Test Environment ====================
+  test:
+    name: Build & Deploy to Test
+    if: github.event_name == 'push' || github.event.inputs.environment == 'test'
+    runs-on: ubuntu-latest
+    environment: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ALIYUN_ACR_USERNAME }}
+          password: ${{ secrets.ALIYUN_ACR_PASSWORD }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.APP_NAME }}
+          tags: |
+            type=sha,prefix=test-
+            type=raw,value=test,enable=${{ github.event_name != 'workflow_dispatch' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract image tag
+        id: image
+        run: |
+          echo "TAG=$(echo '${{ steps.meta.outputs.tags }}' | cut -d',' -f1 | xargs)" >> $GITHUB_OUTPUT
+          echo "SHA=${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Setup Kubeconfig for test
+        run: |
+          echo '${{ secrets.K8S_CONFIG_TEST }}' | base64 -d > kubeconfig
+          echo "KUBECONFIG=$(pwd)/kubeconfig" >> $GITHUB_ENV
+
+      - name: Deploy to test K8s cluster
+        run: |
+          kubectl set image deployment/toho-vote-be toho-vote-be=${{ env.REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.APP_NAME }}:${{ github.sha }} -n test
+          kubectl rollout status deployment/toho-vote-be -n test --timeout=300s
+
+      - name: Verify deployment
+        run: |
+          kubectl get pods -n test -l app=${{ env.APP_NAME }}
+          kubectl describe deployment toho-vote-be -n test | grep -A5 "Events"
+
+  # ==================== Prod Environment ====================
+  prod:
+    name: Build & Push to Prod
+    if: github.event_name == 'release' || github.event.inputs.environment == 'prod'
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ALIYUN_ACR_USERNAME }}
+          password: ${{ secrets.ALIYUN_ACR_PASSWORD }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.APP_NAME }}
+          tags: |
+            type=sha,prefix=latest-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract image tag for latest
+        id: image
+        run: |
+          echo "TAG=$(echo '${{ steps.meta.outputs.tags }}' | head -1 | xargs)" >> $GITHUB_OUTPUT
+
+      - name: Notify deployment ready
+        run: |
+          echo "## Prod Image Ready for Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** `${{ env.REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.APP_NAME }}:${{ github.sha }}`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The image has been pushed to ACR. Update your K8s deployment image tag to pull the new version." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Manual deployment command:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "kubectl set image deployment/toho-vote-be toho-vote-be=${{ env.REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.APP_NAME }}:${{ github.sha }} -n prod" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # ==================== K8s Manifest Sync (Optional) ====================
+  sync-manifests:
+    name: Sync K8s Manifests
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Update test image tag in kustomization
+        run: |
+          cd k8s/overlays/test
+          kustomize edit set image PLACEHOLDER_IMAGE=${{ env.REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.APP_NAME }}:${{ github.sha }}
+
+      - name: Commit and push manifest changes
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add k8s/
+          git diff --staged --quiet || git commit -m "chore: update test image to ${{ github.sha }}"
+          git push
