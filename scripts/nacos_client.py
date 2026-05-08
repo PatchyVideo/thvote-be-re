@@ -1,8 +1,8 @@
 """
 Nacos 配置中心官方 SDK 客户端模块
 
-使用官方 nacos-sdk-python v3 库连接 Nacos 2.2.3
-文档: https://github.com/nacos-group/nacos-sdk-python
+使用官方 nacos-sdk-python v3 库连接 Nacos 2.x
+文档: https://nacos.io/docs/latest/manual/user/python-sdk/usage/
 """
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ class NacosConfigClient:
         self.group = group
 
         # v3 SDK 使用 v2.nacos 模块
-        from v2.nacos import ClientConfigBuilder, NacosConfigService
+        from v2.nacos import ClientConfigBuilder, NacosConfigService, GRPCConfig
 
         # 构建客户端配置
         builder = ClientConfigBuilder()
@@ -76,10 +76,15 @@ class NacosConfigClient:
 
         if log_level:
             builder.log_level(log_level)
+        else:
+            builder.log_level("WARNING")
+
+        # 配置 gRPC 超时
+        builder.grpc_config(GRPCConfig(grpc_timeout=5000))
 
         self._client_config = builder.build()
-        self._service_class = NacosConfigService
-        self._service = None  # 延迟初始化
+        self._service: Optional[Any] = None
+        self._config_service_class = NacosConfigService
 
         logger.info(
             "Nacos client initialized: servers=%s, namespace=%s, group=%s",
@@ -91,7 +96,7 @@ class NacosConfigClient:
     async def _get_service(self):
         """获取或创建配置服务实例"""
         if self._service is None:
-            self._service = await self._service_class.create_config_service(self._client_config)
+            self._service = await self._config_service_class.create_config_service(self._client_config)
         return self._service
 
     async def get_config(self, data_id: str, group: Optional[str] = None) -> Optional[str]:
@@ -103,7 +108,9 @@ class NacosConfigClient:
             service = await self._get_service()
             from v2.nacos import ConfigParam
 
-            content = await service.get_config(ConfigParam(data_id=data_id, group=group))
+            content = await service.get_config(
+                ConfigParam(data_id=data_id, group=group)
+            )
             if content:
                 logger.debug(
                     "Config fetched: dataId=%s, group=%s, content_len=%d",
@@ -159,9 +166,11 @@ class NacosConfigClient:
             service = await self._get_service()
             from v2.nacos import ConfigParam
 
-            await service.publish_config(ConfigParam(data_id=data_id, group=group, content=content))
-            logger.info("Config published: dataId=%s, group=%s", data_id, group)
-            return True
+            result = await service.publish_config(
+                ConfigParam(data_id=data_id, group=group, content=content)
+            )
+            logger.info("Config published: dataId=%s, group=%s, result=%s", data_id, group, result)
+            return result is True or result is None
         except Exception as exc:
             logger.error("Failed to publish config: dataId=%s, error=%s", data_id, exc)
             return False
@@ -175,9 +184,11 @@ class NacosConfigClient:
             service = await self._get_service()
             from v2.nacos import ConfigParam
 
-            await service.remove_config(ConfigParam(data_id=data_id, group=group))
-            logger.info("Config removed: dataId=%s, group=%s", data_id, group)
-            return True
+            result = await service.remove_config(
+                ConfigParam(data_id=data_id, group=group)
+            )
+            logger.info("Config removed: dataId=%s, group=%s, result=%s", data_id, group, result)
+            return result is True or result is None
         except Exception as exc:
             logger.error("Failed to remove config: dataId=%s, error=%s", data_id, exc)
             return False

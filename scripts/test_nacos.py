@@ -1,200 +1,149 @@
-#!/usr/bin/env python3
 """
 Nacos 配置中心连接测试脚本
 
-使用方法:
-1. 设置环境变量 (或创建 .env 文件):
-   - NACOS_SERVER_ADDRS: Nacos 服务器地址，如 "127.0.0.1:8848"
-   - NACOS_NAMESPACE: 命名空间 ID，如 "ce2b18cc-e2ee-4673-a2a3-6b5b33309fb1"
-   - NACOS_DATA_ID: 配置 dataId，如 "thvote-be"
-   - NACOS_USERNAME: 用户名 (可选)
-   - NACOS_PASSWORD: 密码 (可选)
-
-2. 运行脚本:
-   python scripts/test_nacos.py
-
-   或直接指定参数:
-   python scripts/test_nacos.py --server 127.0.0.1:8848 --namespace ce2b18cc-e2ee-4673-a2a3-6b5b33309fb1 --data-id thvote-be
+用法:
+    cd /d d:/personal/thvote
+    python scripts/test_nacos.py
 """
-from __future__ import annotations
-
-import argparse
 import asyncio
 import json
-import logging
 import os
 import sys
-from pathlib import Path
 
-# 添加 scripts 目录到路径
-scripts_dir = Path(__file__).parent
-sys.path.insert(0, str(scripts_dir))
-
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 
-async def test_nacos_connection(
-    server: str,
-    namespace: str,
-    data_id: str,
-    group: str = "DEFAULT_GROUP",
-    username: str | None = None,
-    password: str | None = None,
-) -> bool:
-    """测试 Nacos 连接"""
-    from nacos_client import NacosConfigClient
+def get_config():
+    return {
+        "server_addresses": os.getenv("NACOS_SERVER_ADDRS", "http://154.37.215.62:8848"),
+        "namespace": os.getenv("NACOS_NAMESPACE", "dfacd6e1-b442-476c-bffe-ff5504651c39"),
+        "group": os.getenv("NACOS_GROUP", "DEFAULT_GROUP"),
+        "data_id": os.getenv("NACOS_DATA_ID", "nacos-config-thvote-be.json"),
+        "username": os.getenv("NACOS_USERNAME", "thvote_test"),
+        "password": os.getenv("NACOS_PASSWORD", "test_thV0te"),
+    }
 
-    logger.info("=" * 60)
-    logger.info("Nacos Connection Test")
-    logger.info("=" * 60)
-    logger.info("Server: %s", server)
-    logger.info("Namespace: %s", namespace)
-    logger.info("Group: %s", group)
-    logger.info("Data ID: %s", data_id)
-    if username:
-        logger.info("Username: %s", username)
-    logger.info("-" * 60)
+
+async def test_nacos_client():
+    """测试 NacosHTTPClient"""
+    cfg = get_config()
+    print("=" * 60)
+    print("Nacos HTTP Client 测试")
+    print("=" * 60)
+    print(f"服务器: {cfg['server_addresses']}")
+    print(f"命名空间: {cfg['namespace']}")
+    print(f"分组: {cfg['group']}")
+    print(f"Data ID: {cfg['data_id']}")
+    print(f"用户名: {cfg['username']}")
+    print("-" * 60)
 
     try:
-        client = NacosConfigClient(
-            server_addresses=server,
-            namespace=namespace,
-            group=group,
-            username=username,
-            password=password,
-            log_level="DEBUG",
+        # 直接导入 nacos 模块（避免 __init__.py 的导入问题）
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "nacos_module",
+            os.path.join(_project_root, "src", "common", "nacos.py")
         )
-        logger.info("[OK] Nacos client created successfully")
+        nacos_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(nacos_module)
 
-        logger.info("\n[Test 1] Getting config...")
-        content = await client.get_config(data_id, group)
-        if content is None:
-            logger.warning("[FAIL] Config not found: dataId=%s, group=%s", data_id, group)
-            return False
+        NacosHTTPClient = nacos_module.NacosHTTPClient
 
-        logger.info("[OK] Config retrieved, length: %d bytes", len(content))
-        logger.debug("Config content:\n%s", content[:500])
+        client = NacosHTTPClient(
+            server_addresses=cfg["server_addresses"],
+            namespace=cfg["namespace"],
+            username=cfg["username"],
+            password=cfg["password"],
+            timeout=10.0,
+        )
 
-        logger.info("\n[Test 2] Parsing config as JSON...")
-        try:
-            config_dict = json.loads(content)
-            logger.info("[OK] Config parsed as JSON, keys: %d", len(config_dict))
-            logger.info("Config keys: %s", list(config_dict.keys()))
-        except json.JSONDecodeError:
-            logger.warning("[WARN] Config is not valid JSON, trying as properties format...")
-            config_dict = await client.get_config_as_dict(data_id, group)
-            if config_dict:
-                logger.info("[OK] Config parsed as properties, keys: %d", len(config_dict))
-                logger.info("Config keys: %s", list(config_dict.keys()))
-            else:
-                logger.error("[FAIL] Unable to parse config content")
-                return False
+        print("正在获取配置...")
+        content = await client.get_config(cfg["data_id"], cfg["group"])
 
-        logger.info("\n[Test 3] Publishing test config...")
-        test_data_id = f"{data_id}.test"
-        test_content = json.dumps({"test_key": "test_value", "timestamp": "test"}, ensure_ascii=False)
-        success = await client.publish_config(test_data_id, test_content, group)
-        if success:
-            logger.info("[OK] Test config published")
-            logger.info("\n[Test 4] Removing test config...")
-            await client.remove_config(test_data_id, group)
-            logger.info("[OK] Test config removed")
+        if content:
+            print(f"配置获取成功! 长度: {len(content)} 字符")
+            print("-" * 60)
+
+            try:
+                config_dict = json.loads(content)
+                print("配置内容:")
+                for k, v in config_dict.items():
+                    if "PASSWORD" in k or "SECRET" in k or "KEY" in k:
+                        print(f"  {k}: ***")
+                    else:
+                        print(f"  {k}: {v}")
+                return config_dict
+            except json.JSONDecodeError:
+                print("原始内容:")
+                print(content[:500])
+                return {"raw": content}
         else:
-            logger.warning("[SKIP] Publish test skipped")
+            print("配置获取失败")
+            return None
 
-        logger.info("\n[Test 5] Shutting down client...")
-        await client.shutdown()
-        logger.info("[OK] Client shutdown")
-
-        logger.info("\n" + "=" * 60)
-        logger.info("All tests passed!")
-        logger.info("=" * 60)
-        return True
-
-    except Exception as exc:
-        logger.error("\n[FAIL] Connection failed: %s", exc)
-        logger.exception("Detailed error:")
-        return False
+    except Exception as e:
+        print(f"测试失败: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Test Nacos configuration center connection",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Use environment variables from .env file
-  python scripts/test_nacos.py
+async def test_load_nacos_overrides():
+    """测试 load_nacos_overrides 函数"""
+    cfg = get_config()
+    print("\n" + "=" * 60)
+    print("测试 load_nacos_overrides 函数")
+    print("=" * 60)
 
-  # Specify parameters directly
-  python scripts/test_nacos.py --server 127.0.0.1:8848 --namespace ce2b18cc-e2ee-4673-a2a3-6b5b33309fb1
-
-  # With authentication
-  python scripts/test_nacos.py --server 127.0.0.1:8848 --namespace my-ns --username nacos --password nacos
-        """,
-    )
-
-    parser.add_argument(
-        "--server",
-        type=str,
-        default=os.getenv("NACOS_SERVER_ADDRS", "127.0.0.1:8848"),
-        help="Nacos server address (default: from NACOS_SERVER_ADDRS env or 127.0.0.1:8848)",
-    )
-    parser.add_argument(
-        "--namespace",
-        type=str,
-        default=os.getenv("NACOS_NAMESPACE", ""),
-        help="Namespace ID (default: from NACOS_NAMESPACE env or public namespace)",
-    )
-    parser.add_argument(
-        "--data-id",
-        type=str,
-        default=os.getenv("NACOS_DATA_ID", "thvote-be"),
-        help="Config data ID (default: from NACOS_DATA_ID env or thvote-be)",
-    )
-    parser.add_argument(
-        "--group",
-        type=str,
-        default=os.getenv("NACOS_GROUP", "DEFAULT_GROUP"),
-        help="Config group (default: from NACOS_GROUP env or DEFAULT_GROUP)",
-    )
-    parser.add_argument(
-        "--username",
-        type=str,
-        default=os.getenv("NACOS_USERNAME", ""),
-        help="Nacos username for authentication",
-    )
-    parser.add_argument(
-        "--password",
-        type=str,
-        default=os.getenv("NACOS_PASSWORD", ""),
-        help="Nacos password for authentication",
-    )
-
-    args = parser.parse_args()
-
-    if not args.server:
-        logger.error("Nacos server address is required. Use --server or set NACOS_SERVER_ADDRS")
-        return 1
-
-    # 使用 asyncio 运行异步测试
-    success = asyncio.run(
-        test_nacos_connection(
-            server=args.server,
-            namespace=args.namespace,
-            data_id=args.data_id,
-            group=args.group,
-            username=args.username or None,
-            password=args.password or None,
+    try:
+        # 直接导入 nacos 模块
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "nacos_module",
+            os.path.join(_project_root, "src", "common", "nacos.py")
         )
-    )
+        nacos_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(nacos_module)
 
-    return 0 if success else 1
+        load_nacos_overrides = nacos_module.load_nacos_overrides
+
+        # 设置环境变量
+        os.environ["NACOS_ENABLED"] = "true"
+        os.environ["NACOS_SERVER_ADDRS"] = cfg["server_addresses"]
+        os.environ["NACOS_NAMESPACE"] = cfg["namespace"]
+        os.environ["NACOS_GROUP"] = cfg["group"]
+        os.environ["NACOS_DATA_ID"] = cfg["data_id"]
+        os.environ["NACOS_USERNAME"] = cfg["username"]
+        os.environ["NACOS_PASSWORD"] = cfg["password"]
+
+        config = load_nacos_overrides()
+
+        if config:
+            print(f"成功加载 {len(config)} 个配置项")
+            return config
+        else:
+            print("配置加载失败")
+            return None
+
+    except Exception as e:
+        print(f"测试失败: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    print("\n")
+
+    result1 = asyncio.run(test_nacos_client())
+    result2 = asyncio.run(test_load_nacos_overrides())
+
+    print("\n" + "=" * 60)
+    print("测试结果汇总")
+    print("=" * 60)
+    print(f"NacosHTTPClient: {'通过' if result1 else '失败'}")
+    print(f"load_nacos_overrides: {'通过' if result2 else '失败'}")
+
+    sys.exit(0 if (result1 and result2) else 1)

@@ -1,9 +1,9 @@
 {
-  "DB_HOST": "postgres",
+  "DB_HOST": "pgm-j6c9t43xom92n70kjo.rwlb.rds.aliyuncs.com",
   "DB_PORT": "5432",
-  "DB_USER": "postgres",
-  "DB_PASSWORD": "CHANGE_ME",
-  "DB_NAME": "thvote",
+  "DB_USER": "thvote_test",
+  "DB_PASSWORD": "test_GFYxuz421383",
+  "DB_NAME": "test_db",
   "DB_SCHEMA": "public",
   "DB_DRIVER": "postgresql+asyncpg",
   "DB_POOL_SIZE": "5",
@@ -11,8 +11,7 @@
   "DB_POOL_TIMEOUT": "30",
   "DB_POOL_RECYCLE": "3600",
   "DATABASE_ECHO": "false",
-
-  "REDIS_HOST": "redis",
+  "REDIS_HOST": "154.37.215.62",
   "REDIS_PORT": "6379",
   "REDIS_DB": "0",
   "REDIS_PASSWORD": "",

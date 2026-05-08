@@ -216,27 +216,25 @@ jobs:
 
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
 
-            # 写入 .env
+            # 写入 .env - Nacos 配置从 Secret 获取，敏感配置从 Nacos 获取
             cat > .env << 'ENVEOF'
-            POSTGRES_DB=thvote_test
-            POSTGRES_USER=thvote_test
-            POSTGRES_PASSWORD=${{ secrets.TEST_DB_PASSWORD }}
-            JWT_SECRET_KEY=${{ secrets.TEST_JWT_SECRET || 'dev-secret' }}
-            APOLLO_ENABLED=yes
-            APOLLO_META=${{ vars.APOLLO_META || 'http://apollo-configservice:8080' }}
-            APOLLO_ENV=fat
-            APOLLO_CLUSTER=fat
-            APOLLO_APP_ID=thvote-backend
-            APOLLO_ACCESS_KEY=${{ secrets.APOLLO_ACCESS_KEY_TEST }}
-            APOLLO_NAMESPACES=application
+            NACOS_ENABLED=true
+            NACOS_SERVER_ADDRS=${{ secrets.NACOS_SERVER_ADDRS }}
+            NACOS_NAMESPACE=${{ secrets.TEST_NACOS_NAMESPACE }}
+            NACOS_GROUP=DEFAULT_GROUP
+            NACOS_DATA_ID=nacos-config-thvote-be.json
+            NACOS_USERNAME=${{ secrets.TEST_NACOS_USERNAME }}
+            NACOS_PASSWORD=${{ secrets.TEST_NACOS_PASSWORD }}
             BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:test
             ENVEOF
 
-            # 旧版 compose 内嵌 Apollo，需要整体重写为外部 Apollo 结构
+            # 旧版 compose 内嵌 Apollo，需要整体重写为 Nacos 结构
             RECREATE_COMPOSE="false"
             if ! grep -q "thvote-backend" docker-compose.yml 2>/dev/null; then
               RECREATE_COMPOSE="true"
             elif grep -q "apollo-mysql\\|apollo-configservice\\|apollo-bootstrap" docker-compose.yml 2>/dev/null; then
+              RECREATE_COMPOSE="true"
+            elif ! grep -q "NACOS_ENABLED" docker-compose.yml 2>/dev/null; then
               RECREATE_COMPOSE="true"
             fi
 
@@ -295,14 +293,13 @@ jobs:
                 env_file:
                   - .env
                 environment:
-                  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-thvote}:${POSTGRES_PASSWORD:-thvote_pass}@postgres:5432/${POSTGRES_DB:-thvote}
-                  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-                  APOLLO_ENABLED: ${APOLLO_ENABLED:-yes}
-                  APOLLO_META: ${APOLLO_META:-http://apollo-configservice:8080}
-                  APOLLO_ENV: ${APOLLO_ENV:-fat}
-                  APOLLO_CLUSTER: ${APOLLO_CLUSTER:-fat}
-                  APOLLO_APP_ID: ${APOLLO_APP_ID:-thvote-backend}
-                  APOLLO_NAMESPACES: ${APOLLO_NAMESPACES:-application}
+                  NACOS_ENABLED: "true"
+                  NACOS_SERVER_ADDRS: "${NACOS_SERVER_ADDRS}"
+                  NACOS_NAMESPACE: "${NACOS_NAMESPACE}"
+                  NACOS_GROUP: "DEFAULT_GROUP"
+                  NACOS_DATA_ID: "nacos-config-thvote-be.json"
+                  NACOS_USERNAME: "${NACOS_USERNAME}"
+                  NACOS_PASSWORD: "${NACOS_PASSWORD}"
                   APP_HOST: "0.0.0.0"
                   APP_PORT: "8000"
                 ports:
@@ -326,7 +323,7 @@ jobs:
               postgres-data:
               redis-data:
             COMPOSEEOF
-              echo "docker-compose.yml 已按外部 Apollo 拓扑重建"
+              echo "docker-compose.yml 已按 Nacos 配置中心重建"
             else
               sed -i "s|image: .*/thvote-backend:.*|image: ${BACKEND_IMAGE}|" docker-compose.yml
               echo "docker-compose.yml 已更新（仅替换 backend 镜像 tag）"
