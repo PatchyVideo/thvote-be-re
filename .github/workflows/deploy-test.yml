@@ -216,6 +216,14 @@ jobs:
 
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
 
+            # 创建外部网络（如果不存在）
+            if ! docker network ls | grep -q "thvote-net"; then
+              docker network create thvote-net
+              echo "已创建网络 thvote-net"
+            else
+              echo "网络 thvote-net 已存在"
+            fi
+
             # 写入 .env - Nacos 配置从 Secret 获取，敏感配置从 Nacos 获取
             cat > .env << 'ENVEOF'
             NACOS_ENABLED=true
