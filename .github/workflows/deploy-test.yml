@@ -263,24 +263,6 @@ jobs:
                 start_period: 20s
 
             services:
-              postgres:
-                image: postgres:15-alpine
-                container_name: thvote-postgres
-                <<: *common_backend
-                environment:
-                  POSTGRES_DB: ${POSTGRES_DB:-thvote}
-                  POSTGRES_USER: ${POSTGRES_USER:-thvote}
-                  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thvote_pass}
-                volumes:
-                  - postgres-data:/var/lib/postgresql/data
-                ports:
-                  - "5432:5432"
-                healthcheck:
-                  test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thvote} -d ${POSTGRES_DB:-thvote}"]
-                  interval: 10s
-                  timeout: 5s
-                  retries: 5
-
               redis:
                 image: redis:7-alpine
                 container_name: thvote-redis
@@ -315,8 +297,6 @@ jobs:
                 volumes:
                   - ./logs:/app/logs
                 depends_on:
-                  postgres:
-                    condition: service_healthy
                   redis:
                     condition: service_healthy
                 profiles:
@@ -328,10 +308,9 @@ jobs:
                 external: true
 
             volumes:
-              postgres-data:
               redis-data:
             COMPOSEEOF
-              echo "docker-compose.yml 已按 Nacos 配置中心重建"
+              echo "docker-compose.yml 已按 Nacos 配置中心重建（使用阿里云 RDS）"
             else
               sed -i "s|image: .*/thvote-backend:.*|image: ${BACKEND_IMAGE}|" docker-compose.yml
               echo "docker-compose.yml 已更新（仅替换 backend 镜像 tag）"
@@ -340,11 +319,11 @@ jobs:
             # 拉取镜像
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:test || true
 
-            # 仅当基础服务不存在时才启动
-            if ! docker ps -a --format '{{.Names}}' | grep -q '^thvote-postgres$'; then
-              docker-compose up -d postgres redis
+            # 仅当 redis 不存在时才启动（postgres 使用阿里云 RDS）
+            if ! docker ps -a --format '{{.Names}}' | grep -q '^thvote-redis$'; then
+              docker-compose up -d redis
             else
-              echo "postgres 和 redis 服务已存在，跳过启动"
+              echo "redis 服务已存在，跳过启动"
             fi
 
             # 启动后端（直接指定 backend 服务，避免老版本 docker-compose 不支持 --profile）
