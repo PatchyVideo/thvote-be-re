@@ -79,9 +79,15 @@ def create_app() -> FastAPI:
     # Health check endpoint
     @app.get("/health", tags=["system"])
     async def health(db: AsyncSession = Depends(get_db_session)) -> dict:
-        await db.execute(text("SELECT 1"))
+        try:
+            await db.execute(text("SELECT 1"))
+            db_status = "ok"
+        except Exception as e:
+            logger.warning("Health check DB query failed: %s", e)
+            db_status = "unavailable"
         return {
             "status": "ok",
+            "db_status": db_status,
             "vote_year": settings.vote_year,
         }
 
