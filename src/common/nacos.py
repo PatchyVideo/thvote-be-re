@@ -32,6 +32,8 @@ def _normalize_nacos_url(raw_value: str | None) -> str:
 
 def _parse_config_content(content: str) -> dict[str, str]:
     """解析 Nacos 配置内容，支持标准 JSON、JS 风格 JSON 和 Properties 格式。"""
+    import re
+
     content = content.strip()
 
     # 尝试标准 JSON
@@ -43,97 +45,54 @@ def _parse_config_content(content: str) -> dict[str, str]:
         except Exception:
             pass
 
-        # 尝试转换为标准 JSON（处理 JavaScript 风格的键无引号格式）
+        # 尝试 JavaScript 风格 JSON（键无引号，值可能是引号字符串/数字/布尔/裸字符串）
+        # 格式: { KEY: value, KEY2: "quoted value", KEY3: 123, KEY4: 'single quoted' }
         try:
-            def _to_json(text: str) -> str | None:
-                if text.startswith("{") and text.endswith("}"):
-                    inner = text[1:-1]
+            result = {}
+
+            def extract_value(content: str, start: int, end: int) -> str:
+                """从 start 到 end 之间提取值，处理引号和空白"""
+                raw = content[start:end].strip().rstrip(",").rstrip("}").strip()
+                if not raw:
+                    return ""
+                # 带引号的值
+                if raw.startswith('"') and raw.endswith('"'):
+                    return raw[1:-1]
+                if raw.startswith("'") and raw.endswith("'"):
+                    return raw[1:-1]
+                # 布尔/Null
+                if raw in ("true", "false", "null"):
+                    return raw
+                # 数字
+                try:
+                    if "." in raw:
+                        float(raw)
+                    else:
+                        int(raw)
+                    return raw
+                except ValueError:
+                    pass
+                # 裸字符串（包括含空格的字符串如 "postgresql asyncpg"）
+                return raw
+
+            # 匹配键值对：键是标识符，后面跟冒号和值
+            # 键必须被逗号包围或在花括号开始处才算有效键
+            pattern = r'[,{\s](\w+)\s*:'
+            matches = list(re.finditer(pattern, content))
+
+            for i, match in enumerate(matches):
+                key = match.group(1)
+                # 值从冒号后开始
+                value_start = match.end()
+                # 值结束位置是下一个有效键之前，或者到字符串末尾
+                if i + 1 < len(matches):
+                    value_end = matches[i + 1].start()
                 else:
-                    return None
+                    value_end = len(content)
+                result[key] = extract_value(content, value_start, value_end)
 
-                result_pairs = []
-                i = 0
-                n = len(inner)
-
-                while i < n:
-                    # 跳过空白
-                    while i < n and inner[i] in " \t\n":
-                        i += 1
-                    if i >= n:
-                        break
-
-                    # 解析键（标识符）
-                    if inner[i].isalpha() or inner[i] == "_":
-                        key_start = i
-                        while i < n and (inner[i].isalnum() or inner[i] == "_"):
-                            i += 1
-                        key = inner[key_start:i]
-
-                        # 跳过空白和冒号
-                        while i < n and inner[i] in " \t":
-                            i += 1
-                        if i < n and inner[i] == ":":
-                            i += 1
-
-                        # 跳过空白
-                        while i < n and inner[i] in " \t":
-                            i += 1
-
-                        # 解析值
-                        if i < n:
-                            if inner[i] == '"':
-                                # 带引号的字符串值
-                                i += 1
-                                value_chars = []
-                                while i < n:
-                                    if inner[i] == "\\" and i + 1 < n:
-                                        value_chars.append(inner[i])
-                                        i += 1
-                                        value_chars.append(inner[i])
-                                        i += 1
-                                    elif inner[i] == '"':
-                                        i += 1
-                                        break
-                                    else:
-                                        value_chars.append(inner[i])
-                                        i += 1
-                                value = "".join(value_chars)
-                                result_pairs.append(f'"{key}": "{value}"')
-                            elif inner[i] in "tfn":  # true, false, null
-                                # 布尔值或 null
-                                value_start = i
-                                while i < n and inner[i] not in ",}":
-                                    i += 1
-                                value = inner[value_start:i].strip().rstrip(",").strip()
-                                result_pairs.append(f'"{key}": {value}')
-                            else:
-                                # 裸值（数字、裸字符串等）
-                                value_start = i
-                                while i < n and inner[i] not in ",}":
-                                    i += 1
-                                value = inner[value_start:i].strip().rstrip(",").strip()
-                                if value:
-                                    # 尝试作为数字
-                                    try:
-                                        if "." in value:
-                                            num_val = float(value)
-                                        else:
-                                            num_val = int(value)
-                                        result_pairs.append(f'"{key}": {num_val}')
-                                    except ValueError:
-                                        result_pairs.append(f'"{key}": "{value}"')
-
-                        # 跳过逗号
-                        while i < n and inner[i] in " \t,":
-                            i += 1
-
-                return "{" + ",".join(result_pairs) + "}"
-
-            fixed = _to_json(content)
-            if fixed:
-                data = json.loads(fixed)
-                if isinstance(data, dict):
-                    return {str(k): str(v) for k, v in data.items() if v is not None}
+            if result:
+                return result
         except Exception:
             pass
 
@@ -446,11 +405,11 @@ def _apply_config_to_env(config: dict[str, str]) -> None:
     """
     将配置应用到环境变量。
 
-    使用 setdefault 确保只设置尚未存在的值，
-    保留环境变量的优先级。
+    Nacos 配置具有最高优先级，会覆盖本地 .env 文件中的配置。
+    这样确保配置中心（生产环境）的配置优先于本地文件。
     """
     for key, value in config.items():
-        os.environ.setdefault(key, value)
+        os.environ[key] = value
 
 
 def load_nacos_overrides() -> dict[str, str]:
@@ -459,15 +418,11 @@ def load_nacos_overrides() -> dict[str, str]:
 
     使用 HTTP API 调用 Nacos。
 
-    注意：此函数仅覆盖尚未设置的环境变量（setdefault），
-    因此环境变量优先级高于 Nacos 配置。
+    注意：Nacos 配置具有最高优先级，会覆盖 .env 文件中的配置。
+    这是为了确保配置中心（生产环境）的配置优先于本地文件。
 
     如需热更新，请使用 start_nacos_watcher()。
     """
-    from dotenv import load_dotenv
-
-    load_dotenv(override=False)
-
     if not _env_flag("NACOS_ENABLED", "false"):
         logger.debug("Nacos disabled (NACOS_ENABLED != true)")
         return {}
