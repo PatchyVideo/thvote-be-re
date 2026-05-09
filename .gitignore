@@ -17,6 +17,7 @@ uv.lock
 # Secrets（切勿提交！）
 docker/secrets/
 docker/*.txt
+nacos-config-thvote-be.json
 
 # 本地数据库和备份
 *.db

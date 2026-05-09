@@ -18,25 +18,6 @@ x-common-backend: &common_backend
     start_period: 20s
 
 services:
-  postgres:
-    image: postgres:15-alpine
-    ports:
-      - "5432:5432"
-    container_name: thvote-postgres
-    <<: *common_backend
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_HOST_AUTH_METHOD: md5
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thvote} -d ${POSTGRES_DB:-thvote}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis:
     image: redis:7-alpine
     container_name: thvote-redis
@@ -65,7 +46,7 @@ services:
     env_file:
       - ${ENV_FILE:-.env}
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://thvote:thvote_pass@postgres:5432/thvote}
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       APOLLO_ENABLED: ${APOLLO_ENABLED:-yes}
       APOLLO_META: ${APOLLO_META:-http://apollo-configservice:8080}
@@ -78,8 +59,6 @@ services:
     volumes:
       - ./logs:/app/logs
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     profiles:
@@ -131,5 +110,4 @@ networks:
     external: true
 
 volumes:
-  postgres-data:
   redis-data:

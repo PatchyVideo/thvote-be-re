@@ -6,31 +6,9 @@ networks:
     external: true
 
 volumes:
-  postgres-prod-data:
   redis-prod-data:
 
 services:
-  postgres-prod:
-    image: postgres:15-alpine
-    container_name: thvote-postgres-prod
-    restart: always
-    environment:
-      POSTGRES_DB: thvote_prod
-      POSTGRES_USER_FILE: /run/secrets/db_user
-      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
-    secrets:
-      - db_user
-      - db_password
-    volumes:
-      - postgres-prod-data:/var/lib/postgresql/data
-    networks:
-      - thvote-prod
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $(cat /run/secrets/db_user) -d thvote_prod"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis-prod:
     image: redis:7-alpine
     container_name: thvote-redis-prod
@@ -75,8 +53,6 @@ services:
     networks:
       - thvote-prod
     depends_on:
-      postgres-prod:
-        condition: service_healthy
       redis-prod:
         condition: service_healthy
 
@@ -98,9 +74,5 @@ services:
       - backend-prod
 
 secrets:
-  db_user:
-    file: ./secrets/db_user.txt
-  db_password:
-    file: ./secrets/db_password.txt
   jwt_secret_key:
     file: ./secrets/jwt_secret_key.txt

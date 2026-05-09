@@ -6,28 +6,9 @@ networks:
     external: true
 
 volumes:
-  postgres-test-data:
   redis-test-data:
 
 services:
-  postgres-test:
-    image: postgres:15-alpine
-    container_name: thvote-postgres-test
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: thvote_test
-      POSTGRES_USER: thvote_test
-      POSTGRES_PASSWORD: ${TEST_DB_PASSWORD:-thvote_test_pass}
-    volumes:
-      - postgres-test-data:/var/lib/postgresql/data
-    networks:
-      - thvote-test
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U thvote_test -d thvote_test"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis-test:
     image: redis:7-alpine
     container_name: thvote-redis-test
@@ -58,7 +39,7 @@ services:
     env_file:
       - ../.env.test
     environment:
-      DATABASE_URL: postgresql+asyncpg://thvote_test:${TEST_DB_PASSWORD:-thvote_test_pass}@postgres-test:5432/thvote_test
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis-test:6379/0
       APOLLO_ENABLED: ${APOLLO_ENABLED:-yes}
       APOLLO_META: ${APOLLO_META:-http://apollo-configservice:8080}
@@ -73,8 +54,6 @@ services:
     networks:
       - thvote-test
     depends_on:
-      postgres-test:
-        condition: service_healthy
       redis-test:
         condition: service_healthy
     healthcheck:
