@@ -23,6 +23,7 @@ on:
       - 'requirements.txt'
       - 'Dockerfile'
       - 'scripts/**'
+      - 'docker/**'
       - '.github/workflows/deploy-test.yml'
   pull_request:
     branches:
