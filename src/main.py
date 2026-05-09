@@ -27,10 +27,10 @@ from strawberry.fastapi import GraphQLRouter
 
 from .api.graphql.schema import schema as graphql_schema
 from .api.rest.v1 import api_router
-from .common.config import get_settings, reload_settings
+from .common.config import get_settings, reload_settings, nacos_config_change_callback
 from .common.database import get_db_session, init_db, reload_engine
 from .common.middleware.logging import LoggingMiddleware
-from .common.nacos import nacos_config_change_callback, start_nacos_watcher, stop_nacos_watcher
+from .common.nacos import start_nacos_watcher, stop_nacos_watcher
 
 
 @asynccontextmanager

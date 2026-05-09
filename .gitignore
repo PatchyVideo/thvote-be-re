@@ -1,5 +1,14 @@
-.venv
-.idea
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
 data
 uv.lock
 *.egg-info/

@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -542,7 +543,6 @@ def load_nacos_overrides() -> dict[str, str]:
             logger.debug(
                 "Nacos config not found: dataId=%s, group=%s", data_id, group
             )
-            return {}
 
     except ImportError:
         # requests 未安装，尝试使用同步方式
@@ -618,11 +618,26 @@ def load_nacos_overrides() -> dict[str, str]:
         except Exception as e:
             logger.warning("Failed to fetch Nacos config from %s: %s", server_addrs, e)
 
-        return {}
-
     except Exception as exc:
         logger.warning("Failed to fetch Nacos config from %s: %s", server_addrs, exc)
-        return {}
+
+    # Nacos server unavailable, try local file fallback
+    local_data_id = os.getenv("NACOS_DATA_ID", "")
+    if local_data_id:
+        local_path = Path(__file__).parent.parent.parent / local_data_id
+        if local_path.exists():
+            try:
+                with open(local_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                logger.info("Loading config from local file: %s", local_path)
+                config = _parse_config_content(content)
+                _apply_config_to_env(config)
+                logger.info("Loaded %d config values from local file", len(config))
+                return config
+            except Exception as e:
+                logger.warning("Failed to load local config file: %s", e)
+
+    return {}
 
 
 def start_nacos_watcher(
