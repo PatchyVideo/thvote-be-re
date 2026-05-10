@@ -288,7 +288,7 @@ jobs:
                   NACOS_SERVER_ADDRS: "${NACOS_SERVER_ADDRS}"
                   NACOS_NAMESPACE: "${NACOS_NAMESPACE}"
                   NACOS_GROUP: "DEFAULT_GROUP"
-                  NACOS_DATA_ID: "nacos-config-thvote-be.json"
+                  NACOS_DATA_ID: "thvote_be"
                   NACOS_USERNAME: "${NACOS_USERNAME}"
                   NACOS_PASSWORD: "${NACOS_PASSWORD}"
                   APP_HOST: "0.0.0.0"
