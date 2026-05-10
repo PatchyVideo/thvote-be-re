@@ -231,7 +231,7 @@ jobs:
             NACOS_SERVER_ADDRS=${{ secrets.NACOS_SERVER_ADDRS }}
             NACOS_NAMESPACE=${{ secrets.TEST_NACOS_NAMESPACE }}
             NACOS_GROUP=DEFAULT_GROUP
-            NACOS_DATA_ID=nacos-config-thvote-be.json
+            NACOS_DATA_ID=thvote_be
             NACOS_USERNAME=${{ secrets.TEST_NACOS_USERNAME }}
             NACOS_PASSWORD=${{ secrets.TEST_NACOS_PASSWORD }}
             BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:test

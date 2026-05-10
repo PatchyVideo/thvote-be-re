@@ -20,7 +20,7 @@ def get_config():
         "server_addresses": os.getenv("NACOS_SERVER_ADDRS", "http://154.37.215.62:8848"),
         "namespace": os.getenv("NACOS_NAMESPACE", "dfacd6e1-b442-476c-bffe-ff5504651c39"),
         "group": os.getenv("NACOS_GROUP", "DEFAULT_GROUP"),
-        "data_id": os.getenv("NACOS_DATA_ID", "nacos-config-thvote-be.json"),
+        "data_id": os.getenv("NACOS_DATA_ID", "thvote_be"),
         "username": os.getenv("NACOS_USERNAME", "thvote_test"),
         "password": os.getenv("NACOS_PASSWORD", "test_thV0te"),
     }
