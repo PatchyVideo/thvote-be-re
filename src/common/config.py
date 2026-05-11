@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import logging
 import os
 from typing import Optional, Set
@@ -7,12 +9,41 @@ from typing import Optional, Set
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .nacos import load_nacos_overrides
-
 logger = logging.getLogger(__name__)
 
+
+def _load_nacos_sync() -> None:
+    """
+    同步加载 Nacos 配置。
+
+    在模块加载时调用，使用线程池执行异步的 load_nacos_config()。
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(asyncio.run, _load_nacos_config_async())
+                future.result(timeout=30)
+        else:
+            asyncio.run(_load_nacos_config_async())
+    except Exception as e:
+        logger.warning("Failed to load Nacos config during module import: %s", e)
+
+
+async def _load_nacos_config_async() -> None:
+    """异步加载 Nacos 配置的内部函数。"""
+    try:
+        from .nacos import load_nacos_config
+
+        result = await load_nacos_config()
+        if result:
+            logger.info("Nacos config loaded %d keys", len(result))
+    except Exception as e:
+        logger.warning("Failed to load Nacos config: %s", e)
+
+
 # 加载 Nacos 配置（启动时一次性加载）
-load_nacos_overrides()
+_load_nacos_sync()
 
 # 可热更新的配置键集合（从 Nacos 加载时会动态更新）
 _hot_reloadable_keys: Set[str] = set()
@@ -144,6 +175,12 @@ class Settings(BaseSettings):
     nacos_data_id: str = Field("thvote-be", env="NACOS_DATA_ID")
     nacos_access_key: Optional[str] = Field(None, env="NACOS_ACCESS_KEY")
     nacos_secret_key: Optional[str] = Field(None, env="NACOS_SECRET_KEY")
+    # Nacos 服务注册发现配置
+    nacos_service_name: str = Field("thvote-be", env="NACOS_SERVICE_NAME")
+    nacos_service_ip: str = Field("0.0.0.0", env="NACOS_SERVICE_IP")
+    nacos_service_port: int = Field(8000, env="NACOS_SERVICE_PORT")
+    nacos_service_cluster: str = Field("DEFAULT", env="NACOS_SERVICE_CLUSTER")
+    nacos_service_weight: float = Field(1.0, env="NACOS_SERVICE_WEIGHT")
 
     # Apollo 配置
     apollo_enabled: bool = Field(False, env="APOLLO_ENABLED")

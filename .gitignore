@@ -13,11 +13,16 @@ data
 uv.lock
 *.egg-info/
 .env
+.env.*
 
-# Secrets（切勿提交！）
-docker/secrets/
-docker/*.txt
-nacos-config-thvote-be.json
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 测试缓存
+.pytest_cache/
 
 # 本地数据库和备份
 *.db
@@ -26,20 +31,10 @@ nacos-config-thvote-be.json
 backup/
 local_db/
 
-# 前端构建产物
-frontend/*/dist/
-frontend/node_modules/
-
-# SSL 证书（生产环境）
-frontend/nginx/ssl/*.crt
-frontend/nginx/ssl/*.key
-!frontend/nginx/ssl/README.md
-
 # 日志
 *.log
 logs/
 
 # 临时文件
 *.tmp
-*.swp
 .cache/

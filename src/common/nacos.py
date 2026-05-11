@@ -1,8 +1,12 @@
 """
-Nacos 配置中心集成模块
+Nacos 配置中心 + 注册中心集成模块
 
-使用 HTTP API 方式调用 Nacos，兼容所有版本。
-文档: https://nacos.io/docs/latest/guide/user/open-api/
+配置中心: 使用 nacos-sdk-python 连接 Nacos 配置中心，实现配置热更新。
+注册中心: 使用 NacosNamingService 实现服务注册、发现与注销。
+
+文档:
+  配置中心: https://nacos.io/docs/latest/manual/user/python-sdk/usage
+  注册中心: https://github.com/nacos-group/nacos-sdk-python
 """
 from __future__ import annotations
 
@@ -11,7 +15,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -22,21 +26,14 @@ def _env_flag(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).strip().lower() in _TRUTHY_VALUES
 
 
-def _normalize_nacos_url(raw_value: str | None) -> str:
-    """Normalize Nacos server URL."""
-    value = (raw_value or "http://localhost:8848").strip().rstrip("/")
-    if not value.startswith(("http://", "https://")):
-        value = f"http://{value}"
-    return value
-
-
 def _parse_config_content(content: str) -> dict[str, str]:
     """解析 Nacos 配置内容，支持标准 JSON、JS 风格 JSON 和 Properties 格式。"""
     import re
 
     content = content.strip()
+    if not content:
+        return {}
 
-    # 尝试标准 JSON
     if content.startswith("{"):
         try:
             data = json.loads(content)
@@ -45,25 +42,19 @@ def _parse_config_content(content: str) -> dict[str, str]:
         except Exception:
             pass
 
-        # 尝试 JavaScript 风格 JSON（键无引号，值可能是引号字符串/数字/布尔/裸字符串）
-        # 格式: { KEY: value, KEY2: "quoted value", KEY3: 123, KEY4: 'single quoted' }
         try:
             result = {}
 
             def extract_value(content: str, start: int, end: int) -> str:
-                """从 start 到 end 之间提取值，处理引号和空白"""
                 raw = content[start:end].strip().rstrip(",").rstrip("}").strip()
                 if not raw:
                     return ""
-                # 带引号的值
                 if raw.startswith('"') and raw.endswith('"'):
                     return raw[1:-1]
                 if raw.startswith("'") and raw.endswith("'"):
                     return raw[1:-1]
-                # 布尔/Null
                 if raw in ("true", "false", "null"):
                     return raw
-                # 数字
                 try:
                     if "." in raw:
                         float(raw)
@@ -72,19 +63,14 @@ def _parse_config_content(content: str) -> dict[str, str]:
                     return raw
                 except ValueError:
                     pass
-                # 裸字符串（包括含空格的字符串如 "postgresql asyncpg"）
                 return raw
 
-            # 匹配键值对：键是标识符，后面跟冒号和值
-            # 键必须被逗号包围或在花括号开始处才算有效键
             pattern = r'[,{\s](\w+)\s*:'
             matches = list(re.finditer(pattern, content))
 
             for i, match in enumerate(matches):
                 key = match.group(1)
-                # 值从冒号后开始
                 value_start = match.end()
-                # 值结束位置是下一个有效键之前，或者到字符串末尾
                 if i + 1 < len(matches):
                     value_end = matches[i + 1].start()
                 else:
@@ -96,7 +82,6 @@ def _parse_config_content(content: str) -> dict[str, str]:
         except Exception:
             pass
 
-    # 回退到 Properties 格式解析
     result = {}
     for line in content.split("\n"):
         line = line.strip()
@@ -112,260 +97,152 @@ def _parse_config_content(content: str) -> dict[str, str]:
     return result
 
 
-class NacosHTTPClient:
+def _apply_config_to_env(config: dict[str, str]) -> None:
+    """将配置应用到环境变量。"""
+    for key, value in config.items():
+        os.environ[key] = value
+
+
+# ---------------------------------------------------------------------------
+# 配置中心
+# ---------------------------------------------------------------------------
+
+
+class NacosConfigListener:
     """
-    Nacos HTTP API 客户端。
+    Nacos 配置监听器，使用 SDK 的长连接监听机制。
 
-    使用 Nacos Open API 直接调用，避免 SDK gRPC 兼容性问题。
-    """
-
-    def __init__(
-        self,
-        server_addresses: str,
-        namespace: str = "",
-        username: Optional[str] = None,
-        password: Optional[str] = None,
-        timeout: float = 5.0,
-    ):
-        self.servers = [s.strip() for s in server_addresses.split(",") if s.strip()]
-        self.namespace = namespace
-        self.username = username
-        self.password = password
-        self.timeout = timeout
-        self._access_token: Optional[str] = None
-
-    async def _get_access_token(self, base_url: str) -> Optional[str]:
-        """获取访问令牌"""
-        import aiohttp
-
-        if self.username and self.password:
-            try:
-                url = f"{base_url}/nacos/v1/auth/login"
-                data = {"username": self.username, "password": self.password}
-
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(url, data=data, timeout=self.timeout) as resp:
-                        if resp.status == 200:
-                            result = await resp.json()
-                            return result.get("accessToken")
-            except Exception as e:
-                logger.warning("Failed to get access token: %s", e)
-        return None
-
-    async def get_config(self, data_id: str, group: str = "DEFAULT_GROUP") -> Optional[str]:
-        """获取配置"""
-        import aiohttp
-
-        for server in self.servers:
-            base_url = _normalize_nacos_url(server)
-
-            try:
-                # 获取 token
-                token = await self._get_access_token(base_url)
-
-                # 构建请求参数
-                params = {
-                    "dataId": data_id,
-                    "group": group,
-                }
-                if self.namespace:
-                    params["namespaceId"] = self.namespace
-                if token:
-                    params["accessToken"] = token
-
-                url = f"{base_url}/nacos/v1/cs/configs"
-
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url, params=params, timeout=self.timeout) as resp:
-                        if resp.status == 200:
-                            content = await resp.text()
-                            if content:
-                                return content
-                        elif resp.status == 403:
-                            logger.warning("Access denied for config: %s", data_id)
-            except Exception as e:
-                logger.warning("Failed to get config from %s: %s", base_url, e)
-                continue
-
-        return None
-
-    async def publish_config(
-        self, data_id: str, content: str, group: str = "DEFAULT_GROUP"
-    ) -> bool:
-        """发布配置"""
-        import aiohttp
-
-        for server in self.servers:
-            base_url = _normalize_nacos_url(server)
-
-            try:
-                token = await self._get_access_token(base_url)
-
-                data = {
-                    "dataId": data_id,
-                    "group": group,
-                    "content": content,
-                }
-                if self.namespace:
-                    data["namespaceId"] = self.namespace
-                if token:
-                    data["accessToken"] = token
-
-                url = f"{base_url}/nacos/v1/cs/configs"
-
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(url, data=data, timeout=self.timeout) as resp:
-                        if resp.status == 200:
-                            result = await resp.text()
-                            return result == "true"
-            except Exception as e:
-                logger.warning("Failed to publish config to %s: %s", base_url, e)
-                continue
-
-        return False
-
-    async def remove_config(self, data_id: str, group: str = "DEFAULT_GROUP") -> bool:
-        """删除配置"""
-        import aiohttp
-
-        for server in self.servers:
-            base_url = _normalize_nacos_url(server)
-
-            try:
-                token = await self._get_access_token(base_url)
-
-                params = {
-                    "dataId": data_id,
-                    "group": group,
-                }
-                if self.namespace:
-                    params["namespaceId"] = self.namespace
-                if token:
-                    params["accessToken"] = token
-
-                url = f"{base_url}/nacos/v1/cs/configs"
-
-                async with aiohttp.ClientSession() as session:
-                    async with session.delete(url, params=params, timeout=self.timeout) as resp:
-                        if resp.status == 200:
-                            result = await resp.text()
-                            return result == "true"
-            except Exception as e:
-                logger.warning("Failed to remove config from %s: %s", base_url, e)
-                continue
-
-        return False
-
-
-class NacosConfigWatcher:
-    """
-    Nacos 配置监听器，支持配置热更新。
-
-    使用轮询方式检查配置变更。
+    相比轮询方式，SDK 的长连接能即时感知配置变更。
     """
 
     def __init__(
         self,
-        server_addr: str,
+        server_addrs: str,
         namespace: str,
         group: str,
         data_id: str,
         username: Optional[str] = None,
         password: Optional[str] = None,
         on_change: Optional[Callable[[dict[str, str]], None]] = None,
-        timeout: float = 30.0,
-        poll_interval: float = 30.0,
     ):
-        self.server_addr = _normalize_nacos_url(server_addr)
+        self.server_addrs = server_addrs
         self.namespace = namespace
         self.group = group
         self.data_id = data_id
         self.username = username
         self.password = password
         self.on_change = on_change
-        self.timeout = timeout
-        self.poll_interval = poll_interval
 
-        self._client: Optional[NacosHTTPClient] = None
+        self._config_client = None
         self._current_config: dict[str, str] = {}
         self._running = False
         self._task: Optional[asyncio.Task[None]] = None
 
         logger.debug(
-            "NacosConfigWatcher initialized: server=%s, namespace=%s, group=%s, dataId=%s",
-            self.server_addr,
-            self.namespace,
-            self.group,
-            self.data_id,
+            "NacosConfigListener initialized: server=%s, namespace=%s, group=%s, dataId=%s",
+            server_addrs,
+            namespace,
+            group,
+            data_id,
         )
 
-    async def _fetch_current_config(self) -> dict[str, str]:
-        """获取当前配置。"""
-        if self._client is None:
-            self._client = NacosHTTPClient(
-                server_addresses=self.server_addr,
-                namespace=self.namespace,
-                username=self.username,
-                password=self.password,
-                timeout=self.timeout,
+    async def _init_client(self) -> None:
+        """初始化 SDK 客户端。"""
+        if self._config_client is not None:
+            return
+
+        try:
+            from v2.nacos import (
+                NacosConfigService,
+                ClientConfigBuilder,
+                ConfigParam,
             )
 
-        content = await self._client.get_config(self.data_id, self.group)
+            builder = ClientConfigBuilder().server_address(self.server_addrs)
+
+            if self.namespace:
+                builder.namespace_id(self.namespace)
+
+            if self.username and self.password:
+                builder.username(self.username).password(self.password)
+
+            config = builder.build()
+            self._config_client = await NacosConfigService.create_config_service(config)
+
+            # 获取初始配置
+            param = ConfigParam(
+                data_id=self.data_id,
+                group=self.group,
+            )
+
+            content = await self._config_client.get_config(param)
+            if content:
+                self._current_config = _parse_config_content(content)
+                logger.info(
+                    "Initial config loaded from SDK: %d keys", len(self._current_config)
+                )
+                _apply_config_to_env(self._current_config)
+                if self.on_change:
+                    self.on_change(self._current_config)
+
+        except ImportError as e:
+            logger.error("nacos-sdk-python not installed: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Failed to initialize Nacos SDK client: %s", e)
+            raise
+
+    def _on_sdk_config_change(
+        self, tenant: str, group: str, data_id: str, content: str
+    ) -> None:
+        """SDK 配置变更回调。"""
+        logger.info(
+            "Nacos config changed (SDK callback): dataId=%s, content_len=%d",
+            data_id,
+            len(content) if content else 0,
+        )
+
         if content:
-            return _parse_config_content(content)
-        return {}
+            new_config = _parse_config_content(content)
+            self._current_config = new_config
+            _apply_config_to_env(new_config)
+
+            if self.on_change:
+                self.on_change(new_config)
 
     async def _watch_loop(self) -> None:
         """监听循环。"""
         logger.info(
-            "Nacos watcher started: server=%s, namespace=%s, group=%s, dataId=%s",
-            self.server_addr,
+            "Nacos SDK listener started: server=%s, namespace=%s, group=%s, dataId=%s",
+            self.server_addrs,
             self.namespace,
             self.group,
             self.data_id,
         )
 
-        # 首次获取配置
-        self._current_config = await self._fetch_current_config()
-        if self._current_config:
-            logger.info("Initial config loaded: %d keys", len(self._current_config))
-            if self.on_change:
-                self.on_change(self._current_config)
+        await self._init_client()
 
-        # 轮询检查配置变更
-        while self._running:
-            await asyncio.sleep(self.poll_interval)
+        if self._config_client is None:
+            logger.error("Nacos SDK client not initialized")
+            return
 
-            try:
-                new_config = await self._fetch_current_config()
+        # 使用 SDK 的长连接监听
+        try:
+            await self._config_client.add_listener(
+                data_id=self.data_id,
+                group=self.group,
+                listener=self._on_sdk_config_change,
+            )
+            logger.info("SDK listener registered for %s/%s", self.group, self.data_id)
 
-                if new_config != self._current_config:
-                    old_keys = set(self._current_config.keys())
-                    new_keys = set(new_config.keys())
+            # 保持运行，等待配置变更
+            while self._running:
+                await asyncio.sleep(60)
 
-                    added = new_keys - old_keys
-                    removed = old_keys - new_keys
-                    changed = {
-                        k for k in old_keys & new_keys
-                        if self._current_config[k] != new_config[k]
-                    }
-
-                    logger.info(
-                        "Nacos config updated: +%d/-%d/~%d keys",
-                        len(added),
-                        len(removed),
-                        len(changed),
-                    )
-
-                    self._current_config = new_config
-
-                    if self.on_change:
-                        self.on_change(new_config)
-
-            except Exception as exc:
-                logger.warning("Error in Nacos watch loop: %s", exc)
-
-        logger.info("Nacos watcher stopped")
+        except Exception as e:
+            logger.error("Error in SDK listener: %s", e)
+        finally:
+            logger.info("Nacos SDK listener stopped")
 
     def start(self) -> None:
         """启动监听器。"""
@@ -374,6 +251,7 @@ class NacosConfigWatcher:
 
         self._running = True
         self._task = asyncio.create_task(self._watch_loop())
+        logger.debug("Nacos SDK listener task started")
 
     async def stop(self) -> None:
         """停止监听器。"""
@@ -389,7 +267,17 @@ class NacosConfigWatcher:
             except asyncio.CancelledError:
                 pass
 
-        logger.info("Nacos watcher stopped")
+        if self._config_client:
+            try:
+                await self._config_client.remove_listener(
+                    data_id=self.data_id,
+                    group=self.group,
+                    listener=self._on_sdk_config_change,
+                )
+            except Exception as e:
+                logger.warning("Error removing SDK listener: %s", e)
+
+        logger.info("Nacos SDK listener stopped")
 
     @property
     def current_config(self) -> dict[str, str]:
@@ -397,31 +285,16 @@ class NacosConfigWatcher:
         return self._current_config.copy()
 
 
-# 全局 watcher 实例
-_watcher: Optional[NacosConfigWatcher] = None
+# 全局监听器实例
+_listener: Optional[NacosConfigListener] = None
 
 
-def _apply_config_to_env(config: dict[str, str]) -> None:
+async def load_nacos_config() -> dict[str, str]:
     """
-    将配置应用到环境变量。
+    从 Nacos 一次性加载配置。
 
-    Nacos 配置具有最高优先级，会覆盖本地 .env 文件中的配置。
-    这样确保配置中心（生产环境）的配置优先于本地文件。
-    """
-    for key, value in config.items():
-        os.environ[key] = value
-
-
-def load_nacos_overrides() -> dict[str, str]:
-    """
-    从 Nacos 一次性加载配置并覆盖环境变量。
-
-    使用 HTTP API 调用 Nacos。
-
-    注意：Nacos 配置具有最高优先级，会覆盖 .env 文件中的配置。
-    这是为了确保配置中心（生产环境）的配置优先于本地文件。
-
-    如需热更新，请使用 start_nacos_watcher()。
+    使用 SDK 获取配置，适用于启动时加载配置。
+    如需热更新，请使用 start_nacos_listener()。
     """
     if not _env_flag("NACOS_ENABLED", "false"):
         logger.debug("Nacos disabled (NACOS_ENABLED != true)")
@@ -433,7 +306,6 @@ def load_nacos_overrides() -> dict[str, str]:
     data_id = os.getenv("NACOS_DATA_ID", "")
     username = os.getenv("NACOS_USERNAME")
     password = os.getenv("NACOS_PASSWORD")
-    timeout = float(os.getenv("NACOS_TIMEOUT_SECONDS", "5"))
 
     if not server_addrs:
         logger.warning("NACOS_ENABLED is true but NACOS_SERVER_ADDRS is empty")
@@ -444,139 +316,50 @@ def load_nacos_overrides() -> dict[str, str]:
         return {}
 
     logger.debug(
-        "Nacos config: server=%s, namespace=%s, group=%s, data_id=%s, timeout=%s",
+        "Nacos config: server=%s, namespace=%s, group=%s, data_id=%s",
         server_addrs,
         namespace,
         group,
         data_id,
-        timeout,
     )
 
     try:
-        import requests
+        from v2.nacos import NacosConfigService, ClientConfigBuilder, ConfigParam
 
-        # 获取 access token
-        access_token = None
-        server = server_addrs.split(",")[0].strip()
-        base_url = _normalize_nacos_url(server)
+        builder = ClientConfigBuilder().server_address(server_addrs)
+
+        if namespace:
+            builder.namespace_id(namespace)
 
         if username and password:
-            try:
-                token_url = f"{base_url}/nacos/v1/auth/login"
-                response = requests.post(
-                    token_url,
-                    data={"username": username, "password": password},
-                    timeout=timeout,
-                )
-                if response.status_code == 200:
-                    token_result = response.json()
-                    access_token = token_result.get("accessToken")
-            except Exception as e:
-                logger.warning("Failed to get access token: %s", e)
+            builder.username(username).password(password)
 
-        # 获取配置
-        params = {
-            "dataId": data_id,
-            "group": group,
-        }
-        if namespace:
-            params["namespaceId"] = namespace
-        if access_token:
-            params["accessToken"] = access_token
+        config = builder.build()
+        config_client = await NacosConfigService.create_config_service(config)
 
-        config_url = f"{base_url}/nacos/v1/cs/configs"
-        response = requests.get(config_url, params=params, timeout=timeout)
+        param = ConfigParam(
+            data_id=data_id,
+            group=group,
+        )
 
-        if response.status_code == 200 and response.text:
-            logger.debug("Nacos config response: %s", response.text[:500])
-            config = _parse_config_content(response.text)
+        content = await config_client.get_config(param)
 
-            _apply_config_to_env(config)
-            logger.info("Nacos loaded %d config values", len(config))
-            return config
+        if content:
+            config_dict = _parse_config_content(content)
+            _apply_config_to_env(config_dict)
+            logger.info("Nacos loaded %d config values", len(config_dict))
+            return config_dict
         else:
             logger.debug(
                 "Nacos config not found: dataId=%s, group=%s", data_id, group
             )
 
     except ImportError:
-        # requests 未安装，尝试使用同步方式
-        logger.warning("requests library not found, trying sync aiohttp")
-        try:
-            import aiohttp
-            import ssl
+        logger.error("nacos-sdk-python not installed, cannot load Nacos config")
+    except Exception as e:
+        logger.warning("Failed to fetch Nacos config from %s: %s", server_addrs, e)
 
-            server = server_addrs.split(",")[0].strip()
-            base_url = _normalize_nacos_url(server)
-
-            # 使用 SSL context 避免问题
-            ssl_context = ssl.create_default_context()
-
-            async def _fetch():
-                nonlocal access_token
-
-                # 获取 token
-                if username and password:
-                    token_url = f"{base_url}/nacos/v1/auth/login"
-                    async with aiohttp.ClientSession() as session:
-                        async with session.post(
-                            token_url,
-                            data={"username": username, "password": password},
-                            timeout=aiohttp.ClientTimeout(total=timeout),
-                            ssl=ssl_context,
-                        ) as resp:
-                            if resp.status == 200:
-                                token_result = await resp.json()
-                                access_token = token_result.get("accessToken")
-
-                # 获取配置
-                params = {"dataId": data_id, "group": group}
-                if namespace:
-                    params["namespaceId"] = namespace
-                if access_token:
-                    params["accessToken"] = access_token
-
-                config_url = f"{base_url}/nacos/v1/cs/configs"
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        config_url,
-                        params=params,
-                        timeout=aiohttp.ClientTimeout(total=timeout),
-                        ssl=ssl_context,
-                    ) as resp:
-                        if resp.status == 200:
-                            return await resp.text()
-                return None
-
-            # 尝试在新的事件循环中运行
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # 已有运行中的循环，创建新任务
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(asyncio.run, _fetch())
-                        content = future.result(timeout=timeout * 2)
-                else:
-                    content = asyncio.run(_fetch())
-            except Exception:
-                # 最后尝试
-                content = None
-
-            if content:
-                logger.debug("Nacos config response: %s", content[:500])
-                config = _parse_config_content(content)
-                _apply_config_to_env(config)
-                logger.info("Nacos loaded %d config values", len(config))
-                return config
-
-        except Exception as e:
-            logger.warning("Failed to fetch Nacos config from %s: %s", server_addrs, e)
-
-    except Exception as exc:
-        logger.warning("Failed to fetch Nacos config from %s: %s", server_addrs, exc)
-
-    # Nacos server unavailable, try local file fallback
+    # 回退到本地文件
     local_data_id = os.getenv("NACOS_DATA_ID", "")
     if local_data_id:
         local_path = Path(__file__).parent.parent.parent / local_data_id
@@ -595,24 +378,24 @@ def load_nacos_overrides() -> dict[str, str]:
     return {}
 
 
-def start_nacos_watcher(
+def start_nacos_listener(
     on_change: Optional[Callable[[dict[str, str]], None]] = None,
-) -> Optional[NacosConfigWatcher]:
+) -> Optional[NacosConfigListener]:
     """
     启动 Nacos 配置监听器，实现热更新。
 
-    使用轮询方式检查配置变更。
+    使用 SDK 的长连接机制实时监听配置变更。
 
     Args:
         on_change: 配置变更时的回调函数
 
     Returns:
-        NacosConfigWatcher 实例，如果 Nacos 未启用则返回 None
+        NacosConfigListener 实例，如果 Nacos 未启用则返回 None
     """
-    global _watcher
+    global _listener
 
     if not _env_flag("NACOS_ENABLED", "false"):
-        logger.debug("Nacos disabled, not starting watcher")
+        logger.debug("Nacos disabled, not starting listener")
         return None
 
     server_addrs = os.getenv("NACOS_SERVER_ADDRS", "")
@@ -621,49 +404,409 @@ def start_nacos_watcher(
     data_id = os.getenv("NACOS_DATA_ID", "thvote-be")
     username = os.getenv("NACOS_USERNAME")
     password = os.getenv("NACOS_PASSWORD")
-    timeout = float(os.getenv("NACOS_TIMEOUT_SECONDS", "30"))
-    poll_interval = float(os.getenv("NACOS_POLL_INTERVAL", "30"))
 
     if not server_addrs or not data_id:
         logger.warning("NACOS_ENABLED is true but server or data_id is missing")
         return None
 
-    # 合并回调
     def combined_callback(config: dict[str, str]) -> None:
-        _apply_config_to_env(config)
         if on_change:
             on_change(config)
 
-    # 取第一个服务器地址
-    servers = [s.strip() for s in server_addrs.split(",") if s.strip()]
-    if not servers:
-        logger.warning("No valid Nacos servers found")
-        return None
-
-    _watcher = NacosConfigWatcher(
-        server_addr=servers[0],
+    _listener = NacosConfigListener(
+        server_addrs=server_addrs,
         namespace=namespace,
         group=group,
         data_id=data_id,
         username=username,
         password=password,
         on_change=combined_callback,
-        timeout=timeout,
-        poll_interval=poll_interval,
     )
 
-    _watcher.start()
-    return _watcher
+    _listener.start()
+    return _listener
+
+
+async def stop_nacos_listener() -> None:
+    """停止 Nacos 配置监听器。"""
+    global _listener
+    if _listener:
+        await _listener.stop()
+        _listener = None
+
+
+def get_nacos_listener() -> Optional[NacosConfigListener]:
+    """获取当前的监听器实例。"""
+    return _listener
+
+
+# 向后兼容别名
+NacosConfigWatcher = NacosConfigListener
+
+
+def load_nacos_overrides() -> dict[str, str]:
+    """
+    从 Nacos 一次性加载配置并覆盖环境变量。
+
+    注意：此函数已废弃，建议使用 load_nacos_config()。
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import concurrent.futures
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, load_nacos_config())
+                return future.result(timeout=30)
+        return asyncio.run(load_nacos_config())
+    except Exception as e:
+        logger.warning("Failed to load Nacos overrides: %s", e)
+        return {}
+
+
+def start_nacos_watcher(
+    on_change: Optional[Callable[[dict[str, str]], None]] = None,
+) -> Optional[NacosConfigListener]:
+    """向后兼容的函数名，使用 start_nacos_listener()。"""
+    return start_nacos_listener(on_change)
 
 
 async def stop_nacos_watcher() -> None:
-    """停止 Nacos 配置监听器。"""
-    global _watcher
-    if _watcher:
-        await _watcher.stop()
-        _watcher = None
+    """向后兼容的函数名，使用 stop_nacos_listener()。"""
+    await stop_nacos_listener()
 
 
-def get_nacos_watcher() -> Optional[NacosConfigWatcher]:
-    """获取当前的 watcher 实例。"""
-    return _watcher
+def get_nacos_watcher() -> Optional[NacosConfigListener]:
+    """向后兼容的函数名，使用 get_nacos_listener()。"""
+    return get_nacos_listener()
+
+
+# ---------------------------------------------------------------------------
+# 注册中心：服务注册、发现与注销
+# ---------------------------------------------------------------------------
+
+
+class NacosServiceRegister:
+    """
+    Nacos 注册中心封装，支持服务注册、注销和发现。
+
+    使用 SDK v3 的 NacosNamingService，自动处理心跳保活。
+    临时实例（ephemeral=True）由 SDK gRPC 客户端自动发送心跳。
+    """
+
+    def __init__(
+        self,
+        server_addrs: str,
+        namespace: str,
+        service_name: str,
+        ip: str,
+        port: int,
+        group: str = "DEFAULT_GROUP",
+        cluster_name: str = "DEFAULT",
+        weight: float = 1.0,
+        metadata: dict | None = None,
+        username: str | None = None,
+        password: str | None = None,
+    ):
+        self.server_addrs = server_addrs
+        self.namespace = namespace
+        self.service_name = service_name
+        self.ip = ip
+        self.port = port
+        self.group = group
+        self.cluster_name = cluster_name
+        self.weight = weight
+        self.metadata = metadata or {}
+        self.username = username
+        self.password = password
+
+        self._naming_client = None
+
+        logger.debug(
+            "NacosServiceRegister initialized: service=%s, ip=%s, port=%s, group=%s, cluster=%s",
+            service_name, ip, port, group, cluster_name,
+        )
+
+    async def _init_client(self) -> None:
+        """初始化 SDK 客户端。"""
+        if self._naming_client is not None:
+            return
+
+        try:
+            from v2.nacos import (
+                ClientConfigBuilder,
+                NacosNamingService,
+            )
+
+            builder = ClientConfigBuilder().server_address(self.server_addrs)
+
+            if self.namespace:
+                builder.namespace_id(self.namespace)
+
+            if self.username and self.password:
+                builder.username(self.username).password(self.password)
+
+            client_config = builder.build()
+            self._naming_client = await NacosNamingService.create_naming_service(
+                client_config
+            )
+
+        except ImportError as e:
+            logger.error("nacos-sdk-python not installed: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Failed to initialize Nacos naming client: %s", e)
+            raise
+
+    async def register(self) -> bool:
+        """
+        注册服务实例到 Nacos。
+
+        使用临时实例（ephemeral=True），SDK gRPC 客户端会自动发送心跳保活。
+
+        Returns:
+            True if registration succeeded, False otherwise.
+        """
+        await self._init_client()
+
+        try:
+            from v2.nacos import RegisterInstanceParam
+
+            result = await self._naming_client.register_instance(
+                request=RegisterInstanceParam(
+                    service_name=self.service_name,
+                    group_name=self.group,
+                    ip=self.ip,
+                    port=self.port,
+                    weight=self.weight,
+                    cluster_name=self.cluster_name,
+                    metadata=self.metadata,
+                    enabled=True,
+                    healthy=True,
+                    ephemeral=True,
+                )
+            )
+            logger.info(
+                "Service registered to Nacos: %s @ %s:%s (cluster=%s, weight=%s)",
+                self.service_name, self.ip, self.port, self.cluster_name, self.weight,
+            )
+            return result is True or result is None
+
+        except Exception as e:
+            logger.error("Failed to register service %s: %s", self.service_name, e)
+            return False
+
+    async def deregister(self) -> bool:
+        """
+        从 Nacos 注销服务实例。
+
+        Returns:
+            True if deregistration succeeded, False otherwise.
+        """
+        if self._naming_client is None:
+            logger.warning("Nacos naming client not initialized, skipping deregister")
+            return False
+
+        try:
+            from v2.nacos import DeregisterInstanceParam
+
+            result = await self._naming_client.deregister_instance(
+                request=DeregisterInstanceParam(
+                    service_name=self.service_name,
+                    group_name=self.group,
+                    ip=self.ip,
+                    port=self.port,
+                    cluster_name=self.cluster_name,
+                    ephemeral=True,
+                )
+            )
+            logger.info(
+                "Service deregistered from Nacos: %s @ %s:%s",
+                self.service_name, self.ip, self.port,
+            )
+            return result is True or result is None
+
+        except Exception as e:
+            logger.error(
+                "Failed to deregister service %s: %s", self.service_name, e
+            )
+            return False
+
+    async def discover(
+        self,
+        service_name: str | None = None,
+        group: str | None = None,
+        healthy_only: bool = False,
+    ) -> list:
+        """
+        从 Nacos 发现服务实例。
+
+        Args:
+            service_name: 服务名，默认为本实例的服务名。
+            group: 分组名，默认为本实例的分组。
+            healthy_only: 是否只返回健康实例。
+
+        Returns:
+            实例列表。
+        """
+        await self._init_client()
+
+        sn = service_name or self.service_name
+        grp = group or self.group
+
+        try:
+            from v2.nacos import ListInstanceParam
+
+            instances = await self._naming_client.list_instances(
+                request=ListInstanceParam(
+                    service_name=sn,
+                    group_name=grp,
+                    healthy_only=healthy_only,
+                    subscribe=False,
+                )
+            )
+
+            logger.debug(
+                "Discovered %d instances for service %s/%s (healthy_only=%s)",
+                len(instances) if instances else 0, grp, sn, healthy_only,
+            )
+            return instances if instances else []
+
+        except Exception as e:
+            logger.error("Failed to discover service %s: %s", sn, e)
+            return []
+
+    async def list_all_services(self, page_no: int = 1, page_size: int = 20) -> dict:
+        """
+        分页列出所有已注册的服务。
+
+        Returns:
+            dict with 'services' (list) and 'count' (int).
+        """
+        await self._init_client()
+
+        try:
+            from v2.nacos import ListServiceParam
+
+            result = await self._naming_client.list_services(
+                request=ListServiceParam(
+                    namespace_id=self.namespace or "public",
+                    group_name=self.group,
+                    page_no=page_no,
+                    page_size=page_size,
+                )
+            )
+
+            return {
+                "services": result.domains or [],
+                "count": result.count if hasattr(result, "count") else 0,
+            }
+
+        except Exception as e:
+            logger.error("Failed to list services: %s", e)
+            return {"services": [], "count": 0}
+
+    async def shutdown(self) -> None:
+        """关闭 SDK 客户端，释放资源。"""
+        if self._naming_client is not None:
+            try:
+                await self._naming_client.shutdown()
+            except Exception as e:
+                logger.warning("Error shutting down Nacos naming client: %s", e)
+            self._naming_client = None
+
+
+# 全局注册器实例
+_service_register: Optional[NacosServiceRegister] = None
+
+
+async def register_service_to_nacos(
+    server_addrs: str,
+    namespace: str,
+    service_name: str,
+    ip: str,
+    port: int,
+    group: str = "DEFAULT_GROUP",
+    cluster_name: str = "DEFAULT",
+    weight: float = 1.0,
+    metadata: dict | None = None,
+    username: str | None = None,
+    password: str | None = None,
+) -> NacosServiceRegister:
+    """
+    创建并启动服务注册到 Nacos。
+
+    便捷函数，内部创建 NacosServiceRegister 并执行注册。
+    """
+    global _service_register
+
+    reg = NacosServiceRegister(
+        server_addrs=server_addrs,
+        namespace=namespace,
+        service_name=service_name,
+        ip=ip,
+        port=port,
+        group=group,
+        cluster_name=cluster_name,
+        weight=weight,
+        metadata=metadata,
+        username=username,
+        password=password,
+    )
+
+    await reg.register()
+    _service_register = reg
+    return reg
+
+
+async def deregister_service_from_nacos() -> None:
+    """从 Nacos 注销服务（使用全局注册器实例）。"""
+    global _service_register
+    if _service_register is not None:
+        await _service_register.deregister()
+        await _service_register.shutdown()
+        _service_register = None
+
+
+async def discover_service_from_nacos(
+    service_name: str,
+    group: str = "DEFAULT_GROUP",
+    healthy_only: bool = False,
+    namespace: str = "",
+    server_addrs: str = "",
+    username: str | None = None,
+    password: str | None = None,
+) -> list:
+    """
+    发现服务实例（一次性查询，不持久化连接）。
+
+    便捷函数，适用于客户端调用。
+    """
+    reg = NacosServiceRegister(
+        server_addrs=server_addrs,
+        namespace=namespace,
+        service_name=service_name,
+        ip="0.0.0.0",
+        port=0,
+        group=group,
+        username=username,
+        password=password,
+    )
+    try:
+        instances = await reg.discover(
+            service_name=service_name,
+            group=group,
+            healthy_only=healthy_only,
+        )
+        return instances
+    finally:
+        await reg.shutdown()
+
+
+def get_service_register() -> Optional[NacosServiceRegister]:
+    """获取当前的服务注册器实例。"""
+    return _service_register
+
+
+# 向后兼容别名
+NacosServiceRegistry = NacosServiceRegister
