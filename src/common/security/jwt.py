@@ -38,9 +38,14 @@ class SessionTokenPayload:
 
 @dataclass(frozen=True)
 class VoteTokenPayload:
-    """Payload carried by a vote token."""
+    """Payload carried by a vote token.
 
-    vote_id: str
+    Subject is the authenticated user_id, not a per-submission id.  A vote
+    token signed at login time is reused across the configured vote window.
+    Aligned with Rust user-manager behavior.
+    """
+
+    user_id: str
 
 
 def _read_key(path: str | None) -> str | None:
@@ -126,15 +131,19 @@ def decode_session_token(token: str) -> SessionTokenPayload:
 
 
 def create_vote_token(
-    vote_id: str,
+    user_id: str,
     vote_start: datetime,
     vote_end: datetime,
 ) -> str:
-    """Create a vote token constrained by the configured vote window."""
+    """Create a vote token constrained by the configured vote window.
+
+    Subject is user_id; the token is signed once at login and reused for
+    every vote submission within [vote_start, vote_end].
+    """
     payload = {
-        "sub": vote_id,
+        "sub": user_id,
         "aud": VOTE_AUDIENCE,
-        "vote_id": vote_id,
+        "user_id": user_id,
         "iat": int(datetime.now(UTC).timestamp()),
         "nbf": int(vote_start.timestamp()),
         "exp": int(vote_end.timestamp()),
@@ -145,7 +154,7 @@ def create_vote_token(
 def decode_vote_token(token: str) -> VoteTokenPayload:
     """Decode and validate a vote token."""
     payload = _decode(token, VOTE_AUDIENCE)
-    vote_id = payload.get("vote_id") or payload.get("sub")
-    if not vote_id:
-        raise JWTValidationError("TOKEN_MISSING_VOTE_ID")
-    return VoteTokenPayload(vote_id=str(vote_id))
+    user_id = payload.get("user_id") or payload.get("sub")
+    if not user_id:
+        raise JWTValidationError("TOKEN_MISSING_USER_ID")
+    return VoteTokenPayload(user_id=str(user_id))

@@ -1,40 +1,65 @@
-# Python cache
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-*.egg
+*.py[cod]
 *.egg-info/
+*.egg
+.venv/
+venv/
+uv.lock
 dist/
 build/
-data
-uv.lock
-*.egg-info/
+
+# 环境与密钥
 .env
 .env.*
+!.env.example
+keys/
+*.pem
+docker/secrets/
+docker/*.txt
+
+# 数据库与数据
+*.db
+*.sqlite
+*.sql.gz
+data/
+backup/
+local_db/
+
+# 前端
+frontend/*/dist/
+frontend/node_modules/
+node_modules/
+
+# SSL 证书
+frontend/nginx/ssl/*.crt
+frontend/nginx/ssl/*.key
+!frontend/nginx/ssl/README.md
+
+# 日志
+*.log
+logs/
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
-
-# 测试缓存
-.pytest_cache/
-
-# 本地数据库和备份
-*.db
-*.sqlite
-*.sql.gz
-backup/
-local_db/
-
-# 日志
-*.log
-logs/
+*~
 
 # 临时文件
 *.tmp
 .cache/
+
+# 平台
+.DS_Store
+Thumbs.db
+
+# 测试与覆盖率
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Ralph Loop / Claude Code local state
+.claude/
