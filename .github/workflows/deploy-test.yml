@@ -17,10 +17,9 @@ on:
     branches:
       - main
       - zfq_dev
-      - zfq_dev_pipeline
     paths:
       - 'src/**'
-      - 'requirements.txt'
+      - 'pyproject.toml'
       - 'Dockerfile'
       - 'scripts/**'
       - 'docker/**'
@@ -29,7 +28,6 @@ on:
     branches:
       - main
       - zfq_dev
-      - zfq_dev_pipeline
   workflow_dispatch:
     inputs:
       skip_tests:
@@ -54,16 +52,16 @@ jobs:
       - name: 设置 Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version-file: 'pyproject.toml'
 
       - name: 安装工具
         run: |
           python -m pip install --upgrade pip
           pip install flake8 black isort mypy
-          pip install -r requirements.txt
+          pip install -e .
 
       - name: 代码风格检查
-        run: flake8 src/ --max-line-length=120 || true
+        run: flake8 src/ --max-line-length=88 || true
 
   # ==================== 运行测试 ====================
   test:
@@ -101,6 +99,17 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: 'pyproject.toml'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-asyncio pytest-cov httpx
+
       - name: 检查测试目录
         id: check_tests
         run: |
@@ -109,19 +118,6 @@ jobs:
           else
             echo "exist=false" >> $GITHUB_OUTPUT
           fi
-
-      - name: 设置 Python
-        if: steps.check_tests.outputs.exist == 'true'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: 安装依赖
-        if: steps.check_tests.outputs.exist == 'true'
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio pytest-cov httpx
 
       - name: 运行测试
         if: steps.check_tests.outputs.exist == 'true'
@@ -139,6 +135,10 @@ jobs:
         with:
           files: ./coverage.xml
           fail_ci_if_error: false
+
+      - name: 无测试文件
+        if: steps.check_tests.outputs.exist == 'false'
+        run: echo "tests/ 目录不存在或为空，跳过测试执行"
 
   # ==================== 构建后端镜像 ====================
   build-backend:
@@ -173,7 +173,8 @@ jobs:
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
-            type=raw,value=test,enable=true
+            type=raw,value=test,enable=${{ github.ref_name != 'main' }}
+            type=raw,value=prod,enable=${{ github.ref_name == 'main' }}
 
       - name: 构建并推送后端镜像
         id: build
@@ -191,8 +192,11 @@ jobs:
     name: 部署到测试环境
     runs-on: ubuntu-latest
     needs: [build-backend]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/zfq_dev' || github.ref == 'refs/heads/zfq_dev_pipeline')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/zfq_dev')
     environment: test
+
+    env:
+      BACKEND_TAG: ${{ github.ref_name == 'main' && 'prod' || 'test' }}
 
     steps:
       - name: 检出部署配置
@@ -234,7 +238,7 @@ jobs:
             NACOS_DATA_ID=thvote_be
             NACOS_USERNAME=${{ secrets.TEST_NACOS_USERNAME }}
             NACOS_PASSWORD=${{ secrets.TEST_NACOS_PASSWORD }}
-            BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:test
+            BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ env.BACKEND_TAG }}
             ENVEOF
 
             # 首次部署或 compose 缺少 Nacos 配置时重写 docker-compose.yml
@@ -314,13 +318,13 @@ jobs:
             fi
 
             # 拉取镜像
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:test || true
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ env.BACKEND_TAG }} || true
 
-            # 仅当 redis 不存在时才启动（postgres 使用阿里云 RDS）
-            if ! docker ps -a --format '{{.Names}}' | grep -q '^thvote-redis$'; then
-              docker-compose up -d redis
+            # 仅当 redis 未运行时才启动（postgres 使用阿里云 RDS）
+            if docker ps --format '{{.Names}}' | grep -q '^thvote-redis$'; then
+              echo "redis 正在运行，跳过启动"
             else
-              echo "redis 服务已存在，跳过启动"
+              docker-compose up -d redis
             fi
 
             # 启动后端（直接指定 backend 服务，避免老版本 docker-compose 不支持 --profile）
