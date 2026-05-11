@@ -24,13 +24,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from strawberry.fastapi import GraphQLRouter
-
-from .api.graphql.schema import schema as graphql_schema
-from .api.rest.v1 import api_router
-from .common.config import get_settings, reload_settings, nacos_config_change_callback
-from .common.database import get_db_session, init_db, reload_engine
-from .common.middleware.logging import LoggingMiddleware
-from .common.nacos import (
+from api.graphql.schema import schema as graphql_schema
+from api.rest.v1 import api_router
+from common.config import get_settings, reload_settings, nacos_config_change_callback
+from common.database import get_db_session, init_db, reload_engine
+from common.middleware.logging import LoggingMiddleware
+from common.nacos import (
     register_service_to_nacos,
     deregister_service_from_nacos,
     discover_service_from_nacos,
@@ -48,7 +47,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Start Nacos config watcher for hot reload
     settings = get_settings()
     if settings.nacos_enabled:
-        from .common.nacos import start_nacos_watcher, stop_nacos_watcher
+        from common.nacos import start_nacos_watcher, stop_nacos_watcher
 
         start_nacos_watcher(on_change=nacos_config_change_callback)
         logger.info("Nacos config watcher started")
@@ -83,7 +82,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     if settings.nacos_enabled:
-        from .common.nacos import stop_nacos_watcher
+        from common.nacos import stop_nacos_watcher
 
         await deregister_service_from_nacos()
         await stop_nacos_watcher()
