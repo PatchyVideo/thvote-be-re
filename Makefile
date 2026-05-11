@@ -50,7 +50,6 @@ up:
 	@echo ""
 	@echo "后端已启动，请访问: http://localhost:8000"
 	@echo "GraphQL: http://localhost:8000/graphql"
-	@echo "Apollo: http://localhost:8070 (需要 APOLLO_ENABLED=yes)"
 	@echo ""
 	@echo "前端尚未启动。如需启动前端，请运行: make up-frontend"
 

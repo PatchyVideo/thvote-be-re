@@ -182,15 +182,6 @@ class Settings(BaseSettings):
     nacos_service_cluster: str = Field("DEFAULT", env="NACOS_SERVICE_CLUSTER")
     nacos_service_weight: float = Field(1.0, env="NACOS_SERVICE_WEIGHT")
 
-    # Apollo 配置
-    apollo_enabled: bool = Field(False, env="APOLLO_ENABLED")
-    apollo_meta: str = Field("http://apollo-configservice:8080", env="APOLLO_META")
-    apollo_env: str = Field("dev", env="APOLLO_ENV")
-    apollo_cluster: str = Field("default", env="APOLLO_CLUSTER")
-    apollo_app_id: str = Field("thvote-backend", env="APOLLO_APP_ID")
-    apollo_namespaces: str = Field("application", env="APOLLO_NAMESPACES")
-    apollo_access_key: Optional[str] = Field(None, env="APOLLO_ACCESS_KEY")
-
     # 投票配置
     vote_year: int = Field(2026, env="VOTE_YEAR")
     vote_start_iso: str = Field("2026-01-01T00:00:00Z", env="VOTE_START_ISO")
