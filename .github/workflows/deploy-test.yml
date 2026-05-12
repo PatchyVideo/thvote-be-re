@@ -129,7 +129,7 @@ jobs:
         if: steps.check_tests.outputs.exist == 'true'
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -e .
           pip install pytest pytest-asyncio pytest-cov httpx fakeredis
 
       - name: 应用 Alembic 迁移（针对真实 Postgres，作为迁移脚本的烟雾测试）
