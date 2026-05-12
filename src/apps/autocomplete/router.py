@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.apps.autocomplete.dao import AutocompleteDAO
 from src.apps.autocomplete.schemas import AutocompleteRequest, AutocompleteResponse
 from src.apps.autocomplete.service import AutocompleteService
+from src.common.config import Settings, get_settings
 from src.common.database import get_db_session
 
 router = APIRouter(prefix="/autocomplete", tags=["autocomplete"])
@@ -13,9 +14,9 @@ router = APIRouter(prefix="/autocomplete", tags=["autocomplete"])
 
 async def get_autocomplete_service(
     session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
 ) -> AutocompleteService:
-    """Dependency to get AutocompleteService instance."""
-    dao = AutocompleteDAO(session)
+    dao = AutocompleteDAO(session, settings.vote_year)
     return AutocompleteService(dao)
 
 
