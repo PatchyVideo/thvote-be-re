@@ -1,7 +1,7 @@
 # 后续开发 BACKLOG（单一仪表盘）
 
 > 创建日期：2026-04-27
-> 最后更新：2026-04-27
+> 最后更新：2026-05-12
 
 把散落在 5 份文档里的 follow-up 收拢到这里。**这是仪表盘，不是真理来源**——每项的上下文还在原文档里，本表只给一行摘要 + 跳转。
 
@@ -13,12 +13,12 @@
 
 | 编号 | 主题 | 严重度 | 可并行做？ | 源文档 |
 |---|---|---|---|---|
-| **B-001** | 把 `raw_*` / character / music / cp / questionnaire 纳入 Alembic（baseline `0002`） | 中 | 🟢 可立即做 | [schema-mgmt §三阶段 2](./architecture/database-schema-management.md) / spec §九 F-impl-5 |
-| **B-002** | submit 模块 `prefix="/v1"` 路径 bug（导致 `/api/v1/v1/...`） | 低 | 🟢 可立即做 | [design §九 F1](./superpowers/specs/2026-04-27-user-auth-design.md) |
+| **B-001** | ~~把 `raw_*` / character / music / cp / questionnaire 纳入 Alembic（baseline `0002`）~~ | ✅ 已完成 (2026-05-12) | — | `alembic/versions/0002_voting_tables.py` |
+| **B-002** | ~~submit 模块 `prefix="/v1"` 路径 bug（导致 `/api/v1/v1/...`）~~ | ✅ 已完成 (2026-05-12) | — | `src/apps/submit/router.py` prefix 改为 `""` |
 | **B-003** | submit 端点改用真 `vote_token` 校验（当前仅靠 `meta.vote_id` 加锁，存在鉴权空洞） | 高 | 🟡 等本 PR merge | [design §九 F2](./superpowers/specs/2026-04-27-user-auth-design.md) |
 | **B-004** | 祖传 L-1：CORS `allow_origins=["*"]` + `allow_credentials=True`，未来改 reflected origin 即变 CSRF 入口 | 中 | 🟢 可立即做 | [open-issues §四 L-1](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
-| **B-005** | 祖传 L-2：`rate_limit.py` 非原子，登录 5/60s 限流可被并发绕过——**实际是安全 backlog** | **高** | 🟢 可立即做 | [open-issues §四 L-2](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
-| **B-006** | 祖传 L-3：`logging.basicConfig` 重复调用（merge 残留） | 低 | 🟢 可立即做 | [open-issues §四 L-3](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
+| **B-005** | ~~祖传 L-2：`rate_limit.py` 非原子，登录 5/60s 限流可被并发绕过~~ | ✅ 已完成 (2026-05-12) | — | `INCR+EXPIRE` 原子计数替换三步 GET/检查/DECR |
+| **B-006** | ~~祖传 L-3：`logging.basicConfig` 重复调用（merge 残留）~~ | ✅ 已完成 (2026-05-12) | — | 删除 `src/main.py` 第 24-30 行重复块 |
 | **B-007** | thbwiki / qq / patchyvideo SSO 接入；落地后 VoterFE 的 `thbwiki/patchyvideo` 字段切真值 | 中 | 🟡 等本 PR merge（VoterFE 是新结构） | [design §九 F3](./superpowers/specs/2026-04-27-user-auth-design.md) |
 | **B-008** | MongoDB → PostgreSQL 历史用户数据回填脚本 | 中 | 🟢 可立即做（独立 scripts/ 目录） | [design §九 F4](./superpowers/specs/2026-04-27-user-auth-design.md) |
 | **B-009** | trusted proxies / `X-Forwarded-For` 处理（`get_client_ip` 当前只信 `request.client.host`） | 中 | 🟡 等本 PR merge | [design §九 F5](./superpowers/specs/2026-04-27-user-auth-design.md) |
@@ -37,7 +37,7 @@
 | **B-022** | 给 CI 加 PG-only 契约测试：插两行同 email 的 user，断言 partial unique index 抛 IntegrityError | 低 | 🟢 可立即做 | [open-issues §三 U-14](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-023** | `tests/integration/conftest.py` 的 `pytest.importorskip("fakeredis")` 改为硬 `import` | 低 | 🟢 可立即做 | [open-issues §三 U-15](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-024** | `UserDAO.save()` 加 `session.merge()` 防 detached instance 静默 no-op | 低 | 🟡 等本 PR merge | [open-issues §三 U-18](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
-| **B-025** | 移除 `init_db()` 与 DEBUG 后门，改为 `ensure_schema_ready()` 失败立即 raise | 中 | 🔴 阻塞于 B-001（先把所有表纳入 Alembic） | [schema-mgmt §三阶段 3](./architecture/database-schema-management.md) |
+| **B-025** | 移除 `init_db()` 与 DEBUG 后门，改为 `ensure_schema_ready()` 失败立即 raise | 中 | 🟢 可立即做（B-001 已完成，前置解除） | [schema-mgmt §三阶段 3](./architecture/database-schema-management.md) |
 | **B-026** | DB 治理纪律：PR 模板 model 改动提示 / CI `alembic check` / `db_model 改动必须有 migration` 检查 | 低 | 🔴 阻塞于 B-025 | [schema-mgmt §三阶段 4](./architecture/database-schema-management.md) |
 | **B-027** | `pylint.yml` 与 `deploy-test.yml` lint 重复，删一个 + 把另一个改硬失败 | 中 | 🟢 可立即做（与 B-020 一起做最划算） | [cicd-pipeline §五 F-cicd-1+4](./operations/cicd-pipeline.md) |
 

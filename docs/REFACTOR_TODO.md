@@ -11,6 +11,14 @@ todos:
 isProject: false
 ---
 
+> ⚠️ **历史文档警告（2026-05-12 更新）**
+> 本文件是 2026-04-27 前的旧版开发计划，内容**严重过时**（例如"用户认证: 0%"在实际上已完成）。
+> 本文档仅作历史参考，**不反映当前实现状态**。
+> 当前开发状态请查阅：
+> - 实际进度：[`docs/BACKLOG.md`](./BACKLOG.md)
+> - 变更记录：[`docs/CHANGELOG.md`](./CHANGELOG.md)
+> - 用户模块迁移：[`docs/migration/user-manager.md`](./migration/user-manager.md)
+
 # FastAPI 重构待办事项清单
 
 > 来源：原位于仓库根目录，2026-04-27 移入 `docs/`（按 CLAUDE.md §2「文档统一收敛到 docs/」）。
