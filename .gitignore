@@ -1,26 +1,37 @@
-.venv
-.idea
-data
-uv.lock
+# Python
+__pycache__/
+*.py[cod]
 *.egg-info/
-.env
+*.egg
+.venv/
+venv/
+uv.lock
+dist/
+build/
 
-# Secrets（切勿提交！）
+# 环境与密钥
+.env
+.env.*
+!.env.example
+keys/
+*.pem
 docker/secrets/
 docker/*.txt
 
-# 本地数据库和备份
+# 数据库与数据
 *.db
 *.sqlite
 *.sql.gz
+data/
 backup/
 local_db/
 
-# 前端构建产物
+# 前端
 frontend/*/dist/
 frontend/node_modules/
+node_modules/
 
-# SSL 证书（生产环境）
+# SSL 证书
 frontend/nginx/ssl/*.crt
 frontend/nginx/ssl/*.key
 !frontend/nginx/ssl/README.md
@@ -29,7 +40,26 @@ frontend/nginx/ssl/*.key
 *.log
 logs/
 
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
 # 临时文件
 *.tmp
-*.swp
 .cache/
+
+# 平台
+.DS_Store
+Thumbs.db
+
+# 测试与覆盖率
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Ralph Loop / Claude Code local state
+.claude/

@@ -1,92 +1,269 @@
-"""User API routes."""
+"""User HTTP routes.
 
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+Mirrors thvote-be (Rust user-manager) endpoints under ``/api/v1/user/``.
+Each endpoint is intentionally thin: parse the request, optionally
+enforce a rate limit, delegate to ``UserService``, translate the
+service-layer ``AppException`` into an ``HTTPException`` with a stable
+error string body.
 
+Auth model:
+- Mutation endpoints carry ``user_token`` in the request body
+  (Rust-aligned).
+- ``GET /me`` carries the session token in ``Authorization: Bearer …``
+  (only non-Rust endpoint; only place we use the header form).
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException
+
+from src.apps.user.deps import (
+    get_client_ip,
+    get_current_user,
+    get_user_service,
+)
 from src.apps.user.schemas import (
-    EmailLoginRequest,
-    LoginRequest,
+    EmptyResponse,
+    LoginEmailPasswordRequest,
+    LoginEmailRequest,
+    LoginPhoneRequest,
     LoginResponse,
-    LoginResult,
-    RegisterRequest,
-    RegisterResponse,
-    UserResponse,
+    RemoveVoterRequest,
+    SendEmailCodeRequest,
+    SendSmsCodeRequest,
+    TokenStatusRequest,
+    UpdateEmailRequest,
+    UpdateNicknameRequest,
+    UpdatePasswordRequest,
+    UpdatePhoneRequest,
+    VoterFE,
+    voter_fe_from_user,
 )
 from src.apps.user.service import UserService
-from src.common.database import get_db_session
-from src.common.exceptions import ValidationError
+from src.common.exceptions import AppException
+from src.common.middleware.rate_limit import rate_limit
+from src.common.security import decode_session_token
+from src.db_model.user import User
 
 router = APIRouter(prefix="/user", tags=["user"])
 
 
-async def get_user_service(
-    session: AsyncSession = Depends(get_db_session),
-) -> UserService:
-    """Dependency to get UserService instance."""
-    from src.apps.user.dao import UserDAO
-
-    dao = UserDAO(session)
-    return UserService(dao)
+# ── error mapping ────────────────────────────────────────────────────
 
 
-@router.post("/login", response_model=LoginResponse)
-async def login(
-    request: LoginRequest,
+def _raise_http(exc: AppException) -> None:
+    """Translate an AppException into an HTTPException for FastAPI."""
+    status = int(exc.details) if isinstance(exc.details, int) else 400
+    raise HTTPException(status_code=status, detail=exc.message)
+
+
+# ── helpers ──────────────────────────────────────────────────────────
+
+
+def _override_meta_ip(request_obj, client_ip: str) -> None:
+    """Trust the connecting peer over any user-supplied user_ip in Meta."""
+    if hasattr(request_obj, "meta") and client_ip:
+        request_obj.meta.user_ip = client_ip
+
+
+# ── verification-code endpoints ──────────────────────────────────────
+
+
+@router.post("/send-email-code", response_model=EmptyResponse)
+async def send_email_code(
+    body: SendEmailCodeRequest,
+    client_ip: str = Depends(get_client_ip),
+    service: UserService = Depends(get_user_service),
+) -> EmptyResponse:
+    _override_meta_ip(body, client_ip)
+    try:
+        await service.send_email_code(body)
+    except AppException as exc:
+        _raise_http(exc)
+    return EmptyResponse()
+
+
+@router.post("/send-sms-code", response_model=EmptyResponse)
+async def send_sms_code(
+    body: SendSmsCodeRequest,
+    client_ip: str = Depends(get_client_ip),
+    service: UserService = Depends(get_user_service),
+) -> EmptyResponse:
+    _override_meta_ip(body, client_ip)
+    try:
+        await service.send_sms_code(body)
+    except AppException as exc:
+        _raise_http(exc)
+    return EmptyResponse()
+
+
+# ── login endpoints (5 req/60s per IP) ───────────────────────────────
+
+
+@router.post("/login-email-password", response_model=LoginResponse)
+async def login_email_password(
+    body: LoginEmailPasswordRequest,
+    client_ip: str = Depends(get_client_ip),
     service: UserService = Depends(get_user_service),
 ) -> LoginResponse:
-    """Authenticate user."""
-    return await service.login(request)
-
-
-@router.post("/login/email", response_model=LoginResult)
-async def login_with_email(
-    request: EmailLoginRequest,
-    service: UserService = Depends(get_user_service),
-) -> LoginResult:
-    """Authenticate user with email and password."""
+    await rate_limit(f"login-{client_ip or 'unknown'}", window=60, max_requests=5)
+    _override_meta_ip(body, client_ip)
     try:
-        result = await service.login_with_email_password(request)
-        return result
-    except ValidationError:
-        return LoginResult(
-            user_id="",
-            session_token="",
-            email=None,
-            phone_number=None,
-        )
+        return await service.login_with_email_password(body)
+    except AppException as exc:
+        _raise_http(exc)
+        raise  # unreachable
 
 
-@router.post("/register", response_model=RegisterResponse)
-async def register(
-    request_body: RegisterRequest,
-    request: Request,
+@router.post("/login-email", response_model=LoginResponse)
+async def login_email(
+    body: LoginEmailRequest,
+    client_ip: str = Depends(get_client_ip),
     service: UserService = Depends(get_user_service),
-) -> RegisterResponse:
-    """Register a new user."""
-    register_ip = request.client.host if request.client else ""
+) -> LoginResponse:
+    await rate_limit(f"login-{client_ip or 'unknown'}", window=60, max_requests=5)
+    _override_meta_ip(body, client_ip)
     try:
-        result = await service.register_user(request_body, register_ip)
-        return RegisterResponse(
-            success=True, user_id=result.user_id, message="Registration successful"
-        )
-    except ValidationError as e:
-        return RegisterResponse(success=False, message=str(e))
+        return await service.login_with_email_code(body)
+    except AppException as exc:
+        _raise_http(exc)
+        raise
 
 
-@router.get("/{user_id}", response_model=UserResponse)
-async def get_user(
-    user_id: str,
+@router.post("/login-phone", response_model=LoginResponse)
+async def login_phone(
+    body: LoginPhoneRequest,
+    client_ip: str = Depends(get_client_ip),
     service: UserService = Depends(get_user_service),
-) -> UserResponse:
-    """Get user by ID."""
-    return await service.get_user_by_id(user_id)
+) -> LoginResponse:
+    await rate_limit(f"login-{client_ip or 'unknown'}", window=60, max_requests=5)
+    _override_meta_ip(body, client_ip)
+    try:
+        return await service.login_with_phone_code(body)
+    except AppException as exc:
+        _raise_http(exc)
+        raise
 
 
-@router.delete("/{user_id}")
-async def delete_user(
-    user_id: str,
+# ── update endpoints (5 req/60s per user_id) ─────────────────────────
+
+
+def _user_id_from_body_token(token: str) -> str:
+    try:
+        return decode_session_token(token).user_id
+    except AppException as exc:
+        raise HTTPException(status_code=401, detail="INVALID_TOKEN") from exc
+
+
+async def _rate_limit_by_token(token: str, client_ip: str) -> None:
+    """Enforce a coarse per-IP limit *before* token decode, then a tight
+    per-user limit *after* decode.
+
+    Skipping the pre-decode IP limit lets an attacker spam the endpoint
+    with garbage tokens — each request takes the fast 401 path
+    (no DB / no Redis user-bucket touch) and would otherwise bypass
+    rate limiting entirely.  30 req/60s per IP is loose enough to never
+    hit a real user but tight enough to make brute-forcing tokens cost
+    something.
+    """
+    await rate_limit(
+        f"user-mut-ip-{client_ip or 'unknown'}", window=60, max_requests=30
+    )
+    user_id = _user_id_from_body_token(token)
+    await rate_limit(f"user-mut-{user_id}", window=60, max_requests=5)
+
+
+@router.post("/update-email", response_model=EmptyResponse)
+async def update_email(
+    body: UpdateEmailRequest,
+    client_ip: str = Depends(get_client_ip),
     service: UserService = Depends(get_user_service),
-) -> dict:
-    """Delete a user account."""
-    success = await service.delete_user(user_id)
-    return {"success": success}
+) -> EmptyResponse:
+    await _rate_limit_by_token(body.user_token, client_ip)
+    _override_meta_ip(body, client_ip)
+    try:
+        await service.update_email(body)
+    except AppException as exc:
+        _raise_http(exc)
+    return EmptyResponse()
+
+
+@router.post("/update-phone", response_model=EmptyResponse)
+async def update_phone(
+    body: UpdatePhoneRequest,
+    client_ip: str = Depends(get_client_ip),
+    service: UserService = Depends(get_user_service),
+) -> EmptyResponse:
+    await _rate_limit_by_token(body.user_token, client_ip)
+    _override_meta_ip(body, client_ip)
+    try:
+        await service.update_phone(body)
+    except AppException as exc:
+        _raise_http(exc)
+    return EmptyResponse()
+
+
+@router.post("/update-nickname", response_model=EmptyResponse)
+async def update_nickname(
+    body: UpdateNicknameRequest,
+    client_ip: str = Depends(get_client_ip),
+    service: UserService = Depends(get_user_service),
+) -> EmptyResponse:
+    await _rate_limit_by_token(body.user_token, client_ip)
+    _override_meta_ip(body, client_ip)
+    try:
+        await service.update_nickname(body)
+    except AppException as exc:
+        _raise_http(exc)
+    return EmptyResponse()
+
+
+@router.post("/update-password", response_model=EmptyResponse)
+async def update_password(
+    body: UpdatePasswordRequest,
+    client_ip: str = Depends(get_client_ip),
+    service: UserService = Depends(get_user_service),
+) -> EmptyResponse:
+    await _rate_limit_by_token(body.user_token, client_ip)
+    _override_meta_ip(body, client_ip)
+    try:
+        await service.update_password(body)
+    except AppException as exc:
+        _raise_http(exc)
+    return EmptyResponse()
+
+
+@router.post("/remove-voter", response_model=EmptyResponse)
+async def remove_voter(
+    body: RemoveVoterRequest,
+    client_ip: str = Depends(get_client_ip),
+    service: UserService = Depends(get_user_service),
+) -> EmptyResponse:
+    await _rate_limit_by_token(body.user_token, client_ip)
+    _override_meta_ip(body, client_ip)
+    try:
+        await service.remove_voter(body)
+    except AppException as exc:
+        _raise_http(exc)
+    return EmptyResponse()
+
+
+# ── token + identity ─────────────────────────────────────────────────
+
+
+@router.post("/token-status", response_model=EmptyResponse)
+async def token_status(
+    body: TokenStatusRequest,
+    service: UserService = Depends(get_user_service),
+) -> EmptyResponse:
+    try:
+        await service.token_status(body)
+    except AppException as exc:
+        _raise_http(exc)
+    return EmptyResponse()
+
+
+@router.get("/me", response_model=VoterFE)
+async def get_me(current_user: User = Depends(get_current_user)) -> VoterFE:
+    """Return the authenticated user's VoterFE.  No tokens, no rate limit."""
+    return voter_fe_from_user(current_user)

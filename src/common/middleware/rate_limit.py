@@ -1,54 +1,58 @@
-from __future__ import annotations
+"""Token-bucket rate limiter backed by the shared Redis client.
 
-import time
-from typing import Any
+Uses INCR + EXPIRE for atomic fixed-window rate limiting.  INCR is a
+single Redis operation and returns a unique counter per request, so there
+is no TOCTOU race between reading the remaining token count and consuming
+one (the previous GET→check→DECR sequence was non-atomic).
+
+Window semantics: the counter resets when the TTL set by the first INCR
+in a window expires.  Edge case: if the process crashes between INCR (→1)
+and EXPIRE, the key persists without expiry.  This is an extremely narrow
+race whose worst case is that the rate limiter blocks that uid permanently
+until the Redis key is manually deleted — not a security hole.
+"""
+
+from __future__ import annotations
 
 from fastapi import HTTPException
 
-from src.common.config import get_settings
+from src.common.redis import get_redis
 
 RATE_LIMIT_WINDOW_SIZE_IN_SECONDS = 60
 RATE_LIMIT_MAX_REQUESTS = 30
 
-try:
-    import redis.asyncio as redis_async
 
-    _USE_REDIS_ASYNCIO = True
-except Exception:  # pragma: no cover
-    import aioredis as redis_async  # type: ignore
+async def rate_limit(
+    uid: str,
+    conn=None,
+    *,
+    window: int = RATE_LIMIT_WINDOW_SIZE_IN_SECONDS,
+    max_requests: int = RATE_LIMIT_MAX_REQUESTS,
+) -> None:
+    """Enforce a fixed-window rate limit for *uid*.
 
-    _USE_REDIS_ASYNCIO = False
+    Parameters
+    ----------
+    uid:
+        Identifier to rate-limit on (vote_id, email, phone, user_id, ...).
+    conn:
+        Optional Redis connection override.  When *None* the shared
+        client from ``common.redis`` is used.
+    window:
+        Window size in seconds (default 60).
+    max_requests:
+        Allowed requests per window (default 30).
+    """
+    if conn is None:
+        conn = await get_redis()
+
+    count_key = f"rate-limit-{uid}"
+    count = await conn.incr(count_key)
+    if count == 1:
+        await conn.expire(count_key, window)
+    if count > max_requests:
+        raise HTTPException(status_code=429, detail="REQUEST_TOO_FREQUENT")
 
 
-async def get_redis_client() -> Any:
-    settings = get_settings()
-    if _USE_REDIS_ASYNCIO:
-        return redis_async.from_url(settings.redis_url, decode_responses=True)
-    # aioredis v1 API
-    return await redis_async.create_redis_pool(  # type: ignore[attr-defined]
-        settings.redis_url, encoding="utf-8"
-    )
-
-
-async def rate_limit(uid: str, conn: Any) -> None:
-    cur_time = int(time.time() * 1000)
-    last_reset_key = f"rate-limit-{uid}-last-reset"
-    token_key = f"rate-limit-{uid}-tokens"
-    last_time_raw = await conn.get(last_reset_key)
-    if last_time_raw is None:
-        await conn.set(last_reset_key, cur_time)
-        await conn.set(token_key, RATE_LIMIT_MAX_REQUESTS)
-        last_time = cur_time
-        tokens_remaining = RATE_LIMIT_MAX_REQUESTS
-    else:
-        last_time = int(last_time_raw)
-        tokens_remaining = int((await conn.get(token_key)) or 0)
-
-    if cur_time - last_time > RATE_LIMIT_WINDOW_SIZE_IN_SECONDS * 1000:
-        await conn.set(last_reset_key, cur_time)
-        await conn.set(token_key, RATE_LIMIT_MAX_REQUESTS)
-    else:
-        if tokens_remaining <= 0:
-            raise HTTPException(status_code=429, detail="REQUEST_TOO_FREQUENT")
-
-    await conn.decr(token_key, 1)
+# Backward-compatible alias so existing imports don't break.
+get_redis_client = get_redis

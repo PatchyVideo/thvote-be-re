@@ -23,15 +23,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 FROM base AS deps
 
 # Install Python dependencies
-COPY requirements.txt .
+COPY pyproject.toml .
 RUN pip install --no-cache-dir --upgrade pip wheel && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -e .
 
 # ---- Builder Stage (for production optimization) ----
 FROM base AS builder
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir --target=/app/deps -r requirements.txt
+COPY pyproject.toml .
+RUN pip install --no-cache-dir --target=/app/deps -e .
 
 # ---- Development Stage ----
 FROM base AS development
@@ -45,6 +45,8 @@ RUN pip install --no-cache-dir uvicorn[standard] httpx
 
 # Copy application code
 COPY src/ ./src/
+COPY alembic/ ./alembic/
+COPY alembic.ini ./alembic.ini
 COPY .env.example .env
 
 # Expose port
@@ -72,8 +74,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && \
 RUN groupadd --gid 1000 appgroup && \
     useradd --uid 1000 --gid appgroup --shell /bin/bash --create-home appuser
 
-# Copy application code
+# Copy application code + Alembic migration assets
 COPY --chown=appuser:appgroup src/ ./src/
+COPY --chown=appuser:appgroup alembic/ ./alembic/
+COPY --chown=appuser:appgroup alembic.ini ./alembic.ini
 
 # Switch to non-root user
 USER appuser

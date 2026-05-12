@@ -33,10 +33,11 @@ def normalize_async_database_url(raw_url: str) -> str:
     return url.render_as_string(hide_password=False)
 
 
-def _create_engine(database_url: str) -> AsyncEngine:
+def _create_engine(database_url: str, echo: bool = False) -> AsyncEngine:
     """Create a new async engine with the given database URL."""
     normalized_url = normalize_async_database_url(database_url)
     settings = get_settings()
+    db_settings = settings.database
 
     connect_args: dict = {}
     engine_kwargs: dict = {}
@@ -44,10 +45,16 @@ def _create_engine(database_url: str) -> AsyncEngine:
     if normalized_url.startswith("sqlite+aiosqlite:"):
         connect_args = {"check_same_thread": False}
         engine_kwargs["poolclass"] = NullPool
+    else:
+        # 配置连接池
+        engine_kwargs["pool_size"] = db_settings.db_pool_size
+        engine_kwargs["max_overflow"] = db_settings.db_max_overflow
+        engine_kwargs["pool_timeout"] = db_settings.db_pool_timeout
+        engine_kwargs["pool_recycle"] = db_settings.db_pool_recycle
 
     return create_async_engine(
         normalized_url,
-        echo=settings.database_echo,
+        echo=echo,
         future=True,
         connect_args=connect_args,
         **engine_kwargs,
@@ -66,7 +73,6 @@ def _create_session_maker(engine: AsyncEngine) -> async_sessionmaker[AsyncSessio
 # 动态引擎管理
 _current_engine: AsyncEngine | None = None
 _current_session_maker: async_sessionmaker[AsyncSession] | None = None
-_engine_lock: int = 0  # Simple lock using int (0 = unlocked, 1 = locked)
 
 
 def _get_engine() -> AsyncEngine:
@@ -74,7 +80,10 @@ def _get_engine() -> AsyncEngine:
     global _current_engine
     if _current_engine is None:
         settings = get_settings()
-        _current_engine = _create_engine(settings.database_url)
+        _current_engine = _create_engine(
+            settings.database.build_url(),
+            echo=settings.database.db_echo,
+        )
     return _current_engine
 
 
@@ -98,20 +107,18 @@ def get_session_maker() -> async_sessionmaker[AsyncSession]:
 
 
 async def reload_engine() -> AsyncEngine:
-    """Reload the database engine with new settings from Apollo config.
-    
-    This should be called when DATABASE_URL is changed in Apollo config.
-    It will:
-    1. Close the old engine and all its connections
-    2. Create a new engine with the updated database URL
-    3. Return the new engine
+    """
+    Reload the database engine with new settings.
+
+    当 Nacos 配置变更时调用此方法重新创建数据库连接。
     """
     global _current_engine, _current_session_maker
-    
-    # 先 reload settings 以获取最新的环境变量（可能从 Apollo 更新）
+
+    # 重新加载配置
     reload_settings()
     settings = get_settings()
-    
+    new_url = settings.database.build_url()
+
     # 关闭旧引擎
     if _current_engine is not None:
         old_engine = _current_engine
@@ -119,18 +126,20 @@ async def reload_engine() -> AsyncEngine:
         _current_session_maker = None
         logger.info("Closing old database engine...")
         await old_engine.dispose()
-    
+
     # 创建新引擎
-    _current_engine = _create_engine(settings.database_url)
+    _current_engine = _create_engine(new_url, echo=settings.database.db_echo)
     _current_session_maker = _create_session_maker(_current_engine)
-    
-    logger.info("Database engine reloaded with new URL: %s", settings.database_url.replace("//", "//***@"))
+
+    # 隐藏密码显示
+    safe_url = new_url.replace("//", "//***@") if "@" in new_url else new_url
+    logger.info("Database engine reloaded with URL: %s", safe_url)
     return _current_engine
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency that yields an AsyncSession.
-    
+
     Uses the current engine, which can be reloaded via reload_engine().
     """
     session_maker = _get_session_maker()
@@ -149,7 +158,7 @@ async def init_db() -> None:
     """
     from src.db_model.base import Base
 
-    engine = _get_engine()
+    engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

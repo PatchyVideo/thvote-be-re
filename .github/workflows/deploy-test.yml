@@ -17,18 +17,17 @@ on:
     branches:
       - main
       - zfq_dev
-      - zfq_dev_pipeline
     paths:
       - 'src/**'
-      - 'requirements.txt'
+      - 'pyproject.toml'
       - 'Dockerfile'
       - 'scripts/**'
+      - 'docker/**'
       - '.github/workflows/deploy-test.yml'
   pull_request:
     branches:
       - main
       - zfq_dev
-      - zfq_dev_pipeline
   workflow_dispatch:
     inputs:
       skip_tests:
@@ -53,16 +52,16 @@ jobs:
       - name: 设置 Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version-file: 'pyproject.toml'
 
       - name: 安装工具
         run: |
           python -m pip install --upgrade pip
           pip install flake8 black isort mypy
-          pip install -r requirements.txt
+          pip install -e .
 
       - name: 代码风格检查
-        run: flake8 src/ --max-line-length=120 || true
+        run: flake8 src/ --max-line-length=88 || true
 
   # ==================== 运行测试 ====================
   test:
@@ -100,6 +99,17 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: 'pyproject.toml'
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[test]'
+          pip install pytest pytest-asyncio httpx
+
       - name: 检查测试目录
         id: check_tests
         run: |
@@ -119,8 +129,20 @@ jobs:
         if: steps.check_tests.outputs.exist == 'true'
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio pytest-cov httpx
+          pip install -e '.[test]'
+          pip install pytest pytest-asyncio httpx
+
+      - name: 应用 Alembic 迁移（针对真实 Postgres，作为迁移脚本的烟雾测试）
+        if: steps.check_tests.outputs.exist == 'true'
+        env:
+          DATABASE_URL: postgresql+asyncpg://test_user:test_pass@localhost:5432/thvote_test
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET_KEY: test-secret-key
+          VOTE_START_ISO: '2026-01-01T00:00:00+08:00'
+          VOTE_END_ISO: '2026-12-31T23:59:59+08:00'
+        run: |
+          alembic upgrade head
+          alembic current
 
       - name: 运行测试
         if: steps.check_tests.outputs.exist == 'true'
@@ -138,6 +160,10 @@ jobs:
         with:
           files: ./coverage.xml
           fail_ci_if_error: false
+
+      - name: 无测试文件
+        if: steps.check_tests.outputs.exist == 'false'
+        run: echo "tests/ 目录不存在或为空，跳过测试执行"
 
   # ==================== 构建后端镜像 ====================
   build-backend:
@@ -172,7 +198,8 @@ jobs:
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
-            type=raw,value=test,enable=true
+            type=raw,value=test,enable=${{ github.ref_name != 'main' }}
+            type=raw,value=prod,enable=${{ github.ref_name == 'main' }}
 
       - name: 构建并推送后端镜像
         id: build
@@ -190,8 +217,11 @@ jobs:
     name: 部署到测试环境
     runs-on: ubuntu-latest
     needs: [build-backend]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/zfq_dev' || github.ref == 'refs/heads/zfq_dev_pipeline')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/zfq_dev')
     environment: test
+
+    env:
+      BACKEND_TAG: ${{ github.ref_name == 'main' && 'prod' || 'test' }}
 
     steps:
       - name: 检出部署配置
@@ -216,31 +246,33 @@ jobs:
 
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
 
-            # 写入 .env
+            # 创建外部网络（如果不存在）
+            if ! docker network ls | grep -q "thvote-net"; then
+              docker network create thvote-net
+              echo "已创建网络 thvote-net"
+            else
+              echo "网络 thvote-net 已存在"
+            fi
+
+            # 写入 .env - Nacos 配置从 Secret 获取，敏感配置从 Nacos 获取
             cat > .env << 'ENVEOF'
-            POSTGRES_DB=thvote_test
-            POSTGRES_USER=thvote_test
-            POSTGRES_PASSWORD=${{ secrets.TEST_DB_PASSWORD }}
-            JWT_SECRET_KEY=${{ secrets.TEST_JWT_SECRET || 'dev-secret' }}
-            APOLLO_ENABLED=yes
-            APOLLO_META=${{ vars.APOLLO_META || 'http://apollo-configservice:8080' }}
-            APOLLO_ENV=fat
-            APOLLO_CLUSTER=fat
-            APOLLO_APP_ID=thvote-backend
-            APOLLO_ACCESS_KEY=${{ secrets.APOLLO_ACCESS_KEY_TEST }}
-            APOLLO_NAMESPACES=application
-            BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:test
+            NACOS_ENABLED=true
+            NACOS_SERVER_ADDRS=${{ secrets.NACOS_SERVER_ADDRS }}
+            NACOS_NAMESPACE=${{ secrets.TEST_NACOS_NAMESPACE }}
+            NACOS_GROUP=DEFAULT_GROUP
+            NACOS_DATA_ID=thvote_be
+            NACOS_USERNAME=${{ secrets.TEST_NACOS_USERNAME }}
+            NACOS_PASSWORD=${{ secrets.TEST_NACOS_PASSWORD }}
+            BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ env.BACKEND_TAG }}
             ENVEOF
 
-            # 旧版 compose 内嵌 Apollo，需要整体重写为外部 Apollo 结构
+            # 首次部署或 compose 缺少 Nacos 配置时重写 docker-compose.yml
             RECREATE_COMPOSE="false"
             if ! grep -q "thvote-backend" docker-compose.yml 2>/dev/null; then
               RECREATE_COMPOSE="true"
-            elif grep -q "apollo-mysql\\|apollo-configservice\\|apollo-bootstrap" docker-compose.yml 2>/dev/null; then
+            elif ! grep -q "NACOS_ENABLED" docker-compose.yml 2>/dev/null; then
               RECREATE_COMPOSE="true"
             fi
-
-            # 首次部署或检测到内嵌 Apollo 结构时重写 docker-compose.yml
             if [ "$RECREATE_COMPOSE" = "true" ]; then
               cat > docker-compose.yml << 'COMPOSEEOF'
             version: "3.8"
@@ -257,24 +289,6 @@ jobs:
                 start_period: 20s
 
             services:
-              postgres:
-                image: postgres:15-alpine
-                container_name: thvote-postgres
-                <<: *common_backend
-                environment:
-                  POSTGRES_DB: ${POSTGRES_DB:-thvote}
-                  POSTGRES_USER: ${POSTGRES_USER:-thvote}
-                  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thvote_pass}
-                volumes:
-                  - postgres-data:/var/lib/postgresql/data
-                ports:
-                  - "5432:5432"
-                healthcheck:
-                  test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thvote} -d ${POSTGRES_DB:-thvote}"]
-                  interval: 10s
-                  timeout: 5s
-                  retries: 5
-
               redis:
                 image: redis:7-alpine
                 container_name: thvote-redis
@@ -295,14 +309,13 @@ jobs:
                 env_file:
                   - .env
                 environment:
-                  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-thvote}:${POSTGRES_PASSWORD:-thvote_pass}@postgres:5432/${POSTGRES_DB:-thvote}
-                  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-                  APOLLO_ENABLED: ${APOLLO_ENABLED:-yes}
-                  APOLLO_META: ${APOLLO_META:-http://apollo-configservice:8080}
-                  APOLLO_ENV: ${APOLLO_ENV:-fat}
-                  APOLLO_CLUSTER: ${APOLLO_CLUSTER:-fat}
-                  APOLLO_APP_ID: ${APOLLO_APP_ID:-thvote-backend}
-                  APOLLO_NAMESPACES: ${APOLLO_NAMESPACES:-application}
+                  NACOS_ENABLED: "true"
+                  NACOS_SERVER_ADDRS: "${NACOS_SERVER_ADDRS}"
+                  NACOS_NAMESPACE: "${NACOS_NAMESPACE}"
+                  NACOS_GROUP: "DEFAULT_GROUP"
+                  NACOS_DATA_ID: "thvote_be"
+                  NACOS_USERNAME: "${NACOS_USERNAME}"
+                  NACOS_PASSWORD: "${NACOS_PASSWORD}"
                   APP_HOST: "0.0.0.0"
                   APP_PORT: "8000"
                 ports:
@@ -310,8 +323,6 @@ jobs:
                 volumes:
                   - ./logs:/app/logs
                 depends_on:
-                  postgres:
-                    condition: service_healthy
                   redis:
                     condition: service_healthy
                 profiles:
@@ -323,24 +334,39 @@ jobs:
                 external: true
 
             volumes:
-              postgres-data:
               redis-data:
             COMPOSEEOF
-              echo "docker-compose.yml 已按外部 Apollo 拓扑重建"
+              echo "docker-compose.yml 已按 Nacos 配置中心重建（使用阿里云 RDS）"
             else
               sed -i "s|image: .*/thvote-backend:.*|image: ${BACKEND_IMAGE}|" docker-compose.yml
               echo "docker-compose.yml 已更新（仅替换 backend 镜像 tag）"
             fi
 
             # 拉取镜像
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:test || true
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ env.BACKEND_TAG }} || true
 
-            # 仅当基础服务不存在时才启动
-            if ! docker ps -a --format '{{.Names}}' | grep -q '^thvote-postgres$'; then
-              docker-compose up -d postgres redis
+            # 仅当 redis 未运行时才启动（postgres 使用阿里云 RDS）
+            if docker ps --format '{{.Names}}' | grep -q '^thvote-redis$'; then
+              echo "redis 正在运行，跳过启动"
             else
-              echo "postgres 和 redis 服务已存在，跳过启动"
+              docker-compose up -d redis
             fi
+
+            # 等 Postgres 真正可连
+            for i in $(seq 1 30); do
+              if docker exec thvote-postgres pg_isready -U "${POSTGRES_USER:-thvote_test}" >/dev/null 2>&1; then
+                break
+              fi
+              echo "等待 postgres 就绪... ($i/30)"
+              sleep 2
+            done
+
+            # 应用 Alembic 迁移（幂等：已是最新版会立即返回）
+            # 用 backend 镜像里的 alembic 跑，避免在部署机额外装 Python 环境
+            echo "执行 alembic upgrade head ..."
+            docker-compose run --rm \
+              -e DATABASE_URL="postgresql+asyncpg://${POSTGRES_USER:-thvote_test}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-thvote_test}" \
+              backend alembic upgrade head
 
             # 启动后端（直接指定 backend 服务，避免老版本 docker-compose 不支持 --profile）
             docker-compose up -d backend
