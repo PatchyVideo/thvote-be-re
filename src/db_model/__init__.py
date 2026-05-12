@@ -6,6 +6,7 @@ PostgreSQL数据库模型定义
 
 from .activity_log import ActivityLog
 from .base import Base
+from .candidate import CandidateCharacter, CandidateMusic, FinalRanking
 from .character import Character
 from .cp import Cp
 from .music import Music
@@ -24,6 +25,9 @@ __author__ = "FunnyAWM"
 __all__ = [
     "ActivityLog",
     "Base",
+    "CandidateCharacter",
+    "CandidateMusic",
+    "FinalRanking",
     "Character",
     "Cp",
     "Music",
