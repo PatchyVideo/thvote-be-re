@@ -34,7 +34,7 @@
 | 查询结果 | `result-query` | `apps/result` | ✅ | 9 端点 + ComputeService + Redis 缓存（2026-05-13）|
 | 自动补全 | `autocomplete`（Rust 存根）| `apps/autocomplete` | ✅ | candidate 表 ILIKE 查询，4 单元+8 集成测试（2026-05-13）|
 | 爬虫 | `scraper`（Python）| `apps/scraper` | ⚠️ | 3/18+ 站点已移植 |
-| GraphQL | `gateway` | `api/graphql` | ⚠️ | 仅 submit，ResultQuery 可基于 result DAO 实现 |
+| GraphQL | `gateway` | `api/graphql` | ✅ | submit + ResultQuery 8 个字段，JSON scalar（2026-05-13）|
 | 数据库迁移 | — | `alembic/versions/` | ✅ | 0001+0002+0003 已覆盖所有表 |
 | 基础设施公共层 | — | `common/` | ✅ | config/db/redis/jwt/rate_limit 已就绪 |
 
