@@ -57,6 +57,11 @@ class ComputeService:
             vote_end_str = s.vote_end_iso.replace("Z", "+00:00")
             vote_start = datetime.fromisoformat(vote_start_str)
             vote_end = datetime.fromisoformat(vote_end_str)
+            # Ensure timezone-aware regardless of format
+            if vote_start.tzinfo is None:
+                vote_start = vote_start.replace(tzinfo=timezone.utc)
+            if vote_end.tzinfo is None:
+                vote_end = vote_end.replace(tzinfo=timezone.utc)
             total_hours = max(1, int((vote_end - vote_start).total_seconds() / 3600))
 
             # Load all data

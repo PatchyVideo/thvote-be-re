@@ -119,14 +119,15 @@ def compute_ranking(
     ranking = []
     prev_weighted = None
     prev_display_rank = 0
-    skipped = 0
+    tied_count = 0
     for i, name in enumerate(sorted_names):
         w = weighted(name)
         if w != prev_weighted:
-            prev_display_rank = i + 1 + skipped
-            skipped = 0
+            prev_display_rank = i + 1
+            tied_count = 1
+            prev_weighted = w
         else:
-            skipped += 1
+            tied_count += 1
 
         vc = vote_count[name]
         fc = first_count[name]
@@ -194,7 +195,6 @@ def compute_ranking(
             "trend": [{"hrs": h, "cnt": c} for h, c in enumerate(trend[name]) if c > 0],
             "trend_first": [{"hrs": h, "cnt": c} for h, c in enumerate(trend_first[name]) if c > 0],
         })
-        prev_weighted = w
 
     global_stats = {
         "total_unique_items": len(all_names),
@@ -277,14 +277,15 @@ def compute_cp_ranking(
     ranking = []
     prev_w = None
     prev_dr = 0
-    skipped = 0
+    tied_count = 0
     for i, key in enumerate(sorted_keys):
         w = weighted(key)
         if w != prev_w:
-            prev_dr = i + 1 + skipped
-            skipped = 0
+            prev_dr = i + 1
+            tied_count = 1
+            prev_w = w
         else:
-            skipped += 1
+            tied_count += 1
 
         vc = vote_count[key]
         fc = first_count[key]
@@ -314,7 +315,6 @@ def compute_cp_ranking(
             "trend": [{"hrs": h, "cnt": c} for h, c in enumerate(trend[key]) if c > 0],
             "trend_first": [{"hrs": h, "cnt": c} for h, c in enumerate(trend_first[key]) if c > 0],
         })
-        prev_w = w
 
     global_stats = {
         "total_unique_items": len(all_keys),

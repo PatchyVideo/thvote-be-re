@@ -117,11 +117,11 @@ class ComputeDAO:
                 select(FinalRanking).where(
                     FinalRanking.vote_year == vote_year,
                     FinalRanking.category == category,
-                    FinalRanking.rank == rank,
+                    FinalRanking.name == entry["name"],
                 )
             )).scalar_one_or_none()
             if existing:
-                existing.name = entry["name"]
+                existing.rank = rank          # update rank if character moved
                 existing.vote_count = vc
                 existing.first_vote_count = fc
             else:

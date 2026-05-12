@@ -94,12 +94,29 @@ def test_compute_ranking_gender_breakdown():
 
 
 def test_display_rank_ties():
-    # Alice and Bob tied on weighted score → both display_rank=1
-    ranking, _ = compute_ranking(
-        CHAR_VOTES, CANDIDATES, GENDER_MAP, {}, VOTE_START, TOTAL_HOURS
-    )
+    # All 3 users vote differently — Alice, Bob, and Carol each get 1 vote / 0 first → tied
+    votes = [
+        ("u1", _dt(1), [{"id": "Alice", "first": False, "reason": None}]),
+        ("u2", _dt(2), [{"id": "Bob",   "first": False, "reason": None}]),
+        ("u3", _dt(3), [{"id": "Carol", "first": False, "reason": None}]),
+    ]
+    candidates = {
+        "Alice": CandidateMeta("Alice", "", "", "", None),
+        "Bob":   CandidateMeta("Bob",   "", "", "", None),
+        "Carol": CandidateMeta("Carol", "", "", "", None),
+    }
+    ranking, _ = compute_ranking(votes, candidates, {}, {}, VOTE_START, TOTAL_HOURS)
     display_ranks = sorted(e["display_rank"] for e in ranking)
-    assert display_ranks == [1, 1]
+    # All tied → all should be display_rank 1
+    assert display_ranks == [1, 1, 1]
+    # Add a 4th entity with different score
+    votes2 = votes + [("u4", _dt(4), [{"id": "Dave", "first": True, "reason": None}])]
+    candidates2 = {**candidates, "Dave": CandidateMeta("Dave", "", "", "", None)}
+    ranking2, _ = compute_ranking(votes2, candidates2, {}, {}, VOTE_START, TOTAL_HOURS)
+    dave = next(e for e in ranking2 if e["name"] == "Dave")
+    others = [e for e in ranking2 if e["name"] != "Dave"]
+    assert dave["display_rank"] == 1  # Dave has first=True, highest weighted score
+    assert all(e["display_rank"] == 2 for e in others)  # Others all tie at position 2
 
 
 def test_compute_ranking_metadata_filled():
