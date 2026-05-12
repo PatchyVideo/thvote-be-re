@@ -32,7 +32,7 @@
 | 投票提交（原始）| `submit-handler` | `apps/submit` | ✅ | 11 端点，B-002 已修 |
 | 投票数据（处理后）| `vote-data`（Rust 存根）| `apps/vote_data` | ✅ | Python 新增，非 Rust 移植 |
 | 查询结果 | `result-query` | `apps/result` | ✅ | 9 端点 + ComputeService + Redis 缓存（2026-05-13）|
-| 自动补全 | `autocomplete`（Rust 存根）| `apps/autocomplete` | ❌ | DAO 返回空列表，候选表已就绪可复用 |
+| 自动补全 | `autocomplete`（Rust 存根）| `apps/autocomplete` | ✅ | candidate 表 ILIKE 查询，4 单元+8 集成测试（2026-05-13）|
 | 爬虫 | `scraper`（Python）| `apps/scraper` | ⚠️ | 3/18+ 站点已移植 |
 | GraphQL | `gateway` | `api/graphql` | ⚠️ | 仅 submit，ResultQuery 可基于 result DAO 实现 |
 | 数据库迁移 | — | `alembic/versions/` | ✅ | 0001+0002+0003 已覆盖所有表 |
