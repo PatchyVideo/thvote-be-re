@@ -187,6 +187,12 @@ class Settings(BaseSettings):
     vote_start_iso: str = Field("2026-01-01T00:00:00Z", env="VOTE_START_ISO")
     vote_end_iso: str = Field("2026-12-31T23:59:59Z", env="VOTE_END_ISO")
 
+    # 结果计算配置
+    gender_question_id: str = Field("q11011", env="GENDER_QUESTION_ID")
+    gender_male_value: str = Field("male", env="GENDER_MALE_VALUE")
+    gender_female_value: str = Field("female", env="GENDER_FEMALE_VALUE")
+    admin_secret: Optional[str] = Field(None, env="ADMIN_SECRET")
+
     # 应用配置
     app_host: str = Field("0.0.0.0", env="APP_HOST")
     app_port: int = Field(8000, env="APP_PORT")

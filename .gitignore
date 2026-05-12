@@ -63,3 +63,7 @@ htmlcov/
 
 # Ralph Loop / Claude Code local state
 .claude/
+CLAUDE.md
+
+# 重构前代码
+old-backend/
