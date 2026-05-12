@@ -29,7 +29,7 @@
 | 模块 | 对应 Rust 服务 | Python 路由 | 状态 | 备注 |
 |---|---|---|---|---|
 | 用户与认证 | `user-manager` | `apps/user` | ✅ | 12 端点完整，有测试 |
-| 投票提交（原始）| `submit-handler` | `apps/submit` | ✅ | 11 端点，B-002 已修 |
+| 投票提交（原始）| `submit-handler` | `apps/submit` | ✅ | 11 端点 + vote_token 鉴权 + 测试（2026-05-13）|
 | 投票数据（处理后）| `vote-data`（Rust 存根）| `apps/vote_data` | ✅ | Python 新增，非 Rust 移植 |
 | 查询结果 | `result-query` | `apps/result` | ✅ | 9 端点 + ComputeService + Redis 缓存（2026-05-13）|
 | 自动补全 | `autocomplete`（Rust 存根）| `apps/autocomplete` | ✅ | candidate 表 ILIKE 查询，4 单元+8 集成测试（2026-05-13）|
@@ -289,7 +289,7 @@
 | user | `GET /me` 集成 | 🟡 [B-015] |
 | user | bcrypt → argon2 升级路径端到端 | 🟡 [B-016] |
 | user | partial unique index PG 行为验证 | 🟢 [B-022] |
-| submit | 无任何测试 | 🟡 |
+| submit | 19 单元 + 7 集成测试 ✅ | — |
 | vote_data | 无任何测试 | 🟡 |
 | result | 单元/集成/契约测试已完成 ✅ | — |
 | autocomplete | 无任何测试（模块本身未实现）| ❌ |
