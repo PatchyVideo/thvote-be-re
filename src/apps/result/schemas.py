@@ -1,15 +1,8 @@
 """Result query schemas for request/response validation."""
 
-from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
-
-
-class BaseQuery(BaseModel):
-    """Base query model."""
-
-    pass
 
 
 class RankingEntityData(BaseModel):
@@ -49,35 +42,8 @@ class RankingEntity(BaseModel):
     reasons_count: int
 
 
-class RankingEntityCP(BaseModel):
-    """CP ranking entity."""
-
-    rank: list[RankingEntityData]
-    display_rank: int
-    name: str
-    favorite_vote_count_weighted: int
-    id_a: str
-    id_b: str
-    id_c: Optional[str] = None
-    type: str
-    origin: str
-    first_appearance: str
-    album: str
-    name_jp: str
-    favorite_percentage: float
-    active: Optional[str] = None
-    reasons: list[str]
-    reasons_count: int
-
-
 class RankingCharacterMusic(BaseModel):
     """Ranking for character and music."""
-
-    rankings: list[RankingEntity]
-
-
-class RankingGlobal(BaseModel):
-    """Global ranking."""
 
     rankings: list[RankingEntity]
 
@@ -92,85 +58,30 @@ class TrendItem(BaseModel):
     favorite_percentage: float
 
 
-class TrendQuery(BaseQuery):
-    """Trend query object."""
-
-    vote_starts_at: Optional[datetime] = None
-    names: list[str]
-
-
 class Trends(BaseModel):
     """Trends response."""
 
     trends: list[TrendItem]
 
 
-class GlobalStatsQuery(BaseQuery):
-    """Global statistics query."""
-
-    pass
-
-
 class GlobalStats(BaseModel):
     """Global statistics response."""
 
-    num_user: int
-    num_finished_voting: int
-    num_finished_paper: int
-    num_character: int
-    num_cp: int
-    num_music: int
-    num_dojin: int
-
-
-class QuestionnaireQuery(BaseQuery):
-    """Questionnaire query."""
-
-    vote_id: str
-
-
-class QuestionnaireTrendQuery(BaseQuery):
-    """Questionnaire trend query."""
-
-    names: list[str]
-
-
-class CovoteQuery(BaseQuery):
-    """Co-vote query."""
-
-    name_a: str
-    name_b: str
-
-
-class CompletionRatesQuery(BaseQuery):
-    """Completion rates query."""
-
-    pass
-
-
-class RankingQuery(BaseModel):
-    """Ranking query."""
-
-    rank_type: str
-    names: list[str]
-
-
-class SingleQuery(BaseModel):
-    """Single entity query."""
-
-    name: str
+    num_vote: int = 0
+    num_finished_voting: int = 0
+    num_finished_paper: int = 0
+    num_char: int = 0
+    num_cp: int = 0
+    num_music: int = 0
+    num_doujin: int = 0
+    num_male: int = 0
+    num_female: int = 0
 
 
 class Reasons(BaseModel):
     """Reasons for voting."""
 
     reasons: list[str]
-
-
-class ReasonQuery(BaseModel):
-    """Reason query."""
-
-    name: str
 
 
 class VotableBase(BaseModel):
@@ -184,19 +95,50 @@ class VotableBase(BaseModel):
     name_jp: Optional[str] = None
 
 
-class VotableCharacter(VotableBase):
-    """Votable character."""
+# ── Query types ────────────────────────────────────────────────────────
 
-    pass
-
-
-class VotableMusic(VotableBase):
-    """Votable music."""
-
-    pass
+class RankingQuery(BaseModel):
+    vote_year: Optional[int] = None
+    category: Literal["character", "music", "cp"] = "character"
+    names: list[str] = []
 
 
-class VotableWork(VotableBase):
-    """Votable work."""
+class TrendQuery(BaseModel):
+    vote_year: Optional[int] = None
+    category: Literal["character", "music", "cp"] = "character"
+    name: str
 
-    pass
+
+class ReasonQuery(BaseModel):
+    vote_year: Optional[int] = None
+    category: Literal["character", "music", "cp"] = "character"
+    name: str
+
+
+class SingleQuery(BaseModel):
+    vote_year: Optional[int] = None
+    category: Literal["character", "music", "cp"] = "character"
+    name: str
+
+
+class CovoteQuery(BaseModel):
+    vote_year: Optional[int] = None
+    category: Literal["character", "music"] = "character"
+
+
+class GlobalStatsQuery(BaseModel):
+    vote_year: Optional[int] = None
+
+
+class CompletionRatesQuery(BaseModel):
+    vote_year: Optional[int] = None
+
+
+class QuestionnaireQuery(BaseModel):
+    vote_year: Optional[int] = None
+    question_id: str
+
+
+class QuestionnaireTrendQuery(BaseModel):
+    vote_year: Optional[int] = None
+    question_id: str
