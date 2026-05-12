@@ -56,6 +56,8 @@ CI / Deploy：
 
 ## 三、演进 TODO（按阶段，每阶段独立 PR）
 
+> 🎯 阶段 2/3/4 在 [`docs/BACKLOG.md`](../BACKLOG.md) 里编号为 **B-001** / **B-025** / **B-026**，配有依赖关系与并行度。本表保留每阶段的详细操作步骤。
+
 ### 阶段 1 ✅ 已完成（本 PR `feat/user-and-verify`）
 - [x] `user` + `activity_log` 写入 Alembic baseline `0001`
 - [x] CI test job 在 pytest 之前 `alembic upgrade head`

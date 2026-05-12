@@ -112,6 +112,8 @@ confirm ──┬──► build-backend ──┐
 
 ## 五、Follow-up（仍待处理）
 
+> 🎯 这些项目在 [`docs/BACKLOG.md`](../BACKLOG.md) 里有对应编号（F-cicd-1+4 → **B-027**，F-cicd-2 见 §七）。本表保留 CI/CD 视角的细节和位置。
+
 | 编号 | 项目 | 优先级 |
 |---|---|---|
 | F-cicd-1 | `pylint.yml` 与 `deploy-test.yml` 的 lint 重复且都软门禁 → 删除 `pylint.yml`，把 deploy-test 的 `flake8 \|\| true` 改成硬失败 | 中 |

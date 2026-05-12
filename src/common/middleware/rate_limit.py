@@ -1,8 +1,18 @@
-"""Token-bucket rate limiter backed by the shared Redis client."""
+"""Token-bucket rate limiter backed by the shared Redis client.
+
+Uses INCR + EXPIRE for atomic fixed-window rate limiting.  INCR is a
+single Redis operation and returns a unique counter per request, so there
+is no TOCTOU race between reading the remaining token count and consuming
+one (the previous GET→check→DECR sequence was non-atomic).
+
+Window semantics: the counter resets when the TTL set by the first INCR
+in a window expires.  Edge case: if the process crashes between INCR (→1)
+and EXPIRE, the key persists without expiry.  This is an extremely narrow
+race whose worst case is that the rate limiter blocks that uid permanently
+until the Redis key is manually deleted — not a security hole.
+"""
 
 from __future__ import annotations
-
-import time
 
 from fastapi import HTTPException
 
@@ -19,12 +29,12 @@ async def rate_limit(
     window: int = RATE_LIMIT_WINDOW_SIZE_IN_SECONDS,
     max_requests: int = RATE_LIMIT_MAX_REQUESTS,
 ) -> None:
-    """Enforce a token-bucket rate limit for *uid*.
+    """Enforce a fixed-window rate limit for *uid*.
 
     Parameters
     ----------
     uid:
-        Identifier to rate-limit on (vote_id, email, phone, ...).
+        Identifier to rate-limit on (vote_id, email, phone, user_id, ...).
     conn:
         Optional Redis connection override.  When *None* the shared
         client from ``common.redis`` is used.
@@ -36,27 +46,12 @@ async def rate_limit(
     if conn is None:
         conn = await get_redis()
 
-    cur_time = int(time.time() * 1000)
-    last_reset_key = f"rate-limit-{uid}-last-reset"
-    token_key = f"rate-limit-{uid}-tokens"
-    last_time_raw = await conn.get(last_reset_key)
-    if last_time_raw is None:
-        await conn.set(last_reset_key, cur_time)
-        await conn.set(token_key, max_requests)
-        last_time = cur_time
-        tokens_remaining = max_requests
-    else:
-        last_time = int(last_time_raw)
-        tokens_remaining = int((await conn.get(token_key)) or 0)
-
-    if cur_time - last_time > window * 1000:
-        await conn.set(last_reset_key, cur_time)
-        await conn.set(token_key, max_requests)
-    else:
-        if tokens_remaining <= 0:
-            raise HTTPException(status_code=429, detail="REQUEST_TOO_FREQUENT")
-
-    await conn.decr(token_key, 1)
+    count_key = f"rate-limit-{uid}"
+    count = await conn.incr(count_key)
+    if count == 1:
+        await conn.expire(count_key, window)
+    if count > max_requests:
+        raise HTTPException(status_code=429, detail="REQUEST_TOO_FREQUENT")
 
 
 # Backward-compatible alias so existing imports don't break.

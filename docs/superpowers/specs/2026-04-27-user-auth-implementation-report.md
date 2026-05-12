@@ -131,6 +131,8 @@ f62a533 feat(db): introduce Alembic with baseline migration for user and activit
 
 ## 四、未做的事 / Follow-up
 
+> 🎯 F-impl-* 在 [`docs/BACKLOG.md`](../../BACKLOG.md) 里被收拢与去重（与 spec §九 / open-issues / cicd-pipeline 的重复项已合并）。本表保留实施期视角的发现记录。
+
 完整 Follow-up 见设计文档 §九 F1-F9。本期**新发现**值得记一笔的：
 
 | 编号 | 项目 | 备注 |

@@ -1,7 +1,7 @@
 # 用户管理模块迁移文档
 
 > 创建日期：2026-04-15
-> 最后更新：2026-04-27（标记阶段 1-5 全部完成 + 新增阶段 6 测试 + 七节后续工作）
+> 最后更新：2026-05-12（2026-05-12 核查：阶段 1-6 全部 checkbox 与实际代码一致，内容准确；仅更新日期）
 > 基准：thvote-be/user-manager (Rust/Actix-web + MongoDB)
 > 目标：thvote-be-re/src/apps/user (Python/FastAPI + PostgreSQL)
 

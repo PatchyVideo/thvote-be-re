@@ -3,13 +3,40 @@
 > 仓库级变更记录，按 CLAUDE.md §4 维护。日期格式 `YYYY-MM-DD`。
 >
 > 创建日期：2026-04-27
-> 最后更新：2026-04-27
+> 最后更新：2026-05-12
 
-## [Unreleased] — 计划合并：feat/user-and-verify 分支
+## [2026-05-12] 四项 BACKLOG bug 修复 + 文档同步
+
+### Fixed
+- **B-006**：删除 `src/main.py` 中重复的 `logging.basicConfig` 块（第 24-30 行是第 14-20 行的完整拷贝）
+- **B-002**：`src/apps/submit/router.py` `prefix="/v1"` 改为 `prefix=""`，消除与 `api_router`(`prefix="/api/v1"`) 叠加产生的 `/api/v1/v1/...` 异常路径；submit 端点现在正确挂载在 `/api/v1/character/` 等路径下
+
+### Changed
+- **B-005**：`src/common/middleware/rate_limit.py` 替换非原子限流实现（旧：`GET last_reset → GET tokens → 判断 → DECR`，存在 TOCTOU 竞态）为原子 `INCR + EXPIRE` 固定窗口计数器；Redis key 格式从 `rate-limit-{uid}-tokens` / `rate-limit-{uid}-last-reset` 统一为 `rate-limit-{uid}`
+
+### Added
+- **B-001**：`alembic/versions/0002_voting_tables.py`，把投票相关表纳入 Alembic 版本管理：
+  - 活跃表：`raw_character`、`raw_music`、`raw_cp`、`raw_paper`、`raw_dojin`（含复合索引）
+  - 遗留表：`character`、`music`、`cp`、`questionnaire`（仍在 db_model/ 但已不写入）
+
+### 兼容性
+- **B-002**：submit REST 端点路径变更（`/api/v1/v1/...` → `/api/v1/...`），若有直接调用旧路径的客户端需更新；GraphQL 调用不受影响（resolver 直接调用 service 层）
+- **B-005**：Redis key 格式变更，旧限流状态自然失效；已有部署升级后当前窗口内的限流计数重置（无安全风险）
+- **B-001**：已有部署（表已存在）需执行 `alembic stamp 0002` 而非 `alembic upgrade head`，详见 migration 文件头注释
+
+### docs
+- `docs/CHANGELOG.md`：`[Unreleased]` → `[2026-04-27]`，更新日期
+- `docs/BACKLOG.md`：更新日期，各条目经代码核查均保持原状（B-001~B-027 均未完成）
+- `docs/migration/user-manager.md`：更新日期，checkbox 经代码核查属实
+- `docs/REFACTOR_TODO.md`：顶部加醒目过时警告，指向 BACKLOG、CHANGELOG、migration 文档
+
+---
+
+## [2026-04-27] feat/user-and-verify 分支（已合入主干）
 
 > 工作期间：2026-04-27
 > 包含 commits：`45d75b7` … `c75f552`（共 16 个）
-> 合并到主干后请把本节 `[Unreleased]` 改为版本号 + 合并日期
+> 判断依据（2026-05-12 核查）：`src/apps/user/` 目录已有完整源文件（router/service/dao/deps/schemas/models/utils），表明该分支内容已合入主干。
 
 ### Added
 - 用户与认证模块（feat/user-and-verify 分支）
