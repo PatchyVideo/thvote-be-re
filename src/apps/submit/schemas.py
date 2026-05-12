@@ -11,6 +11,7 @@ def utcnow() -> datetime:
 
 
 class SubmitMetadata(BaseModel):
+    vote_token: str | None = None
     vote_id: str = "<unknown>"
     attempt: int | None = None
     created_at: datetime = Field(default_factory=utcnow)

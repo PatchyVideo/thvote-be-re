@@ -20,6 +20,7 @@ from src.apps.submit.schemas import (
 from src.apps.submit.service import SubmitService
 from src.common.database import get_db_session
 from src.common.middleware.rate_limit import get_redis_client, rate_limit
+from src.common.security.jwt import JWTValidationError, VoteTokenPayload, decode_vote_token
 
 router = APIRouter(prefix="", tags=["submit-handler"])
 
@@ -32,9 +33,19 @@ async def get_submit_service(
     return SubmitService(dao)
 
 
-async def _acquire_vote_lock(vote_id: str) -> tuple[str, str]:
+def _verify_vote_token(token: str | None) -> VoteTokenPayload:
+    """Decode and validate a vote_token from request metadata."""
+    if not token:
+        raise HTTPException(status_code=401, detail="VOTE_TOKEN_REQUIRED")
+    try:
+        return decode_vote_token(token)
+    except JWTValidationError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+async def _acquire_vote_lock(user_id: str) -> tuple[str, str]:
     redis_client = await get_redis_client()
-    lock_key = f"lock-submit-{vote_id}"
+    lock_key = f"lock-submit-{user_id}"
     lock_value = str(uuid.uuid4())
     acquired = await redis_client.set(lock_key, lock_value, nx=True, px=10_000)
     if not acquired:
@@ -54,11 +65,14 @@ async def submit_character_v1(
     body: CharacterSubmitRest,
     service: SubmitService = Depends(get_submit_service),
 ) -> EmptyJSON:
+    payload = _verify_vote_token(body.meta.vote_token)
     redis_client = await get_redis_client()
-    await rate_limit(body.meta.vote_id, redis_client)
-    lock_key, lock_value = await _acquire_vote_lock(body.meta.vote_id)
+    await rate_limit(payload.user_id, redis_client)
+    lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
     try:
         await service.submit_character(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:
         await _release_vote_lock(lock_key, lock_value)
     return EmptyJSON()
@@ -69,11 +83,14 @@ async def submit_music_v1(
     body: MusicSubmitRest,
     service: SubmitService = Depends(get_submit_service),
 ) -> EmptyJSON:
+    payload = _verify_vote_token(body.meta.vote_token)
     redis_client = await get_redis_client()
-    await rate_limit(body.meta.vote_id, redis_client)
-    lock_key, lock_value = await _acquire_vote_lock(body.meta.vote_id)
+    await rate_limit(payload.user_id, redis_client)
+    lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
     try:
         await service.submit_music(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:
         await _release_vote_lock(lock_key, lock_value)
     return EmptyJSON()
@@ -84,11 +101,14 @@ async def submit_cp_v1(
     body: CPSubmitRest,
     service: SubmitService = Depends(get_submit_service),
 ) -> EmptyJSON:
+    payload = _verify_vote_token(body.meta.vote_token)
     redis_client = await get_redis_client()
-    await rate_limit(body.meta.vote_id, redis_client)
-    lock_key, lock_value = await _acquire_vote_lock(body.meta.vote_id)
+    await rate_limit(payload.user_id, redis_client)
+    lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
     try:
         await service.submit_cp(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:
         await _release_vote_lock(lock_key, lock_value)
     return EmptyJSON()
@@ -99,11 +119,14 @@ async def submit_paper_v1(
     body: PaperSubmitRest,
     service: SubmitService = Depends(get_submit_service),
 ) -> EmptyJSON:
+    payload = _verify_vote_token(body.meta.vote_token)
     redis_client = await get_redis_client()
-    await rate_limit(body.meta.vote_id, redis_client)
-    lock_key, lock_value = await _acquire_vote_lock(body.meta.vote_id)
+    await rate_limit(payload.user_id, redis_client)
+    lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
     try:
         await service.submit_paper(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:
         await _release_vote_lock(lock_key, lock_value)
     return EmptyJSON()
@@ -114,11 +137,14 @@ async def submit_dojin_v1(
     body: DojinSubmitRest,
     service: SubmitService = Depends(get_submit_service),
 ) -> EmptyJSON:
+    payload = _verify_vote_token(body.meta.vote_token)
     redis_client = await get_redis_client()
-    await rate_limit(body.meta.vote_id, redis_client)
-    lock_key, lock_value = await _acquire_vote_lock(body.meta.vote_id)
+    await rate_limit(payload.user_id, redis_client)
+    lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
     try:
         await service.submit_dojin(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:
         await _release_vote_lock(lock_key, lock_value)
     return EmptyJSON()

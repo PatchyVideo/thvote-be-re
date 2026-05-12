@@ -185,6 +185,8 @@ class SubmitDAO:
         music = await _distinct_count(RawMusicSubmit)
         dojin = await _distinct_count(RawDojinSubmit)
 
+        paper = await _distinct_count(RawPaperSubmit)
+
         q_vote = union(
             select(RawCharacterSubmit.vote_id),
             select(RawCPSubmit.vote_id),
@@ -206,7 +208,7 @@ class SubmitDAO:
 
         return {
             "num_user": int(all_users or 0),
-            "num_finished_paper": 0,
+            "num_finished_paper": paper,
             "num_finished_voting": int(vote_users or 0),
             "num_character": ch,
             "num_cp": cp,

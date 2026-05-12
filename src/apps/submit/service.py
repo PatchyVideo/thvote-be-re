@@ -1,5 +1,7 @@
 """Submit service layer."""
 
+import json
+
 from src.apps.submit.dao import SubmitDAO
 from src.apps.submit.schemas import (
     CharacterSubmitRest,
@@ -71,6 +73,18 @@ class SubmitValidator:
 
     def validate_paper(self, data: PaperSubmitRest) -> PaperSubmitRest:
         """Validate paper submit data."""
+        try:
+            items = json.loads(data.papers_json)
+        except (json.JSONDecodeError, ValueError):
+            raise ValueError("papers_json 不是合法 JSON")
+        if not isinstance(items, list) or not items:
+            raise ValueError("papers_json 必须为非空列表")
+        for item in items:
+            if not isinstance(item.get("id"), int):
+                raise ValueError("每个 paper item 必须有整数 id")
+            ans_str = item.get("answer_str")
+            if ans_str is not None and len(str(ans_str)) > 4096:
+                raise ValueError("answer_str 过长")
         return data
 
     def validate_dojin(self, data: DojinSubmitRest) -> DojinSubmitRest:
