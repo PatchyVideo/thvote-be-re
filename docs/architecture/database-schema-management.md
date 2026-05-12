@@ -127,7 +127,7 @@ psql ... -c "\dt"
 psql ... -c "SELECT version_num FROM alembic_version;"   # 应该是 0002
 ```
 
-**已有部署升级到 0002（首次）：** 必须先 `alembic stamp 0002` 标记现有 schema 为最新，**不要** `alembic upgrade head`——会触发 CREATE TABLE 与既有表冲突。详见 `alembic/versions/0002_voting_tables.py` 头注释。
+**已有部署升级到 0002（首次）：** 直接跑 `alembic upgrade head` 即可。`alembic/env.py` 在跑迁移前会自动检测"已有 managed 表但无 alembic_version"的状态并 stamp 到合适的 revision（实现见 `_maybe_baseline_existing_schema`），不再需要手工 `alembic stamp 0002`。
 
 **注意 `DEBUG=true` 后门仍存在但已无必要：** B-001 完成后，全部表都在 Alembic 中，`init_db()` 不再补任何东西。B-025 落地后该路径会被彻底删除。
 

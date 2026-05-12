@@ -89,7 +89,7 @@ BACKEND_IMAGE=ghcr.io/patchyvideo/thvote-backend:test
 
 - `docker-compose up -d redis`
 - `docker exec thvote-postgres pg_isready ...`（不要被名字误导：实际指向阿里云 RDS 还是本地 container，取决于部署机的 compose）
-- `docker-compose run --rm backend alembic upgrade head`
+- `docker-compose run --rm backend alembic upgrade head`（对任何状态的 DB 都幂等——`env.py` 会自动 baseline 祖传 schema，详见 `architecture/database-schema-management.md`）
 - `docker-compose up -d backend`
 
 这些 `docker-compose` 命令读取的是**部署服务器上 `$DEPLOY_DIR` 目录里手工维护的 compose 文件**——不在仓库版本控制中。

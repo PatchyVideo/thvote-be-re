@@ -14,13 +14,12 @@ kept here so that Base.metadata stays consistent with the Alembic history):
 Deploying to an existing instance
 ----------------------------------
 If the target database already has these tables (created via DEBUG=true /
-``Base.metadata.create_all``), do NOT run ``upgrade`` — it will fail with
-"table already exists".  Instead, stamp the current state as 0002 without
-applying DDL::
-
-    alembic stamp 0002
-
-Then continue with any future migrations normally.
+``Base.metadata.create_all`` in a pre-Alembic deployment), ``alembic env.py``
+auto-detects this and stamps the existing schema to the right revision
+before running migrations — see ``_maybe_baseline_existing_schema`` in
+``alembic/env.py``. ``alembic upgrade head`` is therefore safe to run
+against legacy schemas; the one-time manual ``alembic stamp 0002`` is no
+longer required.
 
 Revision ID: 0002
 Revises: 0001

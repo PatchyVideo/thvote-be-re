@@ -62,6 +62,9 @@
 - **B-030**（中）：Nacos import-time 阻塞改 lazy
 - **B-031**（低）：约束 Nacos 配置写标准 JSON 后删 `_parse_config_content` 容错分支
 
+### Fixed（追加）
+- **alembic 首次部署到已有 DB**：`env.py` 加 `_maybe_baseline_existing_schema`，跑迁移前自动检测"已有 managed 表但无 alembic_version"的状态，自动 stamp 到合适的 revision（user 在 → 0001；raw_character 在 → 0002）。`alembic upgrade head` 现在对**任意状态的 DB 都是幂等**的——空 DB、祖传 schema、已托管的 DB 都能直接跑。Sentinel 表与对应 revision 维护在 `_SENTINELS` 元组里，未来加迁移时同步追加
+
 ---
 
 ## [2026-05-12] 四项 BACKLOG bug 修复 + 文档同步
@@ -81,7 +84,7 @@
 ### 兼容性
 - **B-002**：submit REST 端点路径变更（`/api/v1/v1/...` → `/api/v1/...`），若有直接调用旧路径的客户端需更新；GraphQL 调用不受影响（resolver 直接调用 service 层）
 - **B-005**：Redis key 格式变更，旧限流状态自然失效；已有部署升级后当前窗口内的限流计数重置（无安全风险）
-- **B-001**：已有部署（表已存在）需执行 `alembic stamp 0002` 而非 `alembic upgrade head`，详见 migration 文件头注释
+- **B-001**：已有部署（表已存在）首版本要求 `alembic stamp 0002`，**已在 2026-05-12 后续修复中自动化**（`alembic/env.py:_maybe_baseline_existing_schema` 自动检测并 stamp，无需手工 stamp）
 
 ### docs
 - `docs/CHANGELOG.md`：`[Unreleased]` → `[2026-04-27]`，更新日期
