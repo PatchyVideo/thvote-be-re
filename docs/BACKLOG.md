@@ -1,7 +1,7 @@
 # 后续开发 BACKLOG（单一仪表盘）
 
 > 创建日期：2026-04-27
-> 最后更新：2026-05-12
+> 最后更新：2026-05-12（合入 zfq_dev：Apollo→Nacos、移除 docker/、workflow 重构；B-017 重写，新增 B-028..B-031）
 
 把散落在 5 份文档里的 follow-up 收拢到这里。**这是仪表盘，不是真理来源**——每项的上下文还在原文档里，本表只给一行摘要 + 跳转。
 
@@ -9,7 +9,7 @@
 
 ---
 
-## 状态总览（B-001..B-027）
+## 状态总览（B-001..B-031）
 
 | 编号 | 主题 | 严重度 | 可并行做？ | 源文档 |
 |---|---|---|---|---|
@@ -29,7 +29,7 @@
 | **B-014** | `vote_token` 签发 3 个集成场景测试（已验证/未验证 × 投票期内/外） | 中 | 🟡 等本 PR merge | [open-issues §二 U-5](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-015** | `GET /me` 端点 TestClient 集成测试 | 中 | 🟡 等本 PR merge | [open-issues §二 U-6](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-016** | bcrypt → argon2 升级路径端到端集成测试 | 中 | 🟡 等本 PR merge | [open-issues §二 U-7](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
-| **B-017** | Apollo 热更新与 `lru_cache` 客户端不兼容——文档化「改 Aliyun 配置必须重启容器」或加 `reload()` | 中 | 🟢 可立即做（仅文档变体） | [open-issues §三 U-8](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
+| **B-017** | Nacos 热更新与 `lru_cache` 客户端不兼容——`nacos.py` 注册了 listener 但 `get_pnvs_client` / `get_dm_smtp_client` / `get_*_code_service` 全 `lru_cache(maxsize=1)`，hot reload 触达不到这些缓存实例。文档化「改 Aliyun 配置必须重启容器」或加 `reload()`；（注：替换 Apollo 后 root cause 没变） | 中 | 🟢 可立即做（仅文档变体） | [open-issues §三 U-8](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-018** | `_safe_log` 失败无可见性——加 `audit_log_failures_total` 计数器 + `/health` degraded 状态 | 中 | 🟡 等本 PR merge | [open-issues §三 U-9](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-019** | 错误响应 `{"detail":"..."}` 与 Rust 的 `{"error":"...","service":"..."}` 不一致 | 低 | 🟡 等本 PR merge / 等前端反馈 | [open-issues §三 U-11](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-020** | mypy 在 CI 不是硬门禁；先清现存告警，再去掉 `\|\| true` | 低 | 🟢 可立即做 | [open-issues §三 U-12](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
@@ -39,7 +39,11 @@
 | **B-024** | `UserDAO.save()` 加 `session.merge()` 防 detached instance 静默 no-op | 低 | 🟡 等本 PR merge | [open-issues §三 U-18](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-025** | 移除 `init_db()` 与 DEBUG 后门，改为 `ensure_schema_ready()` 失败立即 raise | 中 | 🟢 可立即做（B-001 已完成，前置解除） | [schema-mgmt §三阶段 3](./architecture/database-schema-management.md) |
 | **B-026** | DB 治理纪律：PR 模板 model 改动提示 / CI `alembic check` / `db_model 改动必须有 migration` 检查 | 低 | 🔴 阻塞于 B-025 | [schema-mgmt §三阶段 4](./architecture/database-schema-management.md) |
-| **B-027** | `pylint.yml` 与 `deploy-test.yml` lint 重复，删一个 + 把另一个改硬失败 | 中 | 🟢 可立即做（与 B-020 一起做最划算） | [cicd-pipeline §五 F-cicd-1+4](./operations/cicd-pipeline.md) |
+| **B-027** | ~~`pylint.yml` 与 `deploy-test.yml` lint 重复，删一个 + 把另一个改硬失败~~ → `pylint.yml` 在合并 zfq_dev 时已删除；剩下 `deploy-test.yml` 内 `flake8 \|\| true` 软门禁仍需改硬 | 中 | 🟢 可立即做 | [cicd-pipeline §五 F-cicd-1+4](./operations/cicd-pipeline.md) |
+| **B-028** | `.github/workflows/deploy-test.yml` 当前唯一的部署 workflow 没有 prod 路径——main 分支推送也只触发部署到 test 环境（镜像 tag 区分为 `prod` vs `test`，但部署目标都是 TEST_SERVER_HOST）。需要确认是否真的没有 prod 发布通道，或补一个 `deploy-prod.yml` | 高 | 🟢 可立即做 | [cicd-pipeline §二](./operations/cicd-pipeline.md) |
+| **B-029** | deploy 步骤里 `docker-compose up -d redis` / `docker exec thvote-postgres` 依赖部署机上**仓库外**维护的 `docker-compose.yml`（`docker/` 目录已从仓库删除）。这层耦合需要文档化：部署机上的 compose 文件版本谁来负责？ | 中 | 🟢 可立即做（文档为主） | [cicd-pipeline §二](./operations/cicd-pipeline.md) |
+| **B-030** | Nacos 接入有一个**模块加载期阻塞调用**：`src/common/config.py` 顶层执行 `_load_nacos_sync()`，import config 即触发同步网络调用——Nacos 不可达时 import 全挂。考虑改成 lazy load 或加超时熔断 | 中 | 🟢 可立即做 | `src/common/config.py:15-46` |
+| **B-031** | `src/common/nacos.py` 的 `_parse_config_content` 自带 JS 风格 JSON 容错解析（正则提取），属于隐式技术债——上游 Nacos 配置应该写标准 JSON，让解析器走 `json.loads`。如果是为了兼容某个老 dataId，需文档化该 dataId 的写法约束 | 低 | 🟢 可立即做 | `src/common/nacos.py:29-97` |
 
 ---
 
@@ -60,8 +64,12 @@
 | **B-021** | Pydantic V1→V2 配置迁移（清 20 条 deprecation 告警） | 半天 |
 | **B-022** | CI PG-only 契约测试：partial unique index 行为验证 | 1 小时 |
 | **B-023** | `importorskip` → 硬 import | 5 分钟 |
-| **B-017** | Apollo + `lru_cache` 限制文档化（仅 docs） | 30 分钟 |
+| **B-017** | Nacos + `lru_cache` 限制文档化（仅 docs） | 30 分钟 |
 | **B-007** | SSO 接入**设计稿**（不动代码，先写 spec） | 1 天 |
+| **B-028** ⚡ | 确认/补齐 prod 部署通道（当前 `deploy-test.yml` 是孤本） | 1 天（视真实部署现状而定） |
+| **B-029** | 文档化部署机上 `docker-compose.yml` 的归属与版本管理 | 30 分钟（信息收集） |
+| **B-030** ⚡ | Nacos 同步 import-time 加载改为 lazy + 超时熔断（防 Nacos 故障拖垮所有 import） | 半天 |
+| **B-031** | Nacos 配置约束为标准 JSON 后删除 `_parse_config_content` 容错分支 | 1 小时（视上游配置是否能改） |
 
 > ⚡ = 强烈建议作为本 PR 合并后的**第一个 follow-up PR**
 
@@ -80,10 +88,10 @@
 - **B-019** 错误响应统一（依赖新端点契约）
 - **B-024** DAO `merge()` 加固（依赖新 DAO）
 
-## 🔴 战略 / 阻塞链（2 项）
+## 🔴 战略 / 阻塞链（3 项）
 
 - **B-011** 移除 `at_least_one_identifier` 约束 ← 阻塞于 **B-007** SSO 落地
-- **B-025** 移除 `init_db()` ← 阻塞于 **B-001** 把全部表纳入 Alembic
+- **B-025** 移除 `init_db()` ← B-001 已完成，**阻塞已解除** → 现可立即做（见 🟢 可立即做）
 - **B-026** DB 治理纪律 ← 阻塞于 **B-025**
 
 ---

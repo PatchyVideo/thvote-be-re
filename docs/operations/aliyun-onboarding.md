@@ -1,11 +1,12 @@
 # 阿里云上线接入手册
 
 > 创建日期：2026-04-27
-> 最后更新：2026-04-27
+> 最后更新：2026-05-12（配置中心 Apollo → Nacos；§四 整节重写）
 >
 > 用途：把用户与认证模块所依赖的两个阿里云服务（**PNVS 号码认证服务** + **DirectMail 邮件推送**）从零接通到生产，一次过完所有步骤。
-> 关联代码：`src/common/aliyun/{pnvs_client,dm_smtp_client}.py`、`src/common/verification/{sms_code,email_code}.py`
+> 关联代码：`src/common/aliyun/{pnvs_client,dm_smtp_client}.py`、`src/common/verification/{sms_code,email_code}.py`、`src/common/nacos.py`
 > 关联设计：[`docs/superpowers/specs/2026-04-27-user-auth-design.md`](../superpowers/specs/2026-04-27-user-auth-design.md) §二、§七.3
+> 配置中心使用细节：[`docs/operations/nacos-config-center.md`](./nacos-config-center.md)
 
 ---
 
@@ -19,7 +20,7 @@
 **核心原则：**
 - 验证码本身永远不进我方日志（PNVS 全托管短信码；邮件 6 位码只进 Redis）
 - 写入 ActivityLog 的只有发送动作 + PNVS BizId / 收件人脱敏地址
-- AccessKey 只放在 GitHub Secrets / Apollo 加密命名空间，绝不进 git（CLAUDE.md §5）
+- AccessKey 只放在 GitHub Secrets 或 Nacos 加密配置项，绝不进 git（CLAUDE.md §5）
 
 ---
 
@@ -165,8 +166,17 @@ ALIYUN_DM_SMTP_PASSWORD=...
 ```
 
 **机密值的归属：**
-- `*_ACCESS_KEY_SECRET` / `*_SMTP_PASSWORD` → **GitHub Actions Secrets**（CI 注入）或 **Apollo 加密命名空间**（运行时注入）
-- 非机密值（endpoint / region_id / scheme_name / sign_name / template_code / SMTP host/port）可以直接写在仓库内的 `.env.test.example` / `.env.prod.example`
+- `*_ACCESS_KEY_SECRET` / `*_SMTP_PASSWORD` → **Nacos 加密配置项**（运行时注入，`DATA_ID=thvote-be`），或 **GitHub Actions Secrets**（CI 阶段拼装 `.env`）
+- 非机密值（endpoint / region_id / scheme_name / sign_name / template_code / SMTP host/port）可以放 Nacos 配置项里，也可以直接写在仓库内的 `.env.test.example` / `.env.prod.example`（Nacos 优先级低于环境变量 / `.env`，会被覆盖）
+
+**读取顺序（来自 `src/common/config.py` 与 `src/common/nacos.py`）：**
+```
+环境变量 / .env  →  Nacos load_nacos_config() 应用到 os.environ（仅当 key 不存在时写入）  →  Settings() 实例化
+```
+
+即 Nacos 是 fallback，不会覆盖已设置的环境变量。CI 在 `.env` 里写死的会赢 Nacos。
+
+> ℹ️ 2026-05-12 之前本节描述的是 Apollo 命名空间，现已切换到 Nacos。Nacos 自身的接入说明（dataId / group / 命名空间）见 [`nacos-config-center.md`](./nacos-config-center.md)。
 
 ---
 

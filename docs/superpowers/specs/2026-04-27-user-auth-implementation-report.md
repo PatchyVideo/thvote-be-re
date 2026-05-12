@@ -158,7 +158,7 @@ f62a533 feat(db): introduce Alembic with baseline migration for user and activit
 
 ## 六、上线 checklist
 
-- [ ] 在测试环境 Apollo / `.env.test` 配齐 `ALIYUN_PNVS_*` 与 `ALIYUN_DM_*` 全套变量
+- [ ] 在测试环境 Nacos（`DATA_ID=thvote-be`） / `.env.test` 配齐 `ALIYUN_PNVS_*` 与 `ALIYUN_DM_*` 全套变量（2026-05-12 后 Apollo 已替换为 Nacos）
 - [ ] 在测试环境跑 `alembic upgrade head` 把约束放宽 + baseline 应用
 - [ ] 用 `curl` 触发 `send-sms-code` + `login-phone` 的真实链路（需要真手机号）
 - [ ] 用 `curl` 触发 `send-email-code` + `login-email` 的真实链路（需要可达邮箱）

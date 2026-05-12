@@ -1,7 +1,7 @@
 # 数据库 Schema 管理 — 现状与演进路线图
 
 > 创建日期：2026-04-27
-> 最后更新：2026-04-27
+> 最后更新：2026-05-12（阶段 2 完成 ✅；阶段 3 阻塞解除）
 >
 > 触发：本次 PR (`feat/user-and-verify`) 引入 Alembic，但只覆盖 user + activity_log，与既有 `init_db()` create_all 共存，状态混杂。本文记录现状、目标态、和分阶段演进 TODO。
 
@@ -66,26 +66,20 @@ CI / Deploy：
 - [x] `init_db()` 默认不再调用，仅 `DEBUG=true` 时为本地开发保留（`src/main.py` lifespan）
 - [x] CHECK 约束放宽允许软删行同时 NULL email/phone
 
-### 阶段 2 🟡 待做（spec §九 F-impl-5）—— 把投票相关表纳入 Alembic
+### 阶段 2 ✅ 已完成（2026-05-12, B-001）—— 投票相关表已纳入 Alembic
 
-**范围：** `raw_character_submit` / `raw_music_submit` / `raw_cp_submit` / `raw_paper_submit` / `raw_dojin_submit` / `character` / `music` / `cp` / `questionnaire`
+**范围：** `raw_character` / `raw_music` / `raw_cp` / `raw_paper` / `raw_dojin` / `character` / `music` / `cp` / `questionnaire`
 
-**TODO：**
-- [ ] 跑 `alembic revision --autogenerate -m "baseline voting tables"` 生成 `0002_*.py`
-- [ ] **手工审 autogenerate 生成的 migration**——重点检查：
-  - [ ] partial index（`postgresql_where`）有没有正确生成
-  - [ ] CHECK 约束有没有
-  - [ ] `server_default`（如 `func.now()`）有没有
-  - [ ] 列长度（String(N)）有没有跟 model 对齐
-  - [ ] FK 关系是否正确
-- [ ] 在测试 PG 上**先做 `alembic stamp 0001` 后再 `alembic upgrade head`** 验证已有部署的升级路径不会冲突
-- [ ] 写一份 release note 给 ops：「升级到 0002 之前必须 `alembic stamp 0001`」
-- [ ] 更新 `docs/migration/user-manager.md` 标记 F-impl-5 完成
-- [ ] 更新本文 §三阶段 2 状态为 ✅
+**已完成：**
+- [x] `alembic/versions/0002_voting_tables.py` 手写而非 autogenerate（避免 autogenerate 漏掉 partial index / composite index ops）
+- [x] 5 张活跃 raw_* 表全部含 `idx_raw_*_vote_created (vote_id, created_at DESC)` 复合索引（`postgresql_ops`）
+- [x] 4 张遗留表（`character` / `music` / `cp` / `questionnaire`）保持 FK→user.id CASCADE DELETE
+- [x] migration 文件头注明：已有部署执行 `alembic stamp 0002`（而非 `upgrade head`）
+- [x] 阻塞链：B-025 阶段 3 现已解除阻塞
 
-**风险点：** 已有 raw_* 表里有真实投票数据。`alembic upgrade head` 不能盲跑，必须先 stamp。
+**实现位置：** `alembic/versions/0002_voting_tables.py`（参见 `docs/CHANGELOG.md` 2026-05-12 节）
 
-### 阶段 3 🟢 待做（阶段 2 之后）—— 移除 `init_db()` 与 DEBUG 后门
+### 阶段 3 🟢 待做（阻塞已解除）—— 移除 `init_db()` 与 DEBUG 后门
 
 **TODO：**
 - [ ] 写一个 `ensure_schema_ready()` 函数替代 `init_db()`：
@@ -95,11 +89,12 @@ CI / Deploy：
   - [ ] **不自动建表、不自动迁移**
 - [ ] `src/main.py` lifespan 改为调 `ensure_schema_ready()`，删掉 `_is_debug_mode()` 与 `init_db()` 调用
 - [ ] `src/common/database.py` 删掉 `init_db()` 函数（或保留为 dev 脚本但不在 lifespan 调用）
-- [ ] 更新所有用到 `DEBUG=true` 启动的本地文档（QUICKSTART.md 等）
 - [ ] 新增 `docs/operations/first-time-setup.md`：明示「clone → install → alembic upgrade head → start」
 - [ ] 更新本文 §三阶段 3 状态为 ✅
 
 **收益：** 应用启动时不再有"自动建表"这个隐藏行为，schema 状态完全由 Alembic 管。
+
+**注：** `QUICKSTART.md` 已在 2026-05-12 合并 zfq_dev 时删除，无需更新。
 
 ### 阶段 4 🔵 持续纪律（无终点）
 
@@ -111,31 +106,30 @@ CI / Deploy：
 
 ---
 
-## 四、给当下新人的临时操作手册
+## 四、给当下新人的操作手册（阶段 2 完成后）
 
-阶段 1 落地后，阶段 2 还没做之前，**首次部署到全新数据库**的步骤：
+**首次部署到全新数据库**的步骤：
 
 ```bash
-# 1. clone & 装依赖
+# 1. clone & 装依赖（依赖从 pyproject.toml 读取，不再有 requirements.txt）
 git clone ...
 cd thvote-be-re
-pip install -r requirements.txt
+pip install -e .
 
-# 2. 让 Alembic 建 user + activity_log（必须，生产/测试都要做）
+# 2. 让 Alembic 建全部表（user / activity_log / raw_* / character / music / cp / questionnaire）
 alembic upgrade head
 
-# 3. 让 create_all 建剩下的投票相关表（仅本地，临时）
-DEBUG=true uvicorn src.main:app --reload   # 启动一次，自动跑 init_db()
-# 之后可以关掉 reload，正常跑 DEBUG=false
+# 3. 启动
+uvicorn src.main:app --reload
 
 # 4. 验证
-psql ... -c "\dt"   # 应该能看到 user / activity_log / raw_* / character / music / ...
-psql ... -c "SELECT version_num FROM alembic_version;"   # 应该是 0001
+psql ... -c "\dt"
+psql ... -c "SELECT version_num FROM alembic_version;"   # 应该是 0002
 ```
 
-**生产 / 测试 CI 部署：** 不需要 DEBUG=true，因为 raw_* 等表在已有部署里**早就存在**。新一轮发布只是 `alembic upgrade head` 把 user/activity_log 拉到 0001。
+**已有部署升级到 0002（首次）：** 必须先 `alembic stamp 0002` 标记现有 schema 为最新，**不要** `alembic upgrade head`——会触发 CREATE TABLE 与既有表冲突。详见 `alembic/versions/0002_voting_tables.py` 头注释。
 
-阶段 2 落地后，本表第 3 步可以删除，所有表都靠 Alembic。
+**注意 `DEBUG=true` 后门仍存在但已无必要：** B-001 完成后，全部表都在 Alembic 中，`init_db()` 不再补任何东西。B-025 落地后该路径会被彻底删除。
 
 ---
 

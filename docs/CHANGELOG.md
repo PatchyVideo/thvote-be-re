@@ -3,7 +3,66 @@
 > 仓库级变更记录，按 CLAUDE.md §4 维护。日期格式 `YYYY-MM-DD`。
 >
 > 创建日期：2026-04-27
-> 最后更新：2026-05-12
+> 最后更新：2026-05-12（合入 zfq_dev：Apollo→Nacos、移除 docker/、workflow 重构）
+
+## [2026-05-12] 合入 zfq_dev 基础设施：Apollo→Nacos、移除 docker/、workflow 精简
+
+> 合并提交：`c8a04d5 merge: bring zfq_dev infrastructure (Nacos + new deploy) into feat`
+> 包含 zfq_dev 18 个 commit：`5414a0f` … `2ced1fd`
+
+### Changed
+- **配置中心 Apollo → Nacos**：
+  - 删除 `src/common/apollo.py`
+  - 新增 `src/common/nacos.py`（812 行，含配置中心 + naming service 双功能）
+  - 重写 `src/common/config.py`：模块加载期 `_load_nacos_sync()` 同步拉取 Nacos 配置写入 `os.environ`（仅当 key 不存在时），再交给 Pydantic Settings 实例化
+  - `Settings` 类新增 13 个 `NACOS_*` 字段（含服务注册的 IP/port/cluster/weight）
+- **服务注册接入**：`src/main.py` lifespan 现在会 `start_nacos_watcher` + `register_service_to_nacos`；新增 `/admin/discover/{service_name}` 与 `/admin/discover-self` 两个排障端点
+- **依赖管理收敛**：删除 `requirements.txt`，所有依赖统一进 `pyproject.toml`；新增 `nacos-sdk-python>=2.0.0`
+- **健康检查降级**：`/health` 现在在 DB 不可用时返回 `db_status=unavailable`（HTTP 200），而非整体 500
+- **Nacos 加载本地文件回退**：Nacos 拿不到配置时尝试读 `<repo_root>/<NACOS_DATA_ID>` 同名文件作为应急
+
+### Removed
+- `.github/workflows/deploy-prod.yml`（与 Apollo / 仓库内 docker-compose 强耦合的旧 prod workflow）
+- `.github/workflows/deploy.yml`（备用 prod workflow，功能与 deploy-test.yml 重叠）
+- `.github/workflows/pylint.yml`（软门禁 `--exit-zero` 永不失败，与 deploy-test.yml lint job 重复）
+- 整个 `docker/` 目录（compose 文件、apollo SQL 521+464 行、bootstrap 脚本、测试环境脚本）
+- 整个 `frontend/` 目录（Dockerfile.prod、nginx 配置）
+- `QUICKSTART.md`（内容过时）
+- `docs/REFACTOR_TODO.md`（与本次合并冲突，删除态胜出）
+- `local_db/dev.db`（不该进 git 的本地 sqlite 文件）
+- `requirements.txt`
+
+### Added
+- `docs/operations/nacos-config-center.md`：Nacos 接入说明（配置 + 服务注册，含 dataId 写法样例与 lifespan 行为）
+- 部署机不再编排本地 postgres 容器，改用阿里云 RDS（仍保留 redis container 在 deploy 流程里）
+- `__pycache__/` 加入 `.gitignore`（zfq_dev 误提交了一些 `.pyc`，本次合并时清理）
+
+### 兼容性
+- **破坏性**：`APOLLO_*` 环境变量不再被读取，必须改用 `NACOS_*`
+- **破坏性**：仓库内 `docker/docker-compose*.yml` 不再存在；部署机需自维护 compose 文件（详见 `cicd-pipeline.md` §三）
+- **破坏性**：没有独立 prod workflow——main 分支 push 走的也是 `deploy-test.yml`，部署目标仍是 TEST_SERVER_HOST（镜像 tag 区分为 prod vs test）。**这是 follow-up B-028**
+- **配置迁移路径**：原 Apollo `application` namespace 里的 `ALIYUN_PNVS_*` / `ALIYUN_DM_*` 17 个字段需要全量复制到 Nacos（`DATA_ID=thvote-be`，`GROUP=DEFAULT_GROUP`），格式建议标准 JSON
+- **运行时风险**：`src/common/config.py` 顶层 `_load_nacos_sync()` 是 import-time 阻塞调用——Nacos 故障会让所有 import 链挂掉（B-030）
+
+### CI/CD
+- 唯一保留的 workflow `deploy-test.yml` 仍有 `alembic upgrade head` 步骤（test 阶段烟测 + deploy 阶段应用迁移），未受影响
+- 部署阶段写入 `.env` 的内容从 `APOLLO_*` 改为 `NACOS_*`
+
+### Docs
+- `docs/README.md`：删除 `REFACTOR_TODO.md` 入口；新增 `nacos-config-center.md` 入口
+- `docs/CHANGELOG.md`：本节
+- `docs/BACKLOG.md`：B-017 重写为 Nacos 视角；新增 B-028（prod workflow 缺失）/ B-029（部署机 compose 归属）/ B-030（Nacos import 阻塞）/ B-031（_parse_config_content 容错），状态总览范围改为 B-001..B-031
+- `docs/operations/cicd-pipeline.md`：整篇重写（Workflow 总览从 4 → 1；新增 §三"与部署机的耦合"；§四配置交付从 Apollo 改 Nacos；§七记录本次改动）
+- `docs/operations/aliyun-onboarding.md`：§四改写为 Nacos 投递路径；引用 `nacos-config-center.md`
+- `docs/architecture/database-schema-management.md`：阶段 2 标 ✅ 已完成；§四操作手册改用 `pip install -e .`（不再 `requirements.txt`）；备注 QUICKSTART.md 已删
+
+### Follow-up
+- **B-028**（高）：补 prod 部署通道或确认现状
+- **B-029**（中）：部署机 compose 文件归属文档化
+- **B-030**（中）：Nacos import-time 阻塞改 lazy
+- **B-031**（低）：约束 Nacos 配置写标准 JSON 后删 `_parse_config_content` 容错分支
+
+---
 
 ## [2026-05-12] 四项 BACKLOG bug 修复 + 文档同步
 

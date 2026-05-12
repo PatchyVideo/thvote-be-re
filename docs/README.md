@@ -1,7 +1,7 @@
 # `docs/` 索引
 
 > 创建日期：2026-04-27
-> 最后更新：2026-04-27
+> 最后更新：2026-05-12（zfq_dev 基础设施合入：Apollo→Nacos、移除 docker/、workflow 重构 — 详见 CHANGELOG）
 
 按用途分类。每份文档头部都有 `创建日期 / 最后更新` 元信息；本表只列入口和职责。
 
@@ -13,7 +13,6 @@
 |---|---|
 | [`BACKLOG.md`](./BACKLOG.md) | 🎯 **后续开发单一仪表盘**——所有 follow-up 收拢到这里（B-001..B-N）；按"可立即并行做 / 等 PR merge / 战略阻塞"分组。**找下一步该做什么从这里开始。** |
 | [`CHANGELOG.md`](./CHANGELOG.md) | 仓库级变更记录（按 CLAUDE.md §4） |
-| [`REFACTOR_TODO.md`](./REFACTOR_TODO.md) | 历史的 FastAPI 重构 TODO（2026-04-27 从根目录移入；内容未做修订） |
 
 ## 架构（`architecture/`）
 
@@ -32,7 +31,8 @@
 | 文档 | 用途 |
 |---|---|
 | [`operations/aliyun-onboarding.md`](./operations/aliyun-onboarding.md) | 阿里云 PNVS + DirectMail 从零到上线接入手册（账号/RAM/认证方案/域名验证/SMTP/smoke 验证 + 常见坑） |
-| [`operations/cicd-pipeline.md`](./operations/cicd-pipeline.md) | CI/CD 流水线说明：4 个 workflow 的拓扑、Aliyun/Apollo 配置交付路径、触发约定、follow-up |
+| [`operations/cicd-pipeline.md`](./operations/cicd-pipeline.md) | CI/CD 流水线说明：当前唯一的 `deploy-test.yml` 拓扑、Nacos 配置交付路径、触发约定、follow-up |
+| [`operations/nacos-config-center.md`](./operations/nacos-config-center.md) | Nacos 配置中心 + 服务注册接入说明（2026-05-12 替换原 Apollo） |
 
 ## 设计稿与实施记录（`superpowers/specs/`）
 

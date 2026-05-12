@@ -38,7 +38,7 @@
 
 | 编号 | 问题 | 严重度 | 修复思路 |
 |---|---|---|---|
-| **U-8** | `Settings`、`get_pnvs_client`、`get_dm_smtp_client`、`get_email_code_service`、`get_sms_code_service` 全是 `lru_cache(maxsize=1)`，**任何 Apollo 热更新都不会传播到这些客户端**。当前 Apollo 实现也只 startup 拉一次，所以现状一致；但未来给 Apollo 加 long-poll 时就会暴露 | 中 | 文档化为「改 Aliyun 配置必须重启容器」（已在 `cicd-pipeline.md` 体现）；或给客户端加 `reload()` |
+| **U-8** | `Settings`、`get_pnvs_client`、`get_dm_smtp_client`、`get_email_code_service`、`get_sms_code_service` 全是 `lru_cache(maxsize=1)`，**任何配置中心热更新都不会传播到这些客户端**。2026-05-12 把 Apollo 替换为 Nacos 后，`start_nacos_watcher` 注册了 long-poll，但缓存实例仍不会重建——root cause 没变 | 中 | 文档化为「改 Aliyun 配置必须重启容器」（见 `operations/nacos-config-center.md` §六）；或给客户端加 `reload()` |
 | **U-9** | `_safe_log` 在审计写入失败时**只 `logger.exception`**，没有进程级计数器、没有降级状态暴露给 `/health`。审计长时间静默失败时事后追溯会变盲 | 中 | 加 `audit_log_failures_total` 计数；持续失败 N 分钟后 `/health` 返回 degraded |
 | **U-10** | `update-password` 与其他 update-* 共享 5 req/60s per user_id 限流。攻击者拿到 session_token 后一天 7200 次旧密码尝试，足以爆破弱密码 | 中 | 给 `update-password` 单独加 `pw-mut-{user_id}` 5 req/300s（spec §九 F8 已记录） |
 | **U-11** | 错误响应结构 `{"detail":"INCORRECT_VERIFY_CODE"}` 与 Rust 的 `{"error":"...","service":"user-manager"}` 不一致 | 低 | 上 `add_exception_handler(HTTPException, ...)` 统一形态；前端没投诉前可不做 |
