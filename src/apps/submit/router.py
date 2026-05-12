@@ -21,7 +21,7 @@ from src.apps.submit.service import SubmitService
 from src.common.database import get_db_session
 from src.common.middleware.rate_limit import get_redis_client, rate_limit
 
-router = APIRouter(prefix="/v1", tags=["submit-handler"])
+router = APIRouter(prefix="", tags=["submit-handler"])
 
 
 async def get_submit_service(
