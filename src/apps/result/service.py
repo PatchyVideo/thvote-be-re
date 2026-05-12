@@ -48,4 +48,4 @@ class ResultService:
         return await self.result_dao.get_questionnaire(query.question_id, query.vote_year)
 
     async def get_questionnaire_trend(self, query: QuestionnaireTrendQuery) -> dict:
-        return await self.result_dao.get_questionnaire(query.question_id, query.vote_year)
+        return await self.result_dao.get_questionnaire_trend(query.question_id, query.vote_year)

@@ -13,6 +13,12 @@ from itertools import combinations
 from typing import Any
 
 
+KIND_MAPPING: dict[str, str] = {
+    "old": "旧作", "new": "新作", "CD": "专辑",
+    "book": "出版物", "others": "其他", "other": "其他", "game": "游戏"
+}
+
+
 @dataclass
 class CandidateMeta:
     name: str

@@ -20,13 +20,14 @@ from src.apps.result.compute import (
 )
 from src.apps.result.compute_dao import ComputeDAO
 from src.common.config import Settings
+from src.common.exceptions import AppException
 
 logger = logging.getLogger(__name__)
 
 LOCK_TTL_MS = 300_000  # 5 minutes
 
 
-class ComputeInProgressError(Exception):
+class ComputeInProgressError(AppException):
     pass
 
 
@@ -47,7 +48,7 @@ class ComputeService:
         lock_key = self._lock_key(vote_year)
         acquired = await self.redis.set(lock_key, "1", nx=True, px=LOCK_TTL_MS)
         if not acquired:
-            raise ComputeInProgressError()
+            raise ComputeInProgressError("Compute already in progress")
 
         t0 = time.monotonic()
         try:

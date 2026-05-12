@@ -8,13 +8,14 @@ from typing import Any
 import redis.asyncio as aioredis
 
 from src.common.config import Settings
+from src.common.exceptions import AppException
 
 
-class ResultNotComputedError(Exception):
+class ResultNotComputedError(AppException):
     """Raised when Redis cache is empty — admin must run /admin/compute-results first."""
 
 
-class EntityNotFoundError(Exception):
+class EntityNotFoundError(AppException):
     """Raised when a specific entity is not found in computed results."""
 
 
@@ -80,6 +81,9 @@ class ResultDAO:
 
     async def get_questionnaire(self, question_id: str, vote_year: int | None = None) -> dict:
         return await self._get_json(self._key(self._year(vote_year), "paper", question_id))
+
+    async def get_questionnaire_trend(self, question_id: str, vote_year: int | None = None) -> dict:
+        return await self.get_questionnaire(question_id, vote_year)
 
     async def get_covote(self, category: str, vote_year: int | None = None) -> list[dict]:
         cat = "chars" if category == "character" else "musics"

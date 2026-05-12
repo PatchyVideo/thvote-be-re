@@ -7,6 +7,7 @@ import json
 from src.apps.admin.schemas import ImportCandidatesRequest
 from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeService
+from src.apps.result.dao import ResultNotComputedError
 
 
 class AdminService:
@@ -27,12 +28,16 @@ class AdminService:
         """Read computed Redis ranking and archive to final_ranking PG table."""
         redis = self.compute_service.redis
         total = 0
+        found_any = False
         for category in ("character", "music", "cp"):
             cat_key = {"character": "chars", "music": "musics", "cp": "cps"}[category]
             key = f"result:{vote_year}:{cat_key}:ranking"
             raw = await redis.get(key)
             if raw:
+                found_any = True
                 entries = json.loads(raw)
                 saved = await self.compute_dao.save_final_ranking(vote_year, category, entries)
                 total += saved
+        if not found_any:
+            raise ResultNotComputedError("No ranking data found in Redis for any category")
         return total

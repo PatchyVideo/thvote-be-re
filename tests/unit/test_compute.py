@@ -93,7 +93,7 @@ def test_compute_ranking_gender_breakdown():
     assert by_name["Alice"]["female_vote_count"]["vote_count"] == 1  # u2
 
 
-def test_compute_ranking_display_rank_ties():
+def test_display_rank_ties():
     # Alice and Bob tied on weighted score → both display_rank=1
     ranking, _ = compute_ranking(
         CHAR_VOTES, CANDIDATES, GENDER_MAP, {}, VOTE_START, TOTAL_HOURS
@@ -119,7 +119,7 @@ def test_compute_ranking_unknown_candidate_fallback():
     assert ranking[0]["origin"] == "未知"
 
 
-def test_compute_ranking_historical():
+def test_compute_historical_delta():
     historical = {
         "Alice": {"rank_1": 3, "votes_1": 80, "first_1": 20, "rank_2": 5, "votes_2": 60, "first_2": 15}
     }

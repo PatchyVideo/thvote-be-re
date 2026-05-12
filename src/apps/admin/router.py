@@ -17,6 +17,7 @@ from src.apps.admin.schemas import (
 from src.apps.admin.service import AdminService
 from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeInProgressError, ComputeService
+from src.apps.result.dao import ResultNotComputedError
 from src.common.config import Settings, get_settings
 from src.common.database import get_db_session
 from src.common.redis import get_redis
@@ -76,5 +77,8 @@ async def finalize_ranking(
 ) -> FinalizeRankingResponse:
     _check_admin_secret(settings, x_admin_secret)
     year = vote_year or settings.vote_year
-    saved = await service.finalize_ranking(year)
+    try:
+        saved = await service.finalize_ranking(year)
+    except ResultNotComputedError:
+        raise HTTPException(status_code=503, detail="RESULT_NOT_COMPUTED")
     return FinalizeRankingResponse(vote_year=year, saved=saved)
