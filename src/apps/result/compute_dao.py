@@ -85,17 +85,21 @@ class ComputeDAO:
     async def upsert_candidates(self, vote_year: int, category: str, items: list[dict]) -> int:
         """Bulk upsert candidate rows. Returns number of rows upserted."""
         Model = CandidateCharacter if category == "character" else CandidateMusic
+        # Get valid column names for the model (exclude 'id' and 'vote_year' which are handled separately)
+        model_columns = {c.key for c in Model.__table__.columns if c.key not in ("id", "vote_year")}
         count = 0
         for item in items:
+            # Only pass fields that exist in the model
+            filtered = {k: v for k, v in item.items() if k in model_columns}
             existing = (await self.session.execute(
-                select(Model).where(Model.vote_year == vote_year, Model.name == item["name"])
+                select(Model).where(Model.vote_year == vote_year, Model.name == filtered.get("name", item.get("name")))
             )).scalar_one_or_none()
             if existing:
-                for k, v in item.items():
+                for k, v in filtered.items():
                     if k != "name" and hasattr(existing, k):
                         setattr(existing, k, v)
             else:
-                row = Model(vote_year=vote_year, **item)
+                row = Model(vote_year=vote_year, **filtered)
                 self.session.add(row)
             count += 1
         await self.session.commit()
