@@ -1,7 +1,7 @@
 # REFACTOR_TODO.md — 重构进度总览
 
 > 创建日期：2026-05-12
-> 最后更新：2026-05-12
+> 最后更新：2026-05-13
 >
 > **与其他文档的分工：**
 > - 本文件：模块级别的"移植完成了多少"——宏观进度看板
@@ -31,11 +31,11 @@
 | 用户与认证 | `user-manager` | `apps/user` | ✅ | 12 端点完整，有测试 |
 | 投票提交（原始）| `submit-handler` | `apps/submit` | ✅ | 11 端点，B-002 已修 |
 | 投票数据（处理后）| `vote-data`（Rust 存根）| `apps/vote_data` | ✅ | Python 新增，非 Rust 移植 |
-| 查询结果 | `result-query` | `apps/result` | ❌ | DAO 全部 `NotImplementedError` |
-| 自动补全 | `autocomplete`（Rust 存根）| `apps/autocomplete` | ❌ | DAO 返回空列表 |
+| 查询结果 | `result-query` | `apps/result` | ✅ | 9 端点 + ComputeService + Redis 缓存（2026-05-13）|
+| 自动补全 | `autocomplete`（Rust 存根）| `apps/autocomplete` | ❌ | DAO 返回空列表，候选表已就绪可复用 |
 | 爬虫 | `scraper`（Python）| `apps/scraper` | ⚠️ | 3/18+ 站点已移植 |
-| GraphQL | `gateway` | `api/graphql` | ⚠️ | 仅 submit，result-query 未做 |
-| 数据库迁移 | — | `alembic/versions/` | ✅ | 0001+0002 已覆盖所有表 |
+| GraphQL | `gateway` | `api/graphql` | ⚠️ | 仅 submit，ResultQuery 可基于 result DAO 实现 |
+| 数据库迁移 | — | `alembic/versions/` | ✅ | 0001+0002+0003 已覆盖所有表 |
 | 基础设施公共层 | — | `common/` | ✅ | config/db/redis/jwt/rate_limit 已就绪 |
 
 ---
@@ -156,54 +156,26 @@
 
 ---
 
-## 五、查询结果 ❌ 主要欠账
+## 五、查询结果 ✅（2026-05-13 完成）
 
-**对应 Rust：** `result-query/src/`（handlers.rs / query.rs / parser.rs / query.pest）
+**对应 Rust：** `result-query/src/`
 
-**现状：** 路由和服务层骨架存在，DAO 层所有方法均为 `raise NotImplementedError`。
+**实现：**
+- `ComputeService`：`POST /admin/compute-results` 触发全量计算，写 Redis
+- `ResultDAO`：纯 Redis 读取，cache miss → 503
+- 9 个端点全部可用（ranking/trends/reasons/global-stats/completion-rates/covote/single/questionnaire/questionnaire-trend）
+- Admin 端点：`/admin/import-candidates`、`/admin/finalize-ranking`
+- 参考数据表：`candidate_character`、`candidate_music`、`final_ranking`（migration 0003）
 
-**数据来源：** `character / music / cp / questionnaire` 表（VoteData 服务写入的处理后数据，JSON 列 `*_list`）。
+**测试：** 13 个单元测试 + 3 个集成测试 + 9 个契约测试
 
-### 待实现端点
-
-| 端点 | DAO 方法 | Rust 对应 | 状态 |
-|---|---|---|---|
-| `POST /result/ranking/` | `get_ranking(query: RankingQuery)` | `/v1/chars-rank/` `/v1/musics-rank/` `/v1/cps-rank/` | ❌ |
-| `POST /result/reasons/` | `get_reasons(query: ReasonQuery)` | `/v1/chars-reasons/` `/v1/musics-reasons/` `/v1/cps-reasons/` | ❌ |
-| `POST /result/trends/` | `get_trends(query: TrendQuery)` | `/v1/chars-trend/` `/v1/musics-trend/` `/v1/cps-trend/` | ❌ |
-| `POST /result/global-stats/` | `get_global_stats(query)` | `/v1/global-stats/` | ❌ |
-| `POST /result/completion-rates/` | `get_completion_rates(query)` | `/v1/completion-rates/` | ❌ |
-| `POST /result/questionnaire/` | `get_questionnaire(query)` | `/v1/papers/` | ❌ |
-| `POST /result/questionnaire-trend/` | `get_questionnaire_trend(query)` | `/v1/papers-trend/` | ❌ |
-| `POST /result/covote/` | `get_covote(query: CovoteQuery)` | `/v1/chars-covote/` `/v1/musics-covote/` | ❌ |
-| `POST /result/single/` | `get_single_entity(query: SingleQuery)` | `/v1/chars-single/` `/v1/musics-single/` `/v1/cps-single/` | ❌ |
-
-### 实现要点
-
-1. **排名（ranking）**：解析 `character.character_list` JSON，按名称聚合票数，计算排名/本命比/性别分布。复杂度最高。
-2. **趋势（trends）**：按 `submit_datetime` 分段统计票数变化，需要时间窗口参数。
-3. **共投（covote）**：查两个实体同时被选的用户数，需要 JSONB 包含查询（PostgreSQL）。
-4. **全局统计（global-stats）**：聚合各表行数，部分字段与 `SubmitDAO.get_statistics()` 重叠，注意复用。
-5. **Rust query.pest 语法**：旧版有自定义查询 DSL，Python 侧不必复用；用 SQLAlchemy ORM 直接实现等价逻辑即可。
-6. **注意 `get_all_*_submissions()`**：`VoteDataDAO` 已提供批量读接口，可作为 result 查询的数据入口。
-
-### 建议实现顺序
-
-```
-global-stats → ranking → reasons → completion-rates → trends → single → covote → questionnaire → questionnaire-trend
-```
-
-（从最简单的聚合到最复杂的时序/共投查询）
-
-### 缺少的测试
-
-- result 模块目前无任何测试（单元/集成/契约均无）
+**设计规格：** [`docs/superpowers/specs/2026-05-13-result-query-design.md`](docs/superpowers/specs/2026-05-13-result-query-design.md)
 
 ---
 
 ## 六、自动补全 ❌
 
-**对应 Rust：** `autocomplete/`（Rust 原版是空存根 `println!("Hello")`，Python 侧为新实现）
+**对应 Rust：** `autocomplete/`（Rust 原版是空存根，Python 侧为新实现）
 
 **现状：** 路由 + 服务骨架存在，DAO 三个方法全部返回空列表 `[]`。
 
@@ -213,11 +185,11 @@ global-stats → ranking → reasons → completion-rates → trends → single 
 
 ### 待实现
 
-- `AutocompleteDAO.search_characters(query, limit)` — 在 `character` 表的 `character_list` JSON 内搜索角色名（模糊匹配），或从独立词表/候选表查询。
-- `AutocompleteDAO.search_music(query, limit)` — 同上，针对音乐。
-- `AutocompleteDAO.search_cps(query, limit)` — 同上，针对 CP。
+现在 `candidate_character` / `candidate_music` 表已存在（migration 0003），可直接用作数据源：
 
-> **数据来源待定：** 现有 schema 中无独立的候选项目表（候选角色名列表）。需要确认：(a) 从 `character/music/cp` 已投数据中提取？还是 (b) 需要新建 `candidate_*` 参考数据表并导入数据？
+- `AutocompleteDAO.search_characters(query, limit)` — 在 `candidate_character.name` / `name_jp` 做模糊匹配（`ILIKE %query%`）
+- `AutocompleteDAO.search_music(query, limit)` — 同上，查 `candidate_music`
+- `AutocompleteDAO.search_cps(query, limit)` — 可从已提交的 `cp.cp_list` JSON 中提取唯一 CP 名称
 
 ---
 
@@ -266,16 +238,13 @@ global-stats → ranking → reasons → completion-rates → trends → single 
 
 ## 八、GraphQL API ⚠️
 
-**对应 Rust：** `gateway/src/`（schema.rs + submit_handler.rs + result_query.rs）
+**对应 Rust：** `gateway/src/`
 
 **现状：**
 - `POST /graphql` — Strawberry schema 已挂载 ✅
 - `SubmitQuery / SubmitMutation` — 查询/提交投票 ✅
-- `ResultQuery` — 旧 gateway 的 `result_query.rs` 部分，**未实现** ❌
-- `user-token-status` 端点 — 旧 gateway 有独立 `POST /user-token-status`，Python 侧合并进 `POST /user/token-status` ✅
+- `ResultQuery` — **未实现** ❌（result DAO 已就绪，可直接封装）
 - `GET /server-time` — 旧 gateway 有，Python 侧**未实现** ❌
-
-**GraphQL result-query：** 依赖第五节 result DAO 完成后再做。
 
 ---
 
@@ -285,6 +254,7 @@ global-stats → ranking → reasons → completion-rates → trends → single 
 |---|---|---|
 | `0001_initial_user_and_activity_log` | `user` + `activity_log` 表 + 索引 | ✅ |
 | `0002_voting_tables` | `raw_character/music/cp/paper/dojin` + `character/music/cp/questionnaire` 遗留表 | ✅ |
+| `0003_candidate_and_final_ranking` | `candidate_character`、`candidate_music`、`final_ranking` | ✅ |
 
 **BACKLOG 关联：**
 - 🟡 [B-025] 移除 `init_db()` / `DEBUG` 后门
@@ -303,7 +273,9 @@ global-stats → ranking → reasons → completion-rates → trends → single 
 | `tests/unit/test_jwt.py` | 单元 | JWT 签发/校验/过期/受众 |
 | `tests/unit/test_email_code_service.py` | 单元 | 邮件验证码生成/Redis 守卫/过期 |
 | `tests/unit/test_pnvs_client.py` | 单元 | PNVS 客户端调用 mock |
-| `tests/unit/test_voter_fe_serialization.py` | 单元 | VoterFE schema 序列化 |
+| `tests/unit/test_compute.py` | 单元 | 计算函数（ranking/gender/covote/global-stats/completion-rates）|
+| `tests/integration/test_result_compute.py` | 集成 | ComputeService + ResultDAO 端到端 |
+| `tests/contract/test_result_endpoints.py` | 契约 | result 9 端点 503 行为 + admin 端点可达性 |
 | `tests/integration/test_login_flows.py` | 集成 | 邮件/手机/密码三种登录流 |
 | `tests/integration/test_update_and_remove.py` | 集成 | update-email/phone/nickname/password/remove-voter |
 | `tests/contract/test_router_endpoints.py` | 契约 | 所有路由端点可达性 |
@@ -319,7 +291,7 @@ global-stats → ranking → reasons → completion-rates → trends → single 
 | user | partial unique index PG 行为验证 | 🟢 [B-022] |
 | submit | 无任何测试 | 🟡 |
 | vote_data | 无任何测试 | 🟡 |
-| result | 无任何测试（模块本身未实现）| ❌ |
+| result | 单元/集成/契约测试已完成 ✅ | — |
 | autocomplete | 无任何测试（模块本身未实现）| ❌ |
 | scraper | 无任何测试 | 🟢 |
 | 覆盖率门禁 | `fail_under=80` 未开启 | 🟡 [B-010] |
@@ -348,18 +320,19 @@ global-stats → ranking → reasons → completion-rates → trends → single 
 ### 立即可开工（独立，不依赖其他 PR）
 
 ```
-1. B-004  CORS 收紧（30 分钟）
-2. B-020+B-027  mypy 清告警 + CI lint 合并（半天）
-3. B-021  Pydantic V2 迁移（半天）
-4. B-008  数据回填脚本设计（独立 scripts/ 目录）
-5. 爬虫站点补充（nicovideo / youtube / thbwiki，按本届需求排序）
+1. B-003  submit 端点接 vote_token 鉴权（安全空洞，高优）
+2. B-004  CORS 收紧（30 分钟）
+3. 自动补全 DAO 实现（候选表已就绪，工作量小）
+4. B-020+B-027  mypy 清告警 + CI lint 合并（半天）
+5. B-021  Pydantic V2 迁移（半天）
+6. B-008  数据回填脚本设计（独立 scripts/ 目录）
+7. 爬虫站点补充（nicovideo / youtube / thbwiki，按本届需求排序）
 ```
 
-### 下一个主要 PR
+### 下一个主要 PR（可基于 result DAO 解锁）
 
 ```
-结果查询模块（第五节）— 工作量最大的单一剩余模块
-  └── 建议先写 spec 文档 → 再按 global-stats → ranking → ... 顺序 TDD 实现
+GraphQL ResultQuery — result DAO 已就绪，可直接封装 Strawberry 类型
 ```
 
 ### 依赖链
@@ -371,7 +344,7 @@ B-007 SSO 落地
 B-025 移除 init_db 后门
   └── B-026 DB 治理纪律 CI 门禁
 
-Result DAO 实现
-  └── GraphQL ResultQuery 实现
-  └── Autocomplete（如用已投数据作候选源）
+result DAO ✅（已完成）
+  └── GraphQL ResultQuery ← 下一步
+  └── Autocomplete ← 候选表已就绪，可立即做
 ```
