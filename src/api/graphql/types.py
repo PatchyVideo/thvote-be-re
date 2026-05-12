@@ -1,7 +1,17 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, NewType, Optional
+
+import strawberry
+
+# JSON scalar for returning arbitrary result data without exhaustive type definitions
+JSON = strawberry.scalar(
+    NewType("JSON", object),
+    description="Arbitrary JSON-compatible data returned from pre-computed result cache.",
+    serialize=lambda v: v,
+    parse_value=lambda v: v,
+)
 
 import strawberry
 
