@@ -95,7 +95,7 @@
 - Rust 的 `thbwiki_login.rs / qq_binding.rs / legacy_login.rs` → [B-007] SSO 接入，计划中
 
 **BACKLOG 关联（高优先级）：**
-- 🔴 [B-003] submit 端点未使用真实 `vote_token` 校验（鉴权空洞）
+- ✅ [B-003] submit 端点 vote_token JWT 校验（2026-05-13 完成）
 - 🟡 [B-012] `update-password` 单独限流（5 req/300s）
 - 🟡 [B-014] `vote_token` 签发集成测试（3 场景）
 - 🟡 [B-015] `GET /me` 集成测试
@@ -199,28 +199,28 @@
 
 **端点：** `POST /scraper/scrape` ✅（Redis 缓存 + UDID 支持）
 
-**站点移植状态（旧版有 18 个站点）：**
+**站点移植状态（旧版有 18 个站点，全部已移植）：**
 
 | 站点 | 旧版 | 当前 |
 |---|---|---|
 | `bilibili.py` | ✅ | ✅ |
 | `pixiv.py` | ✅ | ✅ |
 | `twitter.py` | ✅ | ✅ |
-| `nicovideo.py` | ✅ | ❌ |
-| `nicoseiga.py` | ✅ | ❌ |
-| `youtube.py` | ✅ | ❌ |
-| `weibo.py` | ✅ | ❌ |
-| `tieba.py` | ✅ | ❌ |
-| `steam.py` | ✅ | ❌ |
-| `dlsite.py` | ✅ | ❌ |
-| `melon.py` | ✅ | ❌ |
-| `dizzylab.py` | ✅ | ❌ |
-| `acarticle.py` | ✅ | ❌ |
-| `acfun.py` | ✅ | ❌ |
-| `biliarticle.py` | ✅ | ❌ |
-| `patchyvideo.py` | ✅ | ❌ |
-| `pixnovel.py` | ✅ | ❌ |
-| `thbwiki.py` | ✅ | ❌ |
+| `nicovideo.py` | ✅ | ✅ |
+| `nicoseiga.py` | ✅ | ✅ |
+| `youtube.py` | ✅ | ✅（需 `YOUTUBE_API_KEY`）|
+| `weibo.py` | ✅ | ✅ |
+| `tieba.py` | ✅ | ✅ |
+| `steam.py` | ✅ | ✅ |
+| `dlsite.py` | ✅ | ✅ |
+| `melon.py` | ✅ | ✅ |
+| `dizzylab.py` | ✅ | ✅ |
+| `acarticle.py` | ✅ | ✅ |
+| `acfun.py` | ✅ | ✅ |
+| `biliarticle.py` | ✅ | ✅（含于 bilibili.py）|
+| `patchyvideo.py` | ✅ | ✅ |
+| `pixnovel.py` | ✅ | ✅（含于 pixiv.py）|
+| `thbwiki.py` | ✅ | ✅ |
 
 **旧版工具类移植状态：**
 
@@ -229,22 +229,20 @@
 | `biliutils.py` | ✅ | ✅ |
 | `cache.py` | ✅ | ✅ |
 | `network.py` | ✅ | ✅ |
-| `match.py` | ✅ | ❌ |
-| `parse.py` | ✅ | ❌ |
-
-> **优先级：** 爬虫缺失不阻塞核心投票流程，可按需补充。B 站/Pixiv/Twitter 已覆盖主要使用场景。NicoVideo / YouTube / THBWiki 可根据本届投票内容决定是否需要。
+| `match.py` | ✅ | ✅（逻辑已集成进 process.py）|
+| `parse.py` | ✅ | ✅ |
 
 ---
 
-## 八、GraphQL API ⚠️
+## 八、GraphQL API ✅
 
 **对应 Rust：** `gateway/src/`
 
 **现状：**
 - `POST /graphql` — Strawberry schema 已挂载 ✅
 - `SubmitQuery / SubmitMutation` — 查询/提交投票 ✅
-- `ResultQuery` — **未实现** ❌（result DAO 已就绪，可直接封装）
-- `GET /server-time` — 旧 gateway 有，Python 侧**未实现** ❌
+- `ResultQuery` — 8 个字段，JSON scalar，已实现 ✅（2026-05-13）
+- `GET /server-time` — 旧 gateway 有，Python 侧**未实现** ❌（低优先级）
 
 ---
 
@@ -304,7 +302,7 @@
 
 | 编号 | 问题 | 严重度 |
 |---|---|---|
-| B-003 | submit 端点未做 `vote_token` JWT 校验（鉴权空洞）| 🔴 高 |
+| ~~B-003~~ | ~~submit 端点未做 `vote_token` JWT 校验~~ | ✅ 已完成 2026-05-13 |
 | B-004 | CORS `allow_origins=["*"]` + `allow_credentials=True` 危险组合 | 中 |
 | B-007 | THBWiki / QQ / PatchyVideo SSO 接入 | 中 |
 | B-008 | MongoDB → PostgreSQL 历史数据回填脚本 | 中 |
@@ -320,10 +318,15 @@
 ### 立即可开工（独立，不依赖其他 PR）
 
 ```
-1. B-003  submit 端点接 vote_token 鉴权（安全空洞，高优）
-2. B-004  CORS 收紧（30 分钟）
-3. 自动补全 DAO 实现（候选表已就绪，工作量小）
-4. B-020+B-027  mypy 清告警 + CI lint 合并（半天）
+1. B-004  CORS 收紧（30 分钟）
+2. B-009  trusted proxies / X-Forwarded-For（1 小时）
+3. B-012  update-password 专用限流（1 小时）
+4. B-020+B-027  mypy 清告警 + CI lint 改硬（半天）
+5. B-021  Pydantic V2 迁移（半天）
+6. B-014/015/016 测试补全（1-2 天）
+7. vote_data 模块测试（半天）
+8. B-008  数据回填脚本（独立 scripts/ 目录）
+```
 5. B-021  Pydantic V2 迁移（半天）
 6. B-008  数据回填脚本设计（独立 scripts/ 目录）
 7. 爬虫站点补充（nicovideo / youtube / thbwiki，按本届需求排序）
