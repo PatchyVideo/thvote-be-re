@@ -33,7 +33,7 @@
 | 投票数据（处理后）| `vote-data`（Rust 存根）| `apps/vote_data` | ✅ | Python 新增，非 Rust 移植 |
 | 查询结果 | `result-query` | `apps/result` | ✅ | 9 端点 + ComputeService + Redis 缓存（2026-05-13）|
 | 自动补全 | `autocomplete`（Rust 存根）| `apps/autocomplete` | ✅ | candidate 表 ILIKE 查询，4 单元+8 集成测试（2026-05-13）|
-| 爬虫 | `scraper`（Python）| `apps/scraper` | ⚠️ | 3/18+ 站点已移植 |
+| 爬虫 | `scraper`（Python）| `apps/scraper` | ✅ | 16/18 站点（全部旧后端站点已移植，2026-05-14）|
 | GraphQL | `gateway` | `api/graphql` | ✅ | submit + ResultQuery 8 个字段，JSON scalar（2026-05-13）|
 | 数据库迁移 | — | `alembic/versions/` | ✅ | 0001+0002+0003 已覆盖所有表 |
 | 基础设施公共层 | — | `common/` | ✅ | config/db/redis/jwt/rate_limit 已就绪 |
