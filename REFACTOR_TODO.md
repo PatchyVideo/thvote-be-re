@@ -271,27 +271,27 @@
 | `tests/unit/test_jwt.py` | 单元 | JWT 签发/校验/过期/受众 |
 | `tests/unit/test_email_code_service.py` | 单元 | 邮件验证码生成/Redis 守卫/过期 |
 | `tests/unit/test_pnvs_client.py` | 单元 | PNVS 客户端调用 mock |
+| `tests/unit/test_voter_fe_serialization.py` | 单元 | VoterFE schema 序列化 |
 | `tests/unit/test_compute.py` | 单元 | 计算函数（ranking/gender/covote/global-stats/completion-rates）|
-| `tests/integration/test_result_compute.py` | 集成 | ComputeService + ResultDAO 端到端 |
-| `tests/contract/test_result_endpoints.py` | 契约 | result 9 端点 503 行为 + admin 端点可达性 |
+| `tests/unit/test_submit_validator.py` | 单元 | SubmitValidator 全部 5 类校验 |
+| `tests/unit/test_autocomplete_service.py` | 单元 | 自动补全 limit 分配逻辑 |
 | `tests/integration/test_login_flows.py` | 集成 | 邮件/手机/密码三种登录流 |
 | `tests/integration/test_update_and_remove.py` | 集成 | update-email/phone/nickname/password/remove-voter |
+| `tests/integration/test_vote_token_and_me.py` | 集成 | vote_token 签发 4 场景 + GET /me + bcrypt 升级 |
+| `tests/integration/test_submit.py` | 集成 | submit 端点鉴权 + 提交 + 统计 |
+| `tests/integration/test_vote_data.py` | 集成 | character/music/cp/questionnaire CRUD + 汇总 |
+| `tests/integration/test_autocomplete.py` | 集成 | AutocompleteDAO ILIKE 查询 |
+| `tests/integration/test_result_compute.py` | 集成 | ComputeService + ResultDAO 端到端 |
 | `tests/contract/test_router_endpoints.py` | 契约 | 所有路由端点可达性 |
 | `tests/contract/test_voter_fe_contract.py` | 契约 | VoterFE 响应格式契约 |
+| `tests/contract/test_result_endpoints.py` | 契约 | result 9 端点 503 行为 + admin 端点可达性 |
 
-### 测试空白（待补）
+### 测试空白（剩余）
 
 | 模块 | 缺失内容 | 优先级 |
 |---|---|---|
-| user | `vote_token` 签发 3 个场景（已验证/未验证 × 期内/期外）| 🔴 [B-014] |
-| user | `GET /me` 集成 | 🟡 [B-015] |
-| user | bcrypt → argon2 升级路径端到端 | 🟡 [B-016] |
 | user | partial unique index PG 行为验证 | 🟢 [B-022] |
-| submit | 19 单元 + 7 集成测试 ✅ | — |
-| vote_data | 无任何测试 | 🟡 |
-| result | 单元/集成/契约测试已完成 ✅ | — |
-| autocomplete | 无任何测试（模块本身未实现）| ❌ |
-| scraper | 无任何测试 | 🟢 |
+| scraper | 无测试（外部 HTTP 依赖，需 mock）| 🟢 |
 | 覆盖率门禁 | `fail_under=80` 未开启 | 🟡 [B-010] |
 
 ---
