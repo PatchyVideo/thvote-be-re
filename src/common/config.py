@@ -196,6 +196,10 @@ class Settings(BaseSettings):
     # 爬虫配置
     youtube_api_key: Optional[str] = Field(None, env="YOUTUBE_API_KEY")
 
+    # 安全配置
+    cors_allowed_origins: list[str] = Field(default_factory=lambda: ["*"], env="CORS_ALLOWED_ORIGINS")
+    trusted_proxy_ips: list[str] = Field(default_factory=list, env="TRUSTED_PROXY_IPS")
+
     # 应用配置
     app_host: str = Field("0.0.0.0", env="APP_HOST")
     app_port: int = Field(8000, env="APP_PORT")

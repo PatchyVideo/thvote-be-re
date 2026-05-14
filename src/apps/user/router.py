@@ -224,7 +224,13 @@ async def update_password(
     client_ip: str = Depends(get_client_ip),
     service: UserService = Depends(get_user_service),
 ) -> EmptyResponse:
-    await _rate_limit_by_token(body.user_token, client_ip)
+    # Tighter limit: 5 req/300s per user_id (vs 5 req/60s for other mutations)
+    # Prevents ~7200 brute-force attempts/day against weak passwords (B-012)
+    await rate_limit(
+        f"user-mut-ip-{client_ip or 'unknown'}", window=60, max_requests=30
+    )
+    user_id = _user_id_from_body_token(body.user_token)
+    await rate_limit(f"update-password-{user_id}", window=300, max_requests=5)
     _override_meta_ip(body, client_ip)
     try:
         await service.update_password(body)

@@ -1,8 +1,9 @@
 """FastAPI dependencies for the user module.
 
 Centralizes:
-- ``client_ip`` resolution (we trust ``request.client.host`` only — see
-  spec §7.5 for why we don't read X-Forwarded-For).
+- ``client_ip`` resolution: trusts ``X-Forwarded-For`` only when the
+  connecting peer is listed in ``settings.trusted_proxy_ips``; falls back
+  to ``request.client.host`` otherwise (B-009).
 - ``current_user_from_token`` for endpoints that take a session token in
   the Authorization header (only ``GET /me`` today).
 """
@@ -14,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.user.dao import ActivityLogDAO, UserDAO
 from src.apps.user.service import UserService
+from src.common.config import get_settings
 from src.common.database import get_db_session, get_session_maker
 from src.common.exceptions import AppException
 from src.common.security import decode_session_token
@@ -21,10 +23,20 @@ from src.db_model.user import User
 
 
 def get_client_ip(request: Request) -> str:
-    """Return the connecting peer's IP, never trusting forwarded headers."""
-    if request.client is None:
-        return ""
-    return request.client.host or ""
+    """Return the real client IP.
+
+    If the connecting peer is a trusted proxy (listed in
+    ``settings.trusted_proxy_ips``), the first entry of ``X-Forwarded-For``
+    is used as the client IP. Otherwise the peer address is used directly.
+    """
+    peer = request.client.host if request.client else ""
+    settings = get_settings()
+    trusted = settings.trusted_proxy_ips
+    if trusted and peer in trusted:
+        xff = request.headers.get("X-Forwarded-For", "")
+        if xff:
+            return xff.split(",")[0].strip()
+    return peer
 
 
 def get_user_dao(
