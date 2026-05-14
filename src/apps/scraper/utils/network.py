@@ -98,3 +98,9 @@ async def wait_for_rate_limit(site: str, limit: float) -> None:
             await asyncio.sleep(limit - elapsed)
 
     await set_rate_limit_last(site, time.time())
+
+
+# Aliases for sites that were "abroad" in the old backend
+# In the new backend there is no proxy distinction - same client is used
+request_abroad_website = request_website
+request_abroad_api = request_api
