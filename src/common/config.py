@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import logging
-import os
 from typing import Optional, Set
 
 from pydantic import Field
@@ -42,11 +41,9 @@ async def _load_nacos_config_async() -> None:
         logger.warning("Failed to load Nacos config: %s", e)
 
 
-# 加载 Nacos 配置（启动时一次性加载）
-_load_nacos_sync()
-
 # 可热更新的配置键集合（从 Nacos 加载时会动态更新）
 _hot_reloadable_keys: Set[str] = set()
+_nacos_loaded: bool = False
 
 
 def _mark_reloadable_keys(keys: set[str]) -> None:
@@ -72,23 +69,23 @@ class DatabaseSettings(BaseSettings):
     )
 
     # 传统方式：整体连接字符串
-    database_url: Optional[str] = Field(None, env="DATABASE_URL")
+    database_url: Optional[str] = Field(None)
 
     # 独立配置项（优先级高于 DATABASE_URL）
-    db_host: str = Field("localhost", env="DB_HOST")
-    db_port: int = Field(5432, env="DB_PORT")
-    db_user: str = Field("postgres", env="DB_USER")
-    db_password: Optional[str] = Field(None, env="DB_PASSWORD")
-    db_name: str = Field("thvote", env="DB_NAME")
-    db_schema: str = Field("public", env="DB_SCHEMA")
-    db_driver: str = Field("postgresql+asyncpg", env="DB_DRIVER")
+    db_host: str = Field("localhost")
+    db_port: int = Field(5432)
+    db_user: str = Field("postgres")
+    db_password: Optional[str] = Field(None)
+    db_name: str = Field("thvote")
+    db_schema: str = Field("public")
+    db_driver: str = Field("postgresql+asyncpg")
 
     # 连接池配置
-    db_pool_size: int = Field(5, env="DB_POOL_SIZE")
-    db_max_overflow: int = Field(10, env="DB_MAX_OVERFLOW")
-    db_pool_timeout: int = Field(30, env="DB_POOL_TIMEOUT")
-    db_pool_recycle: int = Field(3600, env="DB_POOL_RECYCLE")
-    db_echo: bool = Field(False, env="DATABASE_ECHO")
+    db_pool_size: int = Field(5)
+    db_max_overflow: int = Field(10)
+    db_pool_timeout: int = Field(30)
+    db_pool_recycle: int = Field(3600)
+    db_echo: bool = Field(False)
 
     def build_url(self) -> str:
         """
@@ -125,14 +122,14 @@ class RedisSettings(BaseSettings):
     )
 
     # 传统方式
-    redis_url: Optional[str] = Field(None, env="REDIS_URL")
+    redis_url: Optional[str] = Field(None)
 
     # 独立配置项
-    redis_host: str = Field("localhost", env="REDIS_HOST")
-    redis_port: int = Field(6379, env="REDIS_PORT")
-    redis_db: int = Field(0, env="REDIS_DB")
-    redis_password: Optional[str] = Field(None, env="REDIS_PASSWORD")
-    redis_ssl: bool = Field(False, env="REDIS_SSL")
+    redis_host: str = Field("localhost")
+    redis_port: int = Field(6379)
+    redis_db: int = Field(0)
+    redis_password: Optional[str] = Field(None)
+    redis_ssl: bool = Field(False)
 
     def build_url(self) -> str:
         """构建 Redis 连接 URL。"""
@@ -161,94 +158,94 @@ class Settings(BaseSettings):
     redis: RedisSettings = Field(default_factory=RedisSettings)
 
     # JWT 配置
-    jwt_algorithm: str = Field("HS256", env="JWT_ALGORITHM")
-    jwt_secret_key: Optional[str] = Field(None, env="JWT_SECRET_KEY")
-    jwt_secret_key_file: Optional[str] = Field(None, env="JWT_SECRET_KEY_FILE")
-    jwt_public_key_path: Optional[str] = Field(None, env="JWT_PUBLIC_KEY_PATH")
-    jwt_private_key_path: Optional[str] = Field(None, env="JWT_PRIVATE_KEY_PATH")
+    jwt_algorithm: str = Field("HS256")
+    jwt_secret_key: Optional[str] = Field(None)
+    jwt_secret_key_file: Optional[str] = Field(None)
+    jwt_public_key_path: Optional[str] = Field(None)
+    jwt_private_key_path: Optional[str] = Field(None)
 
     # Nacos 配置
-    nacos_enabled: bool = Field(False, env="NACOS_ENABLED")
-    nacos_server_addrs: str = Field("http://localhost:8848", env="NACOS_SERVER_ADDRS")
-    nacos_namespace: str = Field("", env="NACOS_NAMESPACE")
-    nacos_group: str = Field("DEFAULT_GROUP", env="NACOS_GROUP")
-    nacos_data_id: str = Field("thvote-be", env="NACOS_DATA_ID")
-    nacos_access_key: Optional[str] = Field(None, env="NACOS_ACCESS_KEY")
-    nacos_secret_key: Optional[str] = Field(None, env="NACOS_SECRET_KEY")
+    nacos_enabled: bool = Field(False)
+    nacos_server_addrs: str = Field("http://localhost:8848")
+    nacos_namespace: str = Field("")
+    nacos_group: str = Field("DEFAULT_GROUP")
+    nacos_data_id: str = Field("thvote-be")
+    nacos_access_key: Optional[str] = Field(None)
+    nacos_secret_key: Optional[str] = Field(None)
     # Nacos 服务注册发现配置
-    nacos_service_name: str = Field("thvote-be", env="NACOS_SERVICE_NAME")
-    nacos_service_ip: str = Field("0.0.0.0", env="NACOS_SERVICE_IP")
-    nacos_service_port: int = Field(8000, env="NACOS_SERVICE_PORT")
-    nacos_service_cluster: str = Field("DEFAULT", env="NACOS_SERVICE_CLUSTER")
-    nacos_service_weight: float = Field(1.0, env="NACOS_SERVICE_WEIGHT")
+    nacos_service_name: str = Field("thvote-be")
+    nacos_service_ip: str = Field("0.0.0.0")
+    nacos_service_port: int = Field(8000)
+    nacos_service_cluster: str = Field("DEFAULT")
+    nacos_service_weight: float = Field(1.0)
 
     # 投票配置
-    vote_year: int = Field(2026, env="VOTE_YEAR")
-    vote_start_iso: str = Field("2026-01-01T00:00:00Z", env="VOTE_START_ISO")
-    vote_end_iso: str = Field("2026-12-31T23:59:59Z", env="VOTE_END_ISO")
+    vote_year: int = Field(2026)
+    vote_start_iso: str = Field("2026-01-01T00:00:00Z")
+    vote_end_iso: str = Field("2026-12-31T23:59:59Z")
 
     # 结果计算配置
-    gender_question_id: str = Field("q11011", env="GENDER_QUESTION_ID")
-    gender_male_value: str = Field("male", env="GENDER_MALE_VALUE")
-    gender_female_value: str = Field("female", env="GENDER_FEMALE_VALUE")
-    admin_secret: Optional[str] = Field(None, env="ADMIN_SECRET")
+    gender_question_id: str = Field("q11011")
+    gender_male_value: str = Field("male")
+    gender_female_value: str = Field("female")
+    admin_secret: Optional[str] = Field(None)
 
     # 爬虫配置
-    youtube_api_key: Optional[str] = Field(None, env="YOUTUBE_API_KEY")
+    youtube_api_key: Optional[str] = Field(None)
 
     # 安全配置
-    cors_allowed_origins: list[str] = Field(default_factory=lambda: ["*"], env="CORS_ALLOWED_ORIGINS")
-    trusted_proxy_ips: list[str] = Field(default_factory=list, env="TRUSTED_PROXY_IPS")
+    cors_allowed_origins: list[str] = Field(default_factory=lambda: ["*"])
+    trusted_proxy_ips: list[str] = Field(default_factory=list)
 
     # 应用配置
-    app_host: str = Field("0.0.0.0", env="APP_HOST")
-    app_port: int = Field(8000, env="APP_PORT")
+    app_host: str = Field("0.0.0.0")
+    app_port: int = Field(8000)
 
     # 阿里云短信配置
     aliyun_pnvs_access_key_id: Optional[str] = Field(
-        None, alias="ALIYUN_PNVS_ACCESS_KEY_ID"
+        None, validation_alias="ALIYUN_PNVS_ACCESS_KEY_ID"
     )
     aliyun_pnvs_access_key_secret: Optional[str] = Field(
-        None, alias="ALIYUN_PNVS_ACCESS_KEY_SECRET"
+        None, validation_alias="ALIYUN_PNVS_ACCESS_KEY_SECRET"
     )
-    aliyun_pnvs_endpoint: Optional[str] = Field(None, alias="ALIYUN_PNVS_ENDPOINT")
-    aliyun_pnvs_region_id: Optional[str] = Field(None, alias="ALIYUN_PNVS_REGION_ID")
+    aliyun_pnvs_endpoint: Optional[str] = Field(None, validation_alias="ALIYUN_PNVS_ENDPOINT")
+    aliyun_pnvs_region_id: Optional[str] = Field(None, validation_alias="ALIYUN_PNVS_REGION_ID")
     aliyun_pnvs_scheme_name: Optional[str] = Field(
-        None, alias="ALIYUN_PNVS_SCHEME_NAME"
+        None, validation_alias="ALIYUN_PNVS_SCHEME_NAME"
     )
     aliyun_pnvs_sms_sign_name: Optional[str] = Field(
-        None, alias="ALIYUN_PNVS_SMS_SIGN_NAME"
+        None, validation_alias="ALIYUN_PNVS_SMS_SIGN_NAME"
     )
     aliyun_pnvs_sms_template_code: Optional[str] = Field(
-        None, alias="ALIYUN_PNVS_SMS_TEMPLATE_CODE"
+        None, validation_alias="ALIYUN_PNVS_SMS_TEMPLATE_CODE"
     )
     aliyun_pnvs_code_length: Optional[int] = Field(
-        None, alias="ALIYUN_PNVS_CODE_LENGTH"
+        None, validation_alias="ALIYUN_PNVS_CODE_LENGTH"
     )
-    aliyun_pnvs_valid_time: Optional[int] = Field(None, alias="ALIYUN_PNVS_VALID_TIME")
-    aliyun_pnvs_interval: Optional[int] = Field(None, alias="ALIYUN_PNVS_INTERVAL")
+    aliyun_pnvs_valid_time: Optional[int] = Field(None, validation_alias="ALIYUN_PNVS_VALID_TIME")
+    aliyun_pnvs_interval: Optional[int] = Field(None, validation_alias="ALIYUN_PNVS_INTERVAL")
 
     # 阿里云邮件配置
     aliyun_dm_access_key_id: Optional[str] = Field(
-        None, alias="ALIYUN_DM_ACCESS_KEY_ID"
+        None, validation_alias="ALIYUN_DM_ACCESS_KEY_ID"
     )
     aliyun_dm_access_key_secret: Optional[str] = Field(
-        None, alias="ALIYUN_DM_ACCESS_KEY_SECRET"
+        None, validation_alias="ALIYUN_DM_ACCESS_KEY_SECRET"
     )
-    aliyun_dm_endpoint: Optional[str] = Field(None, alias="ALIYUN_DM_ENDPOINT")
-    aliyun_dm_region_id: Optional[str] = Field(None, alias="ALIYUN_DM_REGION_ID")
+    aliyun_dm_endpoint: Optional[str] = Field(None, validation_alias="ALIYUN_DM_ENDPOINT")
+    aliyun_dm_region_id: Optional[str] = Field(None, validation_alias="ALIYUN_DM_REGION_ID")
     aliyun_dm_account_name: Optional[str] = Field(
-        None, alias="ALIYUN_DM_ACCOUNT_NAME"
+        None, validation_alias="ALIYUN_DM_ACCOUNT_NAME"
     )
-    aliyun_dm_from_alias: Optional[str] = Field(None, alias="ALIYUN_DM_FROM_ALIAS")
-    aliyun_dm_tag_name: Optional[str] = Field(None, alias="ALIYUN_DM_TAG_NAME")
-    aliyun_dm_smtp_host: Optional[str] = Field(None, alias="ALIYUN_DM_SMTP_HOST")
-    aliyun_dm_smtp_port: Optional[int] = Field(None, alias="ALIYUN_DM_SMTP_PORT")
+    aliyun_dm_from_alias: Optional[str] = Field(None, validation_alias="ALIYUN_DM_FROM_ALIAS")
+    aliyun_dm_tag_name: Optional[str] = Field(None, validation_alias="ALIYUN_DM_TAG_NAME")
+    aliyun_dm_smtp_host: Optional[str] = Field(None, validation_alias="ALIYUN_DM_SMTP_HOST")
+    aliyun_dm_smtp_port: Optional[int] = Field(None, validation_alias="ALIYUN_DM_SMTP_PORT")
     aliyun_dm_smtp_username: Optional[str] = Field(
-        None, alias="ALIYUN_DM_SMTP_USERNAME"
+        None, validation_alias="ALIYUN_DM_SMTP_USERNAME"
     )
     aliyun_dm_smtp_password: Optional[str] = Field(
-        None, alias="ALIYUN_DM_SMTP_PASSWORD"
+        None, validation_alias="ALIYUN_DM_SMTP_PASSWORD"
     )
 
     @property
@@ -272,9 +269,12 @@ _settings_instance: Optional[Settings] = None
 
 
 def get_settings() -> Settings:
-    """Return a cached Settings instance."""
-    global _settings_instance
+    """Return a cached Settings instance, loading Nacos config on first call."""
+    global _settings_instance, _nacos_loaded
     if _settings_instance is None:
+        if not _nacos_loaded:
+            _load_nacos_sync()
+            _nacos_loaded = True
         _settings_instance = Settings()
     return _settings_instance
 
