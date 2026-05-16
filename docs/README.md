@@ -33,6 +33,7 @@
 |---|---|
 | [`operations/aliyun-onboarding.md`](./operations/aliyun-onboarding.md) | 阿里云 PNVS + DirectMail 从零到上线接入手册（账号/RAM/认证方案/域名验证/SMTP/smoke 验证 + 常见坑） |
 | [`operations/cicd-pipeline.md`](./operations/cicd-pipeline.md) | CI/CD 流水线说明：当前唯一的 `deploy-test.yml` 拓扑、Nacos 配置交付路径、触发约定、follow-up |
+| [`operations/deploy-server-setup.md`](./operations/deploy-server-setup.md) | 部署机环境配置：docker-compose.yml 的生命周期、Redis/Nacos 管理方式 |
 | [`operations/nacos-config-center.md`](./operations/nacos-config-center.md) | Nacos 配置中心 + 服务注册接入说明（2026-05-12 替换原 Apollo） |
 
 ## 设计稿与实施记录（`superpowers/specs/`）
