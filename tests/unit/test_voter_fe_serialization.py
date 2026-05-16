@@ -40,6 +40,7 @@ def test_voter_fe_from_user_password_flag_reflects_hash_presence() -> None:
         password_hash="$argon2id$abc",
         phone_number=None,
         email="a@example.com",
+        thbwiki_uid=None,
         register_date=datetime(2026, 1, 1, tzinfo=UTC),
     )
     user_no_password = _UserStub(
@@ -48,6 +49,7 @@ def test_voter_fe_from_user_password_flag_reflects_hash_presence() -> None:
         password_hash=None,
         phone_number="13800000000",
         email=None,
+        thbwiki_uid=None,
         register_date=datetime(2026, 1, 2, tzinfo=UTC),
     )
 

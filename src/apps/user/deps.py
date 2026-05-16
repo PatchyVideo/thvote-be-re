@@ -18,6 +18,7 @@ from src.apps.user.service import UserService
 from src.common.config import get_settings
 from src.common.database import get_db_session, get_session_maker
 from src.common.exceptions import AppException
+from src.common.redis import get_redis
 from src.common.security import decode_session_token
 from src.db_model.user import User
 
@@ -49,11 +50,12 @@ def get_activity_log_dao() -> ActivityLogDAO:
     return ActivityLogDAO(get_session_maker())
 
 
-def get_user_service(
+async def get_user_service(
     user_dao: UserDAO = Depends(get_user_dao),
     activity_dao: ActivityLogDAO = Depends(get_activity_log_dao),
+    redis=Depends(get_redis),
 ) -> UserService:
-    return UserService(user_dao=user_dao, activity_dao=activity_dao)
+    return UserService(user_dao=user_dao, activity_dao=activity_dao, redis=redis)
 
 
 async def get_current_user(

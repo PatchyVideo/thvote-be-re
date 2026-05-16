@@ -55,6 +55,7 @@ class LoginEmailPasswordRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=1)
     meta: Meta = Field(default_factory=Meta)
+    sid: Optional[str] = None
 
 
 class LoginEmailRequest(BaseModel):
@@ -62,6 +63,7 @@ class LoginEmailRequest(BaseModel):
     nickname: Optional[str] = Field(None, max_length=64)
     verify_code: str = Field(..., min_length=4, max_length=8)
     meta: Meta = Field(default_factory=Meta)
+    sid: Optional[str] = None
 
 
 class LoginPhoneRequest(BaseModel):
@@ -69,6 +71,7 @@ class LoginPhoneRequest(BaseModel):
     nickname: Optional[str] = Field(None, max_length=64)
     verify_code: str = Field(..., min_length=4, max_length=8)
     meta: Meta = Field(default_factory=Meta)
+    sid: Optional[str] = None
 
 
 class SendEmailCodeRequest(BaseModel):
@@ -160,7 +163,7 @@ def voter_fe_from_user(user) -> VoterFE:
         password=bool(user.password_hash),
         phone=user.phone_number,
         email=user.email,
-        thbwiki=False,
+        thbwiki=bool(user.thbwiki_uid),
         patchyvideo=False,
         created_at=user.register_date,
     )

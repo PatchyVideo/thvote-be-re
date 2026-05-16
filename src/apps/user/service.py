@@ -32,6 +32,7 @@ from src.apps.user.schemas import (
     UpdateNicknameRequest,
     UpdatePasswordRequest,
     UpdatePhoneRequest,
+    VoterFE,
     generate_user_id,
     voter_fe_from_user,
 )
@@ -74,6 +75,8 @@ class UserService:
     email_code_service: EmailCodeService = field(default_factory=get_email_code_service)
     sms_code_service: SmsCodeService = field(default_factory=get_sms_code_service)
     auth: AuthProvider = field(default_factory=AuthProvider)
+    redis: object = field(default=None)
+    settings: object = field(default=None)
 
     # ─── verification-code endpoints ──────────────────────────────────
 
@@ -125,6 +128,7 @@ class UserService:
             requester_ip=request.meta.user_ip,
             additional_fingerprint=request.meta.additional_fingureprint,
         )
+        await self._merge_sso_session(user, request.sid)
         return self._build_login_response(user)
 
     async def login_with_email_code(self, request: LoginEmailRequest) -> LoginResponse:
@@ -149,6 +153,7 @@ class UserService:
                 additional_fingerprint=request.meta.additional_fingureprint,
             )
 
+        await self._merge_sso_session(user, request.sid)
         return self._build_login_response(user)
 
     async def login_with_phone_code(self, request: LoginPhoneRequest) -> LoginResponse:
@@ -173,6 +178,7 @@ class UserService:
                 additional_fingerprint=request.meta.additional_fingureprint,
             )
 
+        await self._merge_sso_session(user, request.sid)
         return self._build_login_response(user)
 
     # ─── update endpoints ────────────────────────────────────────────
@@ -403,3 +409,71 @@ class UserService:
                 "ActivityLog write failed (event_type=%s); continuing",
                 cleaned.get("event_type"),
             )
+
+    async def _require_session_token(self, user_token: str) -> User:
+        """Decode a session token and return the User, raising UnauthorizedError if invalid."""
+        if not user_token:
+            raise UnauthorizedError("INVALID_SESSION_TOKEN", "Missing session token")
+        try:
+            payload = self.auth.decode_session_token(user_token)
+        except AppException as exc:
+            raise UnauthorizedError("INVALID_SESSION_TOKEN", "Invalid session token") from exc
+        user = await self.user_dao.get_by_id(payload.user_id)
+        if user is None or user.removed:
+            raise UnauthorizedError("INVALID_SESSION_TOKEN", "User not found")
+        return user
+
+    async def _merge_sso_session(self, user: User, sid) -> None:
+        """Read the Redis LoginSession and write SSO IDs to user if columns are NULL."""
+        if not sid or not self.redis:
+            return
+        from .sso_session import consume_sso_session
+
+        data = await consume_sso_session(self.redis, sid)
+        if not data:
+            return
+        changed = False
+        if data.get("thbwiki_uid") and user.thbwiki_uid is None:
+            user.thbwiki_uid = data["thbwiki_uid"]
+            changed = True
+        if data.get("qq_openid") and user.qq_openid is None:
+            user.qq_openid = data["qq_openid"]
+            changed = True
+        if changed:
+            await self.user_dao.save(user)
+
+    async def bind_sso(self, user_token: str, sso_data: dict) -> VoterFE:
+        """Bind an SSO identifier to an already-authenticated user.
+
+        Raises:
+            UnauthorizedError: if user_token is invalid
+            AppException(SSO_ID_ALREADY_BOUND, 409): if the SSO ID belongs to another user
+        """
+        user = await self._require_session_token(user_token)
+
+        thbwiki_uid = sso_data.get("thbwiki_uid")
+        qq_openid = sso_data.get("qq_openid")
+
+        if thbwiki_uid:
+            existing = await self.user_dao.find_by_thbwiki_uid(thbwiki_uid)
+            if existing and existing.id != user.id:
+                raise AppException(
+                    "SSO_ID_ALREADY_BOUND",
+                    details=409,
+                )
+            if user.thbwiki_uid != thbwiki_uid:
+                user.thbwiki_uid = thbwiki_uid
+                await self.user_dao.save(user)
+
+        if qq_openid:
+            existing = await self.user_dao.find_by_qq_openid(qq_openid)
+            if existing and existing.id != user.id:
+                raise AppException(
+                    "SSO_ID_ALREADY_BOUND",
+                    details=409,
+                )
+            if user.qq_openid != qq_openid:
+                user.qq_openid = qq_openid
+                await self.user_dao.save(user)
+
+        return voter_fe_from_user(user)

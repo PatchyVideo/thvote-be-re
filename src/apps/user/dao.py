@@ -58,6 +58,18 @@ class UserDAO:
         await self.session.refresh(user)
         return user
 
+    async def find_by_thbwiki_uid(self, thbwiki_uid: str) -> User | None:
+        result = await self.session.execute(
+            select(User).where(User.thbwiki_uid == thbwiki_uid)
+        )
+        return result.scalar_one_or_none()
+
+    async def find_by_qq_openid(self, qq_openid: str) -> User | None:
+        result = await self.session.execute(
+            select(User).where(User.qq_openid == qq_openid)
+        )
+        return result.scalar_one_or_none()
+
 
 class ActivityLogDAO:
     """Append-only writes to the ``activity_log`` audit table.
