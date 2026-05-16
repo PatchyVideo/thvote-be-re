@@ -397,7 +397,7 @@ class UserService:
         cleaned = {k: v for k, v in fields.items() if v is not None}
         try:
             await self.activity_dao.write(**cleaned)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 -- audit must never break primary flow
             _audit_log_failures += 1
             logger.exception(
                 "ActivityLog write failed (event_type=%s); continuing",

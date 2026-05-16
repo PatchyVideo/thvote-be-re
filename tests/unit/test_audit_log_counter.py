@@ -2,12 +2,19 @@ import pytest
 from unittest.mock import AsyncMock
 
 
+@pytest.fixture(autouse=True)
+def reset_audit_counter():
+    """Reset the module-level failure counter before and after each test."""
+    import src.apps.user.service as svc_module
+    svc_module._audit_log_failures = 0
+    yield
+    svc_module._audit_log_failures = 0
+
+
 @pytest.mark.asyncio
 async def test_safe_log_failure_increments_counter():
     """_safe_log must increment _audit_log_failures when ActivityLogDAO raises."""
     import src.apps.user.service as svc_module
-    # Reset counter
-    svc_module._audit_log_failures = 0
 
     dao_mock = AsyncMock()
     dao_mock.write = AsyncMock(side_effect=RuntimeError("db gone"))
@@ -26,4 +33,3 @@ def test_get_audit_log_failures_returns_current_count():
     svc_module._audit_log_failures = 3
     from src.apps.user.service import get_audit_log_failures
     assert get_audit_log_failures() == 3
-    svc_module._audit_log_failures = 0  # cleanup
