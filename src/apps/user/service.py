@@ -53,6 +53,13 @@ from src.db_model.user import User
 
 logger = logging.getLogger(__name__)
 
+_audit_log_failures: int = 0
+
+
+def get_audit_log_failures() -> int:
+    """Return the count of ActivityLog write failures since process start."""
+    return _audit_log_failures
+
 
 @dataclass
 class UserService:
@@ -386,10 +393,12 @@ class UserService:
 
     async def _safe_log(self, **fields) -> None:
         """Write an ActivityLog row best-effort; swallow any failure."""
+        global _audit_log_failures
         cleaned = {k: v for k, v in fields.items() if v is not None}
         try:
             await self.activity_dao.write(**cleaned)
-        except Exception:  # noqa: BLE001 -- audit must never break primary flow
+        except Exception:  # noqa: BLE001
+            _audit_log_failures += 1
             logger.exception(
                 "ActivityLog write failed (event_type=%s); continuing",
                 cleaned.get("event_type"),

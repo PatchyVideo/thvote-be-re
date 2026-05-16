@@ -34,6 +34,7 @@ from .common.config import (
 )
 from .common.database import get_db_session, get_session_maker, reload_engine
 from .common.middleware.logging import LoggingMiddleware
+from .apps.user.service import get_audit_log_failures
 from .common.redis import close_redis
 
 
@@ -127,11 +128,16 @@ def create_app() -> FastAPI:
         except Exception as e:
             logger.warning("Health check DB query failed: %s", e)
             db_status = "unavailable"
-        return {
-            "status": "ok",
+
+        failures = get_audit_log_failures()
+        result: dict = {
+            "status": "degraded" if failures > 0 else "ok",
             "db_status": db_status,
             "vote_year": settings.vote_year,
         }
+        if failures > 0:
+            result["audit_failures"] = failures
+        return result
 
     # Reload settings endpoint (for hot reload testing)
     @app.post("/admin/reload-config", tags=["admin"])
