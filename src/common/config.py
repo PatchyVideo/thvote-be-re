@@ -198,6 +198,17 @@ class Settings(BaseSettings):
     cors_allowed_origins: list[str] = Field(default_factory=lambda: ["*"])
     trusted_proxy_ips: list[str] = Field(default_factory=list)
 
+    # SSO 配置（通过 Nacos 下发，与 ALIYUN_* 字段同等对待）
+    qq_app_id: Optional[str] = Field(None, validation_alias="QQ_APP_ID")
+    qq_app_secret: Optional[str] = Field(None, validation_alias="QQ_APP_SECRET")
+    thbwiki_client_id: Optional[str] = Field(None, validation_alias="THBWIKI_CLIENT_ID")
+    thbwiki_client_secret: Optional[str] = Field(
+        None, validation_alias="THBWIKI_CLIENT_SECRET"
+    )
+    sso_callback_base_url: Optional[str] = Field(
+        None, validation_alias="SSO_CALLBACK_BASE_URL"
+    )
+
     # 应用配置
     app_host: str = Field("0.0.0.0")
     app_port: int = Field(8000)
