@@ -137,6 +137,20 @@ def generate_user_id() -> str:
     return str(uuid.uuid4())
 
 
+class SsoCallbackResponse(BaseModel):
+    """Returned by OAuth callback endpoints; frontend passes sid to login."""
+
+    sid: str
+
+
+class SsoBindRequest(BaseModel):
+    """Bind an SSO account to an already-logged-in user."""
+
+    code: str
+    user_token: str
+    meta: Meta = Field(default_factory=Meta)
+
+
 def voter_fe_from_user(user) -> VoterFE:
     """Build a VoterFE from a User ORM row (kept here so the wire shape
     has a single owner)."""

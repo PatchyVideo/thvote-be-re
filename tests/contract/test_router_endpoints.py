@@ -24,6 +24,13 @@ EXPECTED = {
     ("POST", "/user/token-status"),
     ("POST", "/user/remove-voter"),
     ("GET", "/user/me"),
+    # SSO endpoints (B-007e)
+    ("GET", "/user/sso/qq/authorize"),
+    ("GET", "/user/sso/qq/callback"),
+    ("POST", "/user/sso/qq/bind"),
+    ("GET", "/user/sso/thbwiki/authorize"),
+    ("GET", "/user/sso/thbwiki/callback"),
+    ("POST", "/user/sso/thbwiki/bind"),
 }
 
 

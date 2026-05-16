@@ -15,7 +15,11 @@ Auth model:
 
 from __future__ import annotations
 
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import RedirectResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.user.deps import (
     get_client_ip,
@@ -31,6 +35,8 @@ from src.apps.user.schemas import (
     RemoveVoterRequest,
     SendEmailCodeRequest,
     SendSmsCodeRequest,
+    SsoBindRequest,
+    SsoCallbackResponse,
     TokenStatusRequest,
     UpdateEmailRequest,
     UpdateNicknameRequest,
@@ -40,8 +46,11 @@ from src.apps.user.schemas import (
     voter_fe_from_user,
 )
 from src.apps.user.service import UserService
+from src.common.config import get_settings
+from src.common.database import get_db_session
 from src.common.exceptions import AppException
 from src.common.middleware.rate_limit import rate_limit
+from src.common.redis import get_redis
 from src.common.security import decode_session_token
 from src.db_model.user import User
 
@@ -273,3 +282,224 @@ async def token_status(
 async def get_me(current_user: User = Depends(get_current_user)) -> VoterFE:
     """Return the authenticated user's VoterFE.  No tokens, no rate limit."""
     return voter_fe_from_user(current_user)
+
+
+# ── SSO: QQ Connect ──────────────────────────────────────────────────
+
+
+@router.get("/sso/qq/authorize", tags=["sso"])
+async def qq_authorize() -> RedirectResponse:
+    settings = get_settings()
+    if not settings.qq_app_id or not settings.sso_callback_base_url:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "SSO_NOT_CONFIGURED",
+                "message": "QQ SSO is not configured",
+            },
+        )
+    from .sso_clients import qq_authorize_url
+
+    redirect_uri = (
+        f"{settings.sso_callback_base_url}/api/v1/user/sso/qq/callback"
+    )
+    state = secrets.token_urlsafe(16)
+    url = qq_authorize_url(settings.qq_app_id, redirect_uri, state)
+    return RedirectResponse(url=url, status_code=302)
+
+
+@router.get("/sso/qq/callback", tags=["sso"])
+async def qq_callback(
+    code: str,
+    state: str = "",
+    redis=Depends(get_redis),
+) -> SsoCallbackResponse:
+    settings = get_settings()
+    if (
+        not settings.qq_app_id
+        or not settings.qq_app_secret
+        or not settings.sso_callback_base_url
+    ):
+        raise HTTPException(
+            status_code=503, detail={"code": "SSO_NOT_CONFIGURED"}
+        )
+    from .sso_clients import qq_exchange_code
+    from .sso_session import create_sso_session
+
+    redirect_uri = (
+        f"{settings.sso_callback_base_url}/api/v1/user/sso/qq/callback"
+    )
+    try:
+        openid = await qq_exchange_code(
+            code, settings.qq_app_id, settings.qq_app_secret, redirect_uri
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_SSO_CODE", "message": str(exc)},
+        )
+    sid = await create_sso_session(redis, {"qq_openid": openid})
+    return SsoCallbackResponse(sid=sid)
+
+
+@router.post("/sso/qq/bind", tags=["sso"])
+async def qq_bind(
+    req: SsoBindRequest,
+    db: AsyncSession = Depends(get_db_session),
+    redis=Depends(get_redis),
+) -> VoterFE:
+    return await _sso_bind(req, "qq", db, redis)
+
+
+# ── SSO: THBWiki ─────────────────────────────────────────────────────
+
+
+@router.get("/sso/thbwiki/authorize", tags=["sso"])
+async def thbwiki_authorize() -> RedirectResponse:
+    settings = get_settings()
+    if not settings.thbwiki_client_id or not settings.sso_callback_base_url:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "SSO_NOT_CONFIGURED",
+                "message": "THBWiki SSO is not configured",
+            },
+        )
+    from .sso_clients import thbwiki_authorize_url
+
+    redirect_uri = (
+        f"{settings.sso_callback_base_url}/api/v1/user/sso/thbwiki/callback"
+    )
+    state = secrets.token_urlsafe(16)
+    url = thbwiki_authorize_url(settings.thbwiki_client_id, redirect_uri, state)
+    return RedirectResponse(url=url, status_code=302)
+
+
+@router.get("/sso/thbwiki/callback", tags=["sso"])
+async def thbwiki_callback(
+    code: str,
+    state: str = "",
+    redis=Depends(get_redis),
+) -> SsoCallbackResponse:
+    settings = get_settings()
+    if (
+        not settings.thbwiki_client_id
+        or not settings.thbwiki_client_secret
+        or not settings.sso_callback_base_url
+    ):
+        raise HTTPException(
+            status_code=503, detail={"code": "SSO_NOT_CONFIGURED"}
+        )
+    from .sso_clients import thbwiki_exchange_code
+    from .sso_session import create_sso_session
+
+    redirect_uri = (
+        f"{settings.sso_callback_base_url}/api/v1/user/sso/thbwiki/callback"
+    )
+    try:
+        uid = await thbwiki_exchange_code(
+            code,
+            settings.thbwiki_client_id,
+            settings.thbwiki_client_secret,
+            redirect_uri,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "INVALID_SSO_CODE", "message": str(exc)},
+        )
+    sid = await create_sso_session(redis, {"thbwiki_uid": uid})
+    return SsoCallbackResponse(sid=sid)
+
+
+@router.post("/sso/thbwiki/bind", tags=["sso"])
+async def thbwiki_bind(
+    req: SsoBindRequest,
+    db: AsyncSession = Depends(get_db_session),
+    redis=Depends(get_redis),
+) -> VoterFE:
+    return await _sso_bind(req, "thbwiki", db, redis)
+
+
+# ── shared bind helper ───────────────────────────────────────────────
+
+
+async def _sso_bind(
+    req: SsoBindRequest,
+    provider: str,
+    db: AsyncSession,
+    redis,
+) -> VoterFE:
+    # Validate the session token first — always returns 401 on bad token,
+    # regardless of whether SSO is configured.
+    _user_id_from_body_token(req.user_token)
+
+    settings = get_settings()
+
+    if provider == "qq":
+        if (
+            not settings.qq_app_id
+            or not settings.qq_app_secret
+            or not settings.sso_callback_base_url
+        ):
+            raise HTTPException(
+                status_code=503, detail={"code": "SSO_NOT_CONFIGURED"}
+            )
+        from .sso_clients import qq_exchange_code
+
+        redirect_uri = (
+            f"{settings.sso_callback_base_url}/api/v1/user/sso/qq/callback"
+        )
+        try:
+            openid = await qq_exchange_code(
+                req.code,
+                settings.qq_app_id,
+                settings.qq_app_secret,
+                redirect_uri,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "INVALID_SSO_CODE", "message": str(exc)},
+            )
+        sso_data = {"qq_openid": openid}
+    else:  # thbwiki
+        if (
+            not settings.thbwiki_client_id
+            or not settings.thbwiki_client_secret
+            or not settings.sso_callback_base_url
+        ):
+            raise HTTPException(
+                status_code=503, detail={"code": "SSO_NOT_CONFIGURED"}
+            )
+        from .sso_clients import thbwiki_exchange_code
+
+        redirect_uri = (
+            f"{settings.sso_callback_base_url}"
+            f"/api/v1/user/sso/thbwiki/callback"
+        )
+        try:
+            uid = await thbwiki_exchange_code(
+                req.code,
+                settings.thbwiki_client_id,
+                settings.thbwiki_client_secret,
+                redirect_uri,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "INVALID_SSO_CODE", "message": str(exc)},
+            )
+        sso_data = {"thbwiki_uid": uid}
+
+    from src.apps.user.dao import ActivityLogDAO, UserDAO
+    from src.common.database import get_session_maker
+
+    user_dao = UserDAO(db)
+    activity_dao = ActivityLogDAO(get_session_maker())
+    svc = UserService(user_dao=user_dao, activity_dao=activity_dao)
+    try:
+        voter_fe = await svc.bind_sso(req.user_token, sso_data)
+    except AppException as exc:
+        _raise_http(exc)
+    return voter_fe
