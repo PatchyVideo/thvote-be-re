@@ -88,6 +88,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     # Shutdown
+    settings = get_settings()
+    if settings.nacos_enabled:
+        from .common.nacos import stop_nacos_watcher
+        await stop_nacos_watcher()
+        logger.info("Nacos watcher stopped")
     await close_redis()
 
 
