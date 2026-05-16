@@ -9,7 +9,7 @@
 
 - `src/common/aliyun/pnvs_client.py` — `get_pnvs_client()`
 - `src/common/aliyun/dm_smtp_client.py` — `get_dm_smtp_client()`
-- `src/apps/user/sso_clients.py`（计划中）— `get_qq_oauth_client()` / `get_thbwiki_oauth_client()`
+- `src/apps/user/sso_clients.py`（计划中；追踪于 B-007）— `get_qq_oauth_client()` / `get_thbwiki_oauth_client()`
 
 Nacos 配置变更回调 `_on_nacos_config_change`（`src/common/config.py`）在收到变更通知时只更新
 环境变量和 `_settings_instance`，**无法使已缓存的 lru_cache 客户端实例失效**。

@@ -19,6 +19,7 @@
 | 文档 | 用途 |
 |---|---|
 | [`architecture/database-schema-management.md`](./architecture/database-schema-management.md) | DB schema 管理现状与 4 阶段演进路线图（Alembic + init_db 共存的折中策略与目标态） |
+| [`architecture/nacos-hot-reload-limits.md`](./architecture/nacos-hot-reload-limits.md) | Nacos 热更新限制：lru_cache 缓存客户端无法免重启热更新，操作规程 |
 
 ## 模块迁移（`migration/`）
 
