@@ -27,52 +27,34 @@ from strawberry.fastapi import GraphQLRouter
 
 from .api.graphql.schema import schema as graphql_schema
 from .api.rest.v1 import api_router
-from .common.apollo import load_apollo_overrides
-from .common.config import get_settings
-from .common.database import get_db_session, init_db
+from .common.config import (
+    get_settings,
+    nacos_config_change_callback,
+    reload_settings,
+)
+from .common.database import get_db_session, get_session_maker, reload_engine
 from .common.middleware.logging import LoggingMiddleware
 from .common.redis import close_redis
-
-
-_TRUTHY = {"1", "true", "yes", "on"}
-
-
-def _is_debug_mode() -> bool:
-    """Whether the app should auto-create tables on startup.
-
-    Production / test deployments rely on Alembic migrations
-    (`alembic upgrade head` in the CI deploy step) and MUST NOT call
-    `init_db()` — running `Base.metadata.create_all` alongside Alembic
-    risks creating tables out of sync with `alembic_version`, leaving
-    the schema in a state Alembic cannot reconcile.
-
-    Local developers who want the old "first-run create_all" ergonomics
-    can opt in with ``DEBUG=true`` (or ``APP_DEBUG``).
-    """
-    raw = os.getenv("DEBUG") or os.getenv("APP_DEBUG") or "false"
-    return raw.strip().lower() in _TRUTHY
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
-    # Startup
-    if _is_debug_mode():
-        await init_db()
-        logger.warning(
-            "DEBUG=true: ran Base.metadata.create_all(); production must use "
-            "`alembic upgrade head` instead, see docs/operations/cicd-pipeline.md"
-        )
-    else:
-        logger.info(
-            "Skipping init_db(); schema is owned by Alembic. "
-            "Set DEBUG=true to enable create_all for local development."
-        )
+    # Verify DB connectivity — fail fast rather than silently running with no schema
+    try:
+        async with get_session_maker()() as session:
+            await session.execute(text("SELECT 1"))
+        logger.info("Database connection verified. Schema managed by Alembic.")
+    except Exception as exc:
+        raise RuntimeError(f"Database connection failed at startup: {exc}") from exc
 
     # Start Nacos config watcher for hot reload
     settings = get_settings()
     if settings.nacos_enabled:
-        from common.nacos import start_nacos_watcher, stop_nacos_watcher
+        from .common.nacos import (
+            register_service_to_nacos,
+            start_nacos_watcher,
+        )
 
         start_nacos_watcher(on_change=nacos_config_change_callback)
         logger.info("Nacos config watcher started")
@@ -183,6 +165,7 @@ def create_app() -> FastAPI:
         settings = get_settings()
         group = group or settings.nacos_group
 
+        from .common.nacos import discover_service_from_nacos
         instances = await discover_service_from_nacos(
             service_name=service_name,
             group=group,
@@ -222,6 +205,7 @@ def create_app() -> FastAPI:
         基于 NACOS_SERVICE_NAME 配置的服务名进行查询。
         """
         settings = get_settings()
+        from .common.nacos import get_service_register
         reg = get_service_register()
         if reg is None:
             return {
