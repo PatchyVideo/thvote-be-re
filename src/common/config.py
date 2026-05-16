@@ -15,7 +15,7 @@ def _load_nacos_sync() -> None:
     """
     同步加载 Nacos 配置。
 
-    在模块加载时调用，使用线程池执行异步的 load_nacos_config()。
+    在首次调用 get_settings() 时加载，使用线程池执行异步的 load_nacos_config()。
     """
     try:
         loop = asyncio.get_event_loop()
