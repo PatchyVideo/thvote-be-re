@@ -40,14 +40,22 @@ async def steamdata(appid: str, udid: str | None = None) -> RespBody:
         title = title_el[0].text
         cover_el = page.xpath('//*[@id="gameHeaderImageCtn"]/img')
         cover_raw = cover_el[0].attrib["src"] if cover_el else None
-        cover = cover_raw[: cover_raw.find("?")] if cover_raw and "?" in cover_raw else cover_raw
+        cover = (
+            cover_raw[: cover_raw.find("?")]
+            if cover_raw and "?" in cover_raw
+            else cover_raw
+        )
         media: list[str] = []
         show_list = page.xpath('//*[@id="highlight_player_area"]/div')
         if show_list:
-            for item in show_list[0].xpath('//div[@class="highlight_player_item highlight_movie"]'):
+            for item in show_list[0].xpath(
+                '//div[@class="highlight_player_item highlight_movie"]'
+            ):
                 if v := item.attrib.get("data-mp4-hd-source"):
                     media.append(v[: v.find("?")] if "?" in v else v)
-            for item in show_list[0].xpath('//div/a[@class="highlight_screenshot_link"]'):
+            for item in show_list[0].xpath(
+                '//div/a[@class="highlight_screenshot_link"]'
+            ):
                 if img := item.attrib.get("href"):
                     media.append(img[: img.find("?")] if "?" in img else img)
         desc_el = page.xpath('/html/head/meta[@property="og:description"]')
@@ -58,7 +66,9 @@ async def steamdata(appid: str, udid: str | None = None) -> RespBody:
         ptime = None
         if time_el:
             try:
-                dt_struct = dt.datetime.strptime(time_el[0].text.strip(), "%Y 年 %m 月 %d 日")
+                dt_struct = dt.datetime.strptime(
+                    time_el[0].text.strip(), "%Y 年 %m 月 %d 日"
+                )
                 ptime = dt_struct.strftime("%Y-%m-%d %H:%M:%S +0800")
             except ValueError:
                 pass

@@ -61,14 +61,17 @@ async def parse_url(url: str) -> tuple[str | None, Any | None]:
     # Resolve Bilibili short links
     if b23_match := re.search(
         r"(?:https?://)?(?:(?:bili(?:22|23|33|2233)\.cn)|(?:b23\.tv))/[\w]+",
-        url, re.IGNORECASE,
+        url,
+        re.IGNORECASE,
     ):
         redirect_url = await get_redirect_url(b23_match.group(0))
         if redirect_url:
             url = redirect_url
 
     # ── Bilibili ──────────────────────────────────────────────────────
-    if bv_match := re.search(r"(?<![a-zA-Z0-9])(BV[a-zA-Z0-9]{10})(?![a-zA-Z0-9])", url, re.IGNORECASE):
+    if bv_match := re.search(
+        r"(?<![a-zA-Z0-9])(BV[a-zA-Z0-9]{10})(?![a-zA-Z0-9])", url, re.IGNORECASE
+    ):
         return bv_match.group(1), bilidata
     if av_match := re.search(r"(?<![a-zA-Z0-9])(?:AV|av)(\d+)", url):
         return av_match.group(1), bilidata
@@ -84,26 +87,35 @@ async def parse_url(url: str) -> tuple[str | None, Any | None]:
         return x_match.group(1), twidata
 
     # ── Pixiv ─────────────────────────────────────────────────────────
-    if pixiv_match := re.search(
-        r"pixiv\.(?:net|pixivdl\.com)/(?:(?:artworks|i)/|member_illust\.php\?.*id=)(\d+)",
-        url, re.IGNORECASE,
-    ):
+    _pixiv_re = (
+        r"pixiv\.(?:net|pixivdl\.com)"
+        r"/(?:(?:artworks|i)/|member_illust\.php\?.*id=)(\d+)"
+    )
+    if pixiv_match := re.search(_pixiv_re, url, re.IGNORECASE):
         return pixiv_match.group(1), pixdata
-    if pixn_match := re.search(r"pixiv\.net/novel/show\.php\?id=(\d+)", url, re.IGNORECASE):
+    if pixn_match := re.search(
+        r"pixiv\.net/novel/show\.php\?id=(\d+)", url, re.IGNORECASE
+    ):
         return pixn_match.group(1), pixndata
 
     # ── NicoNico ──────────────────────────────────────────────────────
     if nico_match := re.search(r"nicovideo\.jp/watch/sm(\d+)", url, re.IGNORECASE):
         return nico_match.group(1), nicovideodata
-    if seiga_match := re.search(r"seiga(?:\.nicovideo\.jp)?/(?:seiga/)?im(\d+)", url, re.IGNORECASE):
+    if seiga_match := re.search(
+        r"seiga(?:\.nicovideo\.jp)?/(?:seiga/)?im(\d+)", url, re.IGNORECASE
+    ):
         return seiga_match.group(1), nicoseigadata
 
     # ── YouTube ───────────────────────────────────────────────────────
-    if yt_match := re.search(r"(?:youtu\.be/|youtube\.com/watch\?v=)([-\w]+)", url, re.IGNORECASE):
+    if yt_match := re.search(
+        r"(?:youtu\.be/|youtube\.com/watch\?v=)([-\w]+)", url, re.IGNORECASE
+    ):
         return yt_match.group(1), ytbdata
 
     # ── Weibo ─────────────────────────────────────────────────────────
-    if wb_match := re.search(r"m\.weibo\.cn/(?:status|detail)/(\d+)", url, re.IGNORECASE):
+    if wb_match := re.search(
+        r"m\.weibo\.cn/(?:status|detail)/(\d+)", url, re.IGNORECASE
+    ):
         return wb_match.group(1), wbdata
 
     # ── Tieba ─────────────────────────────────────────────────────────
@@ -121,11 +133,15 @@ async def parse_url(url: str) -> tuple[str | None, Any | None]:
         r"(?:thvideo\.tv|patchyvideo\.com)/#/video\?id=(\w+)", url, re.IGNORECASE
     ):
         return patchy_match.group(1), patchydata
-    if patchy_dev := re.search(r"platinum\.vercel\.app/video/(\w+)", url, re.IGNORECASE):
+    if patchy_dev := re.search(
+        r"platinum\.vercel\.app/video/(\w+)", url, re.IGNORECASE
+    ):
         return patchy_dev.group(1), patchydata
 
     # ── Steam ─────────────────────────────────────────────────────────
-    if steam_match := re.search(r"store\.steampowered\.com/app/(\d+)", url, re.IGNORECASE):
+    if steam_match := re.search(
+        r"store\.steampowered\.com/app/(\d+)", url, re.IGNORECASE
+    ):
         return steam_match.group(1), steamdata
 
     # ── DLsite ────────────────────────────────────────────────────────
@@ -133,7 +149,9 @@ async def parse_url(url: str) -> tuple[str | None, Any | None]:
         return dlsite_match.group(1), dlsitedata
 
     # ── Melonbooks ────────────────────────────────────────────────────
-    if melon_match := re.search(r"melonbooks\.co\.jp.+?product_id=(\d+)", url, re.IGNORECASE):
+    if melon_match := re.search(
+        r"melonbooks\.co\.jp.+?product_id=(\d+)", url, re.IGNORECASE
+    ):
         return melon_match.group(1), melondata
 
     # ── Dizzylab ──────────────────────────────────────────────────────

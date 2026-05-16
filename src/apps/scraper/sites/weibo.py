@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import re
 
 from src.apps.scraper.schemas import RespBody, ScrapeData
 from src.apps.scraper.utils.cache import get_cache, set_cache
@@ -30,8 +29,8 @@ async def wbdata(wid: str, udid: str | None = None) -> RespBody:
     r = await request_website(url, headers=_HEADER)
     html = r.content.decode("utf-8")
     try:
-        chunk = html[html.find("$render_data"):]
-        chunk = chunk[chunk.find("[{") + 1: chunk.find("}]") + 1]
+        chunk = html[html.find("$render_data") :]
+        chunk = chunk[chunk.find("[{") + 1 : chunk.find("}]") + 1]
         data = json.loads(chunk)["status"]
         uid = data["user"]["id"]
         author = f"weibo-author:{uid}"
@@ -56,6 +55,7 @@ async def wbdata(wid: str, udid: str | None = None) -> RespBody:
 
 def _wb_ptime(created_at: str) -> str:
     from zoneinfo import ZoneInfo
+
     d = dt.datetime.strptime(created_at, "%a %b %d %H:%M:%S %z %Y")
     d = d.astimezone(ZoneInfo("Asia/Shanghai"))
     return d.strftime("%Y-%m-%d %H:%M:%S %z")

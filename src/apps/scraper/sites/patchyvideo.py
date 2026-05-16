@@ -31,7 +31,9 @@ async def patchydata(vid: str, udid: str | None = None) -> RespBody:
     if cached:
         return cached
 
-    resp = await request_abroad_api(_API, json={"query": _GQL, "variables": {"vid": vid}})
+    resp = await request_abroad_api(
+        _API, json={"query": _GQL, "variables": {"vid": vid}}
+    )
     data = resp.get("data")
     if not data:
         return RespBody(status="apierr", msg=f"patchyapierr: {resp.get('errors')}")
@@ -40,7 +42,14 @@ async def patchydata(vid: str, udid: str | None = None) -> RespBody:
     tags = data["getVideo"]["tagByCategory"]
 
     # Redirect to native parser for known platforms
-    if item["site"] in ("bilibili", "nicovideo", "youtube", "twitter", "acfun", "weibo"):
+    if item["site"] in (
+        "bilibili",
+        "nicovideo",
+        "youtube",
+        "twitter",
+        "acfun",
+        "weibo",
+    ):
         return RespBody(status="rematch", msg=item["url"])
 
     authors = None
@@ -69,6 +78,7 @@ async def patchydata(vid: str, udid: str | None = None) -> RespBody:
 
 def _patchy_ptime(upload_time: str) -> str:
     from zoneinfo import ZoneInfo
+
     d = dt.datetime.strptime(upload_time, "%Y-%m-%dT%H:%M:%S%z")
     d = d.astimezone(ZoneInfo("Asia/Shanghai"))
     return d.strftime("%Y-%m-%d %H:%M:%S %z")

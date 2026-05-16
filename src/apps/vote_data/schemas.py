@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CharacterVoteItem(BaseModel):
@@ -44,39 +44,35 @@ class QuestionnaireVoteRequest(BaseModel):
 
 
 class CharacterVoteResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     submit_datetime: datetime
     character_list: list[dict[str, Any]]
 
-    class Config:
-        from_attributes = True
-
 
 class MusicVoteResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     submit_datetime: datetime
     music_list: list[dict[str, Any]]
 
-    class Config:
-        from_attributes = True
-
 
 class CpVoteResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     submit_datetime: datetime
     cp_list: list[dict[str, Any]]
 
-    class Config:
-        from_attributes = True
-
 
 class QuestionnaireVoteResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     submit_datetime: datetime
     questionnaire_list: list[dict[str, Any]]
-
-    class Config:
-        from_attributes = True
 
 
 class VoteDataSummaryResponse(BaseModel):

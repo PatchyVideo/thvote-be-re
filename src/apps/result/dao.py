@@ -12,7 +12,10 @@ from src.common.exceptions import AppException
 
 
 class ResultNotComputedError(AppException):
-    """Raised when Redis cache is empty — admin must run /admin/compute-results first."""
+    """Raised when Redis cache is empty.
+
+    Admin must run /admin/compute-results first.
+    """
 
 
 class EntityNotFoundError(AppException):
@@ -36,7 +39,9 @@ class ResultDAO:
             raise ResultNotComputedError(f"No computed data at Redis key: {key}")
         return json.loads(raw)
 
-    async def get_ranking(self, category: str, names: list[str], vote_year: int | None = None) -> tuple[list[dict], dict]:
+    async def get_ranking(
+        self, category: str, names: list[str], vote_year: int | None = None
+    ) -> tuple[list[dict], dict]:
         """Returns (ranking_list, global_stats_dict). Filters by names if provided."""
         year = self._year(vote_year)
         cat = _category_key(category)
@@ -46,7 +51,9 @@ class ResultDAO:
             ranking = [e for e in ranking if e.get("name") in names]
         return ranking, global_stats
 
-    async def get_reasons(self, category: str, name: str, vote_year: int | None = None) -> list[str]:
+    async def get_reasons(
+        self, category: str, name: str, vote_year: int | None = None
+    ) -> list[str]:
         year = self._year(vote_year)
         cat = _category_key(category)
         ranking = await self._get_json(self._key(year, cat, "ranking"))
@@ -55,19 +62,26 @@ class ResultDAO:
                 return entry.get("reasons", [])
         raise EntityNotFoundError(name)
 
-    async def get_trend(self, category: str, name: str, vote_year: int | None = None) -> dict:
+    async def get_trend(
+        self, category: str, name: str, vote_year: int | None = None
+    ) -> dict:
         year = self._year(vote_year)
         cat = _category_key(category)
         ranking = await self._get_json(self._key(year, cat, "ranking"))
         for entry in ranking:
             if entry.get("name") == name:
-                return {"trend": entry.get("trend", []), "trend_first": entry.get("trend_first", [])}
+                return {
+                    "trend": entry.get("trend", []),
+                    "trend_first": entry.get("trend_first", []),
+                }
         raise EntityNotFoundError(name)
 
     async def get_global_stats(self, vote_year: int | None = None) -> dict:
         return await self._get_json(self._key(self._year(vote_year), "global_stats"))
 
-    async def get_single_entity(self, category: str, name: str, vote_year: int | None = None) -> dict:
+    async def get_single_entity(
+        self, category: str, name: str, vote_year: int | None = None
+    ) -> dict:
         year = self._year(vote_year)
         cat = _category_key(category)
         ranking = await self._get_json(self._key(year, cat, "ranking"))
@@ -77,15 +91,25 @@ class ResultDAO:
         raise EntityNotFoundError(name)
 
     async def get_completion_rates(self, vote_year: int | None = None) -> dict:
-        return await self._get_json(self._key(self._year(vote_year), "completion_rates"))
+        return await self._get_json(
+            self._key(self._year(vote_year), "completion_rates")
+        )
 
-    async def get_questionnaire(self, question_id: str, vote_year: int | None = None) -> dict:
-        return await self._get_json(self._key(self._year(vote_year), "paper", question_id))
+    async def get_questionnaire(
+        self, question_id: str, vote_year: int | None = None
+    ) -> dict:
+        return await self._get_json(
+            self._key(self._year(vote_year), "paper", question_id)
+        )
 
-    async def get_questionnaire_trend(self, question_id: str, vote_year: int | None = None) -> dict:
+    async def get_questionnaire_trend(
+        self, question_id: str, vote_year: int | None = None
+    ) -> dict:
         return await self.get_questionnaire(question_id, vote_year)
 
-    async def get_covote(self, category: str, vote_year: int | None = None) -> list[dict]:
+    async def get_covote(
+        self, category: str, vote_year: int | None = None
+    ) -> list[dict]:
         cat = "chars" if category == "character" else "musics"
         return await self._get_json(self._key(self._year(vote_year), "covote", cat))
 

@@ -18,18 +18,24 @@ class AutocompleteService:
         per_cat = math.ceil(request.limit / 2)
         results: list[AutocompleteSuggestion] = []
 
-        for item in await self.autocomplete_dao.search_characters(request.query, per_cat):
-            results.append(AutocompleteSuggestion(
-                name=item.get("name", ""),
-                type="character",
-                origin=item.get("origin"),
-            ))
+        for item in await self.autocomplete_dao.search_characters(
+            request.query, per_cat
+        ):
+            results.append(
+                AutocompleteSuggestion(
+                    name=item.get("name", ""),
+                    type="character",
+                    origin=item.get("origin"),
+                )
+            )
 
         for item in await self.autocomplete_dao.search_music(request.query, per_cat):
-            results.append(AutocompleteSuggestion(
-                name=item.get("name", ""),
-                type="music",
-                origin=item.get("origin"),
-            ))
+            results.append(
+                AutocompleteSuggestion(
+                    name=item.get("name", ""),
+                    type="music",
+                    origin=item.get("origin"),
+                )
+            )
 
         return AutocompleteResponse(suggestions=results[: request.limit])

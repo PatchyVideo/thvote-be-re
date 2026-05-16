@@ -58,13 +58,14 @@
 | 短信验证码服务（全托管）| `common/verification/sms_code.py` | ✅ |
 | 异常体系 | `common/exceptions.py` | ✅ |
 | 请求日志中间件 | `common/middleware/logging.py` | ✅ |
-| CORS（⚠️ 当前 `allow_origins=["*"]`）| `src/main.py` | 🟢 [B-004] |
+| CORS（可配置域名列表）| `src/main.py` | ✅（B-004 已修，env CORS_ALLOWED_ORIGINS）|
+| trusted proxies / X-Forwarded-For | `apps/user/deps.py` | ✅（B-009 已修，env TRUSTED_PROXY_IPS）|
 | 热更新（`/admin/reload-config`）| `src/main.py` | ✅ |
 | 服务器时间端点（`GET /server-time`）| — | ❌ 旧 gateway 有，未移植 |
 | mypy CI 硬门禁 | `mypy.ini` / CI | 🟢 [B-020] |
 | Pydantic V2 迁移 | 全 `common/` | 🟢 [B-021] |
 
-**BACKLOG 关联：** B-004, B-009（trusted proxies）, B-017（Apollo+lru_cache）, B-020, B-021, B-025（移除 init_db 后门）, B-026, B-027
+**BACKLOG 关联：** B-004, B-009（trusted proxies）, B-017（Apollo+lru_cache）, B-020, B-021, B-025（移除 init_db 后门）, B-026, ~~B-027~~✅
 
 ---
 

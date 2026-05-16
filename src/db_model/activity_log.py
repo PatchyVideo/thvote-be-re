@@ -23,41 +23,23 @@ class ActivityLog(Base):
 
     __tablename__ = "activity_log"
 
-    id: Mapped[int] = mapped_column(
-        Integer, primary_key=True, autoincrement=True
-    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
-    event_type: Mapped[str] = mapped_column(
-        String(32), nullable=False, index=True
-    )
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
 
-    user_id: Mapped[str | None] = mapped_column(
-        String(64), nullable=True, index=True
-    )
+    user_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
-    target_email: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )
+    target_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    target_phone: Mapped[str | None] = mapped_column(
-        String(32), nullable=True
-    )
+    target_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
-    old_value: Mapped[str | None] = mapped_column(
-        String(512), nullable=True
-    )
+    old_value: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
-    new_value: Mapped[str | None] = mapped_column(
-        String(512), nullable=True
-    )
+    new_value: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
-    detail: Mapped[str | None] = mapped_column(
-        Text, nullable=True
-    )
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    requester_ip: Mapped[str | None] = mapped_column(
-        String(64), nullable=True
-    )
+    requester_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     additional_fingerprint: Mapped[str | None] = mapped_column(
         String(1024), nullable=True

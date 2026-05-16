@@ -97,6 +97,7 @@ class VotableBase(BaseModel):
 
 # ── Query types ────────────────────────────────────────────────────────
 
+
 class RankingQuery(BaseModel):
     vote_year: Optional[int] = None
     category: Literal["character", "music", "cp"] = "character"

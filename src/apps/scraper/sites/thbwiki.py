@@ -8,7 +8,11 @@ from urllib.parse import quote, unquote
 
 from src.apps.scraper.schemas import RespBody, ScrapeData
 from src.apps.scraper.utils.cache import get_cache, set_cache
-from src.apps.scraper.utils.network import request_abroad_api, request_abroad_website, wait_for_rate_limit
+from src.apps.scraper.utils.network import (
+    request_abroad_api,
+    request_abroad_website,
+    wait_for_rate_limit,
+)
 
 _API = "https://thwiki.cc/api.php"
 _UDID_FMT = "thbwiki:{entry}"
@@ -39,7 +43,10 @@ async def thbdata(entry: str, udid: str | None = None) -> RespBody:
             "action": "ask",
             "format": "json",
             "formatversion": 2,
-            "query": f"[[{entry}]]|?封面图片|?专辑名称|?同人志名称|?视频名称|?软件名称|?发售日期|?制作方|?发售方|?出品方|?原画师|?模型名称",
+            "query": (
+                f"[[{entry}]]|?封面图片|?专辑名称|?同人志名称|?视频名称"
+                "|?软件名称|?发售日期|?制作方|?发售方|?出品方|?原画师|?模型名称"
+            ),
         },
     )
     r = resp.json()
@@ -63,7 +70,12 @@ async def thbdata(entry: str, udid: str | None = None) -> RespBody:
         if ctime:
             ptime = time.strftime("%Y-%m-%d %H:%M:%S %z", time.localtime(int(ctime)))
 
-    author_list = d.get("制作方", []) + d.get("发售方", []) + d.get("出品方", []) + d.get("原画师", [])
+    author_list = (
+        d.get("制作方", [])
+        + d.get("发售方", [])
+        + d.get("出品方", [])
+        + d.get("原画师", [])
+    )
     seen: list[str] = []
     for x in [a["fulltext"] for a in author_list]:
         if x not in seen:

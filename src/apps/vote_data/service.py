@@ -1,6 +1,6 @@
 """Vote data service layer."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from src.apps.vote_data.dao import VoteDataDAO
 from src.apps.vote_data.models import Character, Cp, Music, Questionnaire
@@ -34,13 +34,13 @@ class VoteDataService:
         else:
             character = Character(
                 id=user_id,
-                submit_datetime=datetime.utcnow(),
+                submit_datetime=datetime.now(UTC),
                 character_list=items,
             )
             await self.vote_data_dao.create_character(character)
         return CharacterVoteResponse(
             id=user_id,
-            submit_datetime=datetime.utcnow(),
+            submit_datetime=datetime.now(UTC),
             character_list=items,
         )
 
@@ -55,13 +55,13 @@ class VoteDataService:
         else:
             music = Music(
                 id=user_id,
-                submit_datetime=datetime.utcnow(),
+                submit_datetime=datetime.now(UTC),
                 music_list=items,
             )
             await self.vote_data_dao.create_music(music)
         return MusicVoteResponse(
             id=user_id,
-            submit_datetime=datetime.utcnow(),
+            submit_datetime=datetime.now(UTC),
             music_list=items,
         )
 
@@ -76,13 +76,13 @@ class VoteDataService:
         else:
             cp = Cp(
                 id=user_id,
-                submit_datetime=datetime.utcnow(),
+                submit_datetime=datetime.now(UTC),
                 cp_list=items,
             )
             await self.vote_data_dao.create_cp(cp)
         return CpVoteResponse(
             id=user_id,
-            submit_datetime=datetime.utcnow(),
+            submit_datetime=datetime.now(UTC),
             cp_list=items,
         )
 
@@ -98,13 +98,13 @@ class VoteDataService:
         else:
             questionnaire = Questionnaire(
                 id=user_id,
-                submit_datetime=datetime.utcnow(),
+                submit_datetime=datetime.now(UTC),
                 questionnaire_list=request.questionnaire_list,
             )
             await self.vote_data_dao.create_questionnaire(questionnaire)
         return QuestionnaireVoteResponse(
             id=user_id,
-            submit_datetime=datetime.utcnow(),
+            submit_datetime=datetime.now(UTC),
             questionnaire_list=request.questionnaire_list,
         )
 

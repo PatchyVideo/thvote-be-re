@@ -8,6 +8,7 @@ Nacos 配置中心 + 注册中心集成模块
   配置中心: https://nacos.io/docs/latest/manual/user/python-sdk/usage
   注册中心: https://github.com/nacos-group/nacos-sdk-python
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -65,7 +66,7 @@ def _parse_config_content(content: str) -> dict[str, str]:
                     pass
                 return raw
 
-            pattern = r'[,{\s](\w+)\s*:'
+            pattern = r"[,{\s](\w+)\s*:"
             matches = list(re.finditer(pattern, content))
 
             for i, match in enumerate(matches):
@@ -139,7 +140,8 @@ class NacosConfigListener:
         self._task: Optional[asyncio.Task[None]] = None
 
         logger.debug(
-            "NacosConfigListener initialized: server=%s, namespace=%s, group=%s, dataId=%s",
+            "NacosConfigListener initialized: server=%s, namespace=%s, "
+            "group=%s, dataId=%s",
             server_addrs,
             namespace,
             group,
@@ -350,9 +352,7 @@ async def load_nacos_config() -> dict[str, str]:
             logger.info("Nacos loaded %d config values", len(config_dict))
             return config_dict
         else:
-            logger.debug(
-                "Nacos config not found: dataId=%s, group=%s", data_id, group
-            )
+            logger.debug("Nacos config not found: dataId=%s, group=%s", data_id, group)
 
     except ImportError:
         logger.error("nacos-sdk-python not installed, cannot load Nacos config")
@@ -523,8 +523,13 @@ class NacosServiceRegister:
         self._naming_client = None
 
         logger.debug(
-            "NacosServiceRegister initialized: service=%s, ip=%s, port=%s, group=%s, cluster=%s",
-            service_name, ip, port, group, cluster_name,
+            "NacosServiceRegister initialized: service=%s, ip=%s, port=%s, "
+            "group=%s, cluster=%s",
+            service_name,
+            ip,
+            port,
+            group,
+            cluster_name,
         )
 
     async def _init_client(self) -> None:
@@ -588,7 +593,11 @@ class NacosServiceRegister:
             )
             logger.info(
                 "Service registered to Nacos: %s @ %s:%s (cluster=%s, weight=%s)",
-                self.service_name, self.ip, self.port, self.cluster_name, self.weight,
+                self.service_name,
+                self.ip,
+                self.port,
+                self.cluster_name,
+                self.weight,
             )
             return result is True or result is None
 
@@ -622,14 +631,14 @@ class NacosServiceRegister:
             )
             logger.info(
                 "Service deregistered from Nacos: %s @ %s:%s",
-                self.service_name, self.ip, self.port,
+                self.service_name,
+                self.ip,
+                self.port,
             )
             return result is True or result is None
 
         except Exception as e:
-            logger.error(
-                "Failed to deregister service %s: %s", self.service_name, e
-            )
+            logger.error("Failed to deregister service %s: %s", self.service_name, e)
             return False
 
     async def discover(
@@ -668,7 +677,10 @@ class NacosServiceRegister:
 
             logger.debug(
                 "Discovered %d instances for service %s/%s (healthy_only=%s)",
-                len(instances) if instances else 0, grp, sn, healthy_only,
+                len(instances) if instances else 0,
+                grp,
+                sn,
+                healthy_only,
             )
             return instances if instances else []
 

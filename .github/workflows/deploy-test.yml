@@ -61,7 +61,7 @@ jobs:
           pip install -e .
 
       - name: 代码风格检查
-        run: flake8 src/ --max-line-length=88 || true
+        run: flake8 src/ --max-line-length=88
 
   # ==================== 运行测试 ====================
   test:

@@ -62,6 +62,7 @@ async def nicoseigadata(imid: str, udid: str | None = None) -> RespBody:
 
 def _seiga_ptime(post_time: str) -> str:
     from zoneinfo import ZoneInfo
+
     fmt_in = "%Y年%m月%d日 %H:%M:%S"
     fmt_out = "%Y-%m-%d %H:%M:%S %z"
     d = dt.datetime.strptime(post_time, fmt_in)

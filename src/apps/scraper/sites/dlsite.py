@@ -15,9 +15,20 @@ _HEADER = {
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/97.0.4692.99 Safari/537.36",
 }
 
-_SOFT_TAGS = {"アクション", "クイズ", "アドベンチャー", "ロールプレイング", "テーブル",
-              "デジタルノベル", "シミュレーション", "タイピング", "シューティング",
-              "パズル", "その他ゲーム", "ツール/アクセサリ"}
+_SOFT_TAGS = {
+    "アクション",
+    "クイズ",
+    "アドベンチャー",
+    "ロールプレイング",
+    "テーブル",
+    "デジタルノベル",
+    "シミュレーション",
+    "タイピング",
+    "シューティング",
+    "パズル",
+    "その他ゲーム",
+    "ツール/アクセサリ",
+}
 _IMAGE_TAGS = {"マンガ", "劇画", "WEBTOON", "CG・イラスト", "画像素材"}
 _TEXT_TAGS = {"ノベル", "官能小説"}
 _VIDEO_TAGS = {"動画", "ボイスコミック"}
@@ -64,11 +75,13 @@ async def dlsitedata(rjid: str, udid: str | None = None) -> RespBody:
             return RespBody(status="parsererr", msg="dlsite: maker not found")
         maker = maker_el[0]
         href = maker.attrib.get("href", "")
-        author_id = href[href.find("maker_id") + 9:].replace(".html", "")
+        author_id = href[href.find("maker_id") + 9 :].replace(".html", "")
         author_name = maker.text
         table = page.xpath('//table[@id="work_outline"]')
         if not table:
-            return RespBody(status="parsererr", msg="dlsite: work_outline table not found")
+            return RespBody(
+                status="parsererr", msg="dlsite: work_outline table not found"
+            )
         heads = page.xpath('//table[@id="work_outline"]/tr/th/text()')
         status = "ok"
         msg = ""

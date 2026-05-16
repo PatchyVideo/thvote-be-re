@@ -20,7 +20,11 @@ from src.apps.submit.schemas import (
 from src.apps.submit.service import SubmitService
 from src.common.database import get_db_session
 from src.common.middleware.rate_limit import get_redis_client, rate_limit
-from src.common.security.jwt import JWTValidationError, VoteTokenPayload, decode_vote_token
+from src.common.security.jwt import (
+    JWTValidationError,
+    VoteTokenPayload,
+    decode_vote_token,
+)
 
 router = APIRouter(prefix="", tags=["submit-handler"])
 

@@ -71,9 +71,7 @@ class UserService:
 
     user_dao: UserDAO
     activity_dao: ActivityLogDAO
-    email_code_service: EmailCodeService = field(
-        default_factory=get_email_code_service
-    )
+    email_code_service: EmailCodeService = field(default_factory=get_email_code_service)
     sms_code_service: SmsCodeService = field(default_factory=get_sms_code_service)
     auth: AuthProvider = field(default_factory=AuthProvider)
 
@@ -372,7 +370,9 @@ class UserService:
 
         settings = get_settings()
         try:
-            start = datetime.fromisoformat(settings.vote_start_iso.replace("Z", "+00:00"))
+            start = datetime.fromisoformat(
+                settings.vote_start_iso.replace("Z", "+00:00")
+            )
             end = datetime.fromisoformat(settings.vote_end_iso.replace("Z", "+00:00"))
         except ValueError:
             # Misconfigured vote window must be loud, not silent — otherwise

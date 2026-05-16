@@ -41,7 +41,7 @@ async def tiebadata(wid: str, udid: str | None = None) -> RespBody:
                 break
         if not target:
             return RespBody(status="parsererr", msg="tieba: postList script not found")
-        chunk = target[target.find("pb/widget/postList") + 21:]
+        chunk = target[target.find("pb/widget/postList") + 21 :]
         chunk = chunk[: chunk.find("_.Module.use") - 2]
         chunk = chunk.replace("'", '"').replace("}, }", "}}").replace("},}", "}}")
         data = json.loads(chunk)

@@ -138,7 +138,8 @@ class RedisSettings(BaseSettings):
 
         password_part = f":{self.redis_password}@" if self.redis_password else ""
         ssl_part = "?ssl=1" if self.redis_ssl else ""
-        return f"redis://{password_part}{self.redis_host}:{self.redis_port}/{self.redis_db}{ssl_part}"
+        base = f"redis://{password_part}{self.redis_host}:{self.redis_port}"
+        return f"{base}/{self.redis_db}{ssl_part}"
 
 
 class Settings(BaseSettings):
@@ -208,8 +209,12 @@ class Settings(BaseSettings):
     aliyun_pnvs_access_key_secret: Optional[str] = Field(
         None, validation_alias="ALIYUN_PNVS_ACCESS_KEY_SECRET"
     )
-    aliyun_pnvs_endpoint: Optional[str] = Field(None, validation_alias="ALIYUN_PNVS_ENDPOINT")
-    aliyun_pnvs_region_id: Optional[str] = Field(None, validation_alias="ALIYUN_PNVS_REGION_ID")
+    aliyun_pnvs_endpoint: Optional[str] = Field(
+        None, validation_alias="ALIYUN_PNVS_ENDPOINT"
+    )
+    aliyun_pnvs_region_id: Optional[str] = Field(
+        None, validation_alias="ALIYUN_PNVS_REGION_ID"
+    )
     aliyun_pnvs_scheme_name: Optional[str] = Field(
         None, validation_alias="ALIYUN_PNVS_SCHEME_NAME"
     )
@@ -222,8 +227,12 @@ class Settings(BaseSettings):
     aliyun_pnvs_code_length: Optional[int] = Field(
         None, validation_alias="ALIYUN_PNVS_CODE_LENGTH"
     )
-    aliyun_pnvs_valid_time: Optional[int] = Field(None, validation_alias="ALIYUN_PNVS_VALID_TIME")
-    aliyun_pnvs_interval: Optional[int] = Field(None, validation_alias="ALIYUN_PNVS_INTERVAL")
+    aliyun_pnvs_valid_time: Optional[int] = Field(
+        None, validation_alias="ALIYUN_PNVS_VALID_TIME"
+    )
+    aliyun_pnvs_interval: Optional[int] = Field(
+        None, validation_alias="ALIYUN_PNVS_INTERVAL"
+    )
 
     # 阿里云邮件配置
     aliyun_dm_access_key_id: Optional[str] = Field(
@@ -232,15 +241,27 @@ class Settings(BaseSettings):
     aliyun_dm_access_key_secret: Optional[str] = Field(
         None, validation_alias="ALIYUN_DM_ACCESS_KEY_SECRET"
     )
-    aliyun_dm_endpoint: Optional[str] = Field(None, validation_alias="ALIYUN_DM_ENDPOINT")
-    aliyun_dm_region_id: Optional[str] = Field(None, validation_alias="ALIYUN_DM_REGION_ID")
+    aliyun_dm_endpoint: Optional[str] = Field(
+        None, validation_alias="ALIYUN_DM_ENDPOINT"
+    )
+    aliyun_dm_region_id: Optional[str] = Field(
+        None, validation_alias="ALIYUN_DM_REGION_ID"
+    )
     aliyun_dm_account_name: Optional[str] = Field(
         None, validation_alias="ALIYUN_DM_ACCOUNT_NAME"
     )
-    aliyun_dm_from_alias: Optional[str] = Field(None, validation_alias="ALIYUN_DM_FROM_ALIAS")
-    aliyun_dm_tag_name: Optional[str] = Field(None, validation_alias="ALIYUN_DM_TAG_NAME")
-    aliyun_dm_smtp_host: Optional[str] = Field(None, validation_alias="ALIYUN_DM_SMTP_HOST")
-    aliyun_dm_smtp_port: Optional[int] = Field(None, validation_alias="ALIYUN_DM_SMTP_PORT")
+    aliyun_dm_from_alias: Optional[str] = Field(
+        None, validation_alias="ALIYUN_DM_FROM_ALIAS"
+    )
+    aliyun_dm_tag_name: Optional[str] = Field(
+        None, validation_alias="ALIYUN_DM_TAG_NAME"
+    )
+    aliyun_dm_smtp_host: Optional[str] = Field(
+        None, validation_alias="ALIYUN_DM_SMTP_HOST"
+    )
+    aliyun_dm_smtp_port: Optional[int] = Field(
+        None, validation_alias="ALIYUN_DM_SMTP_PORT"
+    )
     aliyun_dm_smtp_username: Optional[str] = Field(
         None, validation_alias="ALIYUN_DM_SMTP_USERNAME"
     )

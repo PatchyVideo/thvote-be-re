@@ -34,6 +34,7 @@ async def nicovideodata(smid: str, udid: str | None = None) -> RespBody:
         upload_date = data["uploadDate"]
         user_url = data["author"]["url"]
         import re
+
         uid_match = re.search(r"user/(\d+)", user_url)
         uid = uid_match.group(1) if uid_match else "unknown"
         author = f"nicovideo-author:{uid}"
@@ -44,7 +45,11 @@ async def nicovideodata(smid: str, udid: str | None = None) -> RespBody:
         data=ScrapeData(
             title=data.get("name"),
             udid=udid,
-            cover=data["thumbnailUrl"][0] if isinstance(data.get("thumbnailUrl"), list) else data.get("thumbnailUrl"),
+            cover=(
+                data["thumbnailUrl"][0]
+                if isinstance(data.get("thumbnailUrl"), list)
+                else data.get("thumbnailUrl")
+            ),
             desc=data.get("description"),
             ptime=_nico_ptime(upload_date),
             author=[author],
@@ -60,5 +65,6 @@ def _nico_ptime(upload_date: str) -> str:
     fmt_in = "%Y-%m-%dT%H:%M:%S%z"
     fmt_out = "%Y-%m-%d %H:%M:%S %z"
     from zoneinfo import ZoneInfo
+
     d = dt.datetime.strptime(upload_date, fmt_in).astimezone(ZoneInfo("Asia/Shanghai"))
     return d.strftime(fmt_out)

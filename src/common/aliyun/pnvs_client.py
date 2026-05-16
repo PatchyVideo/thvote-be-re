@@ -6,8 +6,10 @@ and per-phone send interval are managed entirely by Aliyun — nothing is
 stored in our Redis.
 
 References:
-- https://help.aliyun.com/zh/pnvs/developer-reference/api-dypnsapi-2017-05-25-sendsmsverifycode
-- https://help.aliyun.com/zh/pnvs/developer-reference/api-dypnsapi-2017-05-25-checksmsverifycode
+- https://help.aliyun.com/zh/pnvs/developer-reference/
+  api-dypnsapi-2017-05-25-sendsmsverifycode
+- https://help.aliyun.com/zh/pnvs/developer-reference/
+  api-dypnsapi-2017-05-25-checksmsverifycode
 """
 
 from __future__ import annotations
@@ -152,7 +154,9 @@ def _parse_send_response(response: Any) -> PnvsSendResult:
     message = _attr(body, "message") or "unknown"
     logger.error(
         "PNVS send failed: code=%s message=%s request_id=%s",
-        code, message, request_id,
+        code,
+        message,
+        request_id,
     )
     if code in {"isv.MOBILE_NUMBER_ILLEGAL", "isv.MOBILE_COUNTRY_NOT_SUPPORTED"}:
         raise ValidationError("INVALID_PHONE", details=400)
@@ -175,7 +179,9 @@ def _parse_check_response(response: Any) -> PnvsResult:
         message = _attr(body, "message") or "unknown"
         logger.error(
             "PNVS check API failed: code=%s message=%s request_id=%s",
-            code, message, request_id,
+            code,
+            message,
+            request_id,
         )
         raise ExternalAPIError("SMS_VERIFY_FAILED", details=502)
 

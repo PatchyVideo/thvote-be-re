@@ -36,8 +36,12 @@ class AdminService:
             if raw:
                 found_any = True
                 entries = json.loads(raw)
-                saved = await self.compute_dao.save_final_ranking(vote_year, category, entries)
+                saved = await self.compute_dao.save_final_ranking(
+                    vote_year, category, entries
+                )
                 total += saved
         if not found_any:
-            raise ResultNotComputedError("No ranking data found in Redis for any category")
+            raise ResultNotComputedError(
+                "No ranking data found in Redis for any category"
+            )
         return total

@@ -59,7 +59,9 @@ class AliyunDmSmtpClient:
         try:
             await asyncio.to_thread(self._send_sync, recipient, message.as_string())
         except (smtplib.SMTPException, OSError) as exc:
-            logger.exception("Aliyun DM SMTP send failed for %s", _mask_email(recipient))
+            logger.exception(
+                "Aliyun DM SMTP send failed for %s", _mask_email(recipient)
+            )
             raise ExternalAPIError("EMAIL_SEND_FAILED", details=502) from exc
 
     def _build_message(self, *, recipient: str, code: str) -> MIMEMultipart:

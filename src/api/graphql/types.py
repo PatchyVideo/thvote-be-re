@@ -1,19 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, NewType, Optional
+from typing import Optional
 
 import strawberry
-
-# JSON scalar for returning arbitrary result data without exhaustive type definitions
-JSON = strawberry.scalar(
-    NewType("JSON", object),
-    description="Arbitrary JSON-compatible data returned from pre-computed result cache.",
-    serialize=lambda v: v,
-    parse_value=lambda v: v,
-)
-
-import strawberry
+from strawberry.scalars import JSON  # noqa: F401  — re-exported for resolvers
 
 from src.apps.submit.schemas import CharacterSubmit as CharacterSubmitPydantic
 from src.apps.submit.schemas import CPSubmit as CPSubmitPydantic

@@ -32,12 +32,12 @@ class VoteDataDAO:
         self, user_id: str, character_list: list
     ) -> Character | None:
         """Update character vote data."""
-        from datetime import datetime
+        from datetime import UTC, datetime
 
         character = await self.get_character_by_id(user_id)
         if character:
             character.character_list = character_list
-            character.submit_datetime = datetime.utcnow()
+            character.submit_datetime = datetime.now(UTC)
             await self.session.commit()
             await self.session.refresh(character)
         return character
@@ -59,12 +59,12 @@ class VoteDataDAO:
 
     async def update_music(self, user_id: str, music_list: list) -> Music | None:
         """Update music vote data."""
-        from datetime import datetime
+        from datetime import UTC, datetime
 
         music = await self.get_music_by_id(user_id)
         if music:
             music.music_list = music_list
-            music.submit_datetime = datetime.utcnow()
+            music.submit_datetime = datetime.now(UTC)
             await self.session.commit()
             await self.session.refresh(music)
         return music
@@ -86,12 +86,12 @@ class VoteDataDAO:
 
     async def update_cp(self, user_id: str, cp_list: list) -> Cp | None:
         """Update CP vote data."""
-        from datetime import datetime
+        from datetime import UTC, datetime
 
         cp = await self.get_cp_by_id(user_id)
         if cp:
             cp.cp_list = cp_list
-            cp.submit_datetime = datetime.utcnow()
+            cp.submit_datetime = datetime.now(UTC)
             await self.session.commit()
             await self.session.refresh(cp)
         return cp
@@ -117,12 +117,12 @@ class VoteDataDAO:
         self, user_id: str, questionnaire_list: list
     ) -> Questionnaire | None:
         """Update questionnaire vote data."""
-        from datetime import datetime
+        from datetime import UTC, datetime
 
         questionnaire = await self.get_questionnaire_by_id(user_id)
         if questionnaire:
             questionnaire.questionnaire_list = questionnaire_list
-            questionnaire.submit_datetime = datetime.utcnow()
+            questionnaire.submit_datetime = datetime.now(UTC)
             await self.session.commit()
             await self.session.refresh(questionnaire)
         return questionnaire

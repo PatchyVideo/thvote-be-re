@@ -41,7 +41,9 @@ async def melondata(wid: str, udid: str | None = None) -> RespBody:
         else:
             return RespBody(status="parsererr", msg="melon: title not found")
         media_els = page.xpath('//div[@id="thumbs"]/ul/li/div/a')
-        media: list[str] | None = [f"https:{a.attrib['href']}" for a in media_els if a.attrib.get("href")]
+        media: list[str] | None = [
+            f"https:{a.attrib['href']}" for a in media_els if a.attrib.get("href")
+        ]
         if not media:
             media = None
         cover_el = page.xpath('/html/head/meta[@property="og:image"]')

@@ -43,7 +43,12 @@ class AutocompleteDAO:
         )
         rows = (await self.session.execute(stmt)).scalars().all()
         return [
-            {"name": r.name, "origin": r.album or None, "name_jp": r.name_jp, "type": r.type}
+            {
+                "name": r.name,
+                "origin": r.album or None,
+                "name_jp": r.name_jp,
+                "type": r.type,
+            }
             for r in rows
         ]
 

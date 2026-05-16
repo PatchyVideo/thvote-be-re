@@ -8,8 +8,6 @@ Provides a singleton-style Redis connection used across the application:
 
 from __future__ import annotations
 
-from typing import Any
-
 import redis.asyncio as aioredis
 
 from src.common.config import get_settings

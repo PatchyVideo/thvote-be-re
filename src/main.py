@@ -92,6 +92,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     if settings.nacos_enabled:
         from .common.nacos import stop_nacos_watcher
+
         await stop_nacos_watcher()
         logger.info("Nacos watcher stopped")
     await close_redis()
@@ -153,7 +154,9 @@ def create_app() -> FastAPI:
         return {
             "status": "ok",
             "message": "Configuration and database engine reloaded",
-            "database_url": new_settings.database.db_host + ":" + str(new_settings.database.db_port),
+            "database_url": new_settings.database.db_host
+            + ":"
+            + str(new_settings.database.db_port),
             "database_name": new_settings.database.db_name,
             "vote_year": new_settings.vote_year,
         }
@@ -177,6 +180,7 @@ def create_app() -> FastAPI:
         group = group or settings.nacos_group
 
         from .common.nacos import discover_service_from_nacos
+
         instances = await discover_service_from_nacos(
             service_name=service_name,
             group=group,
@@ -217,6 +221,7 @@ def create_app() -> FastAPI:
         """
         settings = get_settings()
         from .common.nacos import get_service_register
+
         reg = get_service_register()
         if reg is None:
             return {

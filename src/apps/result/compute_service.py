@@ -32,7 +32,9 @@ class ComputeInProgressError(AppException):
 
 
 class ComputeService:
-    def __init__(self, compute_dao: ComputeDAO, redis: aioredis.Redis, settings: Settings):
+    def __init__(
+        self, compute_dao: ComputeDAO, redis: aioredis.Redis, settings: Settings
+    ):
         self.dao = compute_dao
         self.redis = redis
         self.settings = settings
@@ -44,7 +46,7 @@ class ComputeService:
         return f"compute_lock:{vote_year}"
 
     async def compute_all(self, vote_year: int) -> dict:
-        """Run full computation pipeline for the given vote_year. Writes results to Redis."""
+        """Run full computation pipeline for vote_year. Writes results to Redis."""
         lock_key = self._lock_key(vote_year)
         acquired = await self.redis.set(lock_key, "1", nx=True, px=LOCK_TTL_MS)
         if not acquired:
@@ -79,13 +81,26 @@ class ComputeService:
 
             # Compute
             gender_map = compute_gender_map(
-                q_votes, s.gender_question_id, s.gender_male_value, s.gender_female_value
+                q_votes,
+                s.gender_question_id,
+                s.gender_male_value,
+                s.gender_female_value,
             )
             char_ranking, char_global = compute_ranking(
-                char_votes, char_candidates, gender_map, char_hist, vote_start, total_hours
+                char_votes,
+                char_candidates,
+                gender_map,
+                char_hist,
+                vote_start,
+                total_hours,
             )
             music_ranking, music_global = compute_ranking(
-                music_votes, music_candidates, gender_map, music_hist, vote_start, total_hours
+                music_votes,
+                music_candidates,
+                gender_map,
+                music_hist,
+                vote_start,
+                total_hours,
             )
             cp_ranking, cp_global = compute_cp_ranking(
                 cp_votes, gender_map, cp_hist, vote_start, total_hours
@@ -97,7 +112,9 @@ class ComputeService:
                 | {uid for uid, _, _ in cp_votes}
                 | {uid for uid, _ in q_votes}
             )
-            global_stats = compute_global_stats(char_votes, music_votes, cp_votes, q_votes, gender_map)
+            global_stats = compute_global_stats(
+                char_votes, music_votes, cp_votes, q_votes, gender_map
+            )
             completion_rates = compute_completion_rates(
                 char_votes, music_votes, cp_votes, q_votes, all_voters
             )
@@ -109,12 +126,16 @@ class ComputeService:
             pipe = self.redis.pipeline()
             pipe.set(self._key(vote_year, "chars", "ranking"), json.dumps(char_ranking))
             pipe.set(self._key(vote_year, "chars", "global"), json.dumps(char_global))
-            pipe.set(self._key(vote_year, "musics", "ranking"), json.dumps(music_ranking))
+            pipe.set(
+                self._key(vote_year, "musics", "ranking"), json.dumps(music_ranking)
+            )
             pipe.set(self._key(vote_year, "musics", "global"), json.dumps(music_global))
             pipe.set(self._key(vote_year, "cps", "ranking"), json.dumps(cp_ranking))
             pipe.set(self._key(vote_year, "cps", "global"), json.dumps(cp_global))
             pipe.set(self._key(vote_year, "global_stats"), json.dumps(global_stats))
-            pipe.set(self._key(vote_year, "completion_rates"), json.dumps(completion_rates))
+            pipe.set(
+                self._key(vote_year, "completion_rates"), json.dumps(completion_rates)
+            )
             pipe.set(self._key(vote_year, "covote", "chars"), json.dumps(char_covote))
             pipe.set(self._key(vote_year, "covote", "musics"), json.dumps(music_covote))
             for qid, data in paper_results.items():
@@ -122,7 +143,9 @@ class ComputeService:
             await pipe.execute()
 
             duration = round(time.monotonic() - t0, 2)
-            logger.info("Compute complete for vote_year=%d in %.2fs", vote_year, duration)
+            logger.info(
+                "Compute complete for vote_year=%d in %.2fs", vote_year, duration
+            )
             return {
                 "ok": True,
                 "vote_year": vote_year,

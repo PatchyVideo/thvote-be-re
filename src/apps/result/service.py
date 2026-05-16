@@ -25,16 +25,22 @@ class ResultService:
         return {"rankings": ranking, "global": global_stats}
 
     async def get_trends(self, query: TrendQuery) -> dict:
-        return await self.result_dao.get_trend(query.category, query.name, query.vote_year)
+        return await self.result_dao.get_trend(
+            query.category, query.name, query.vote_year
+        )
 
     async def get_global_stats(self, query: GlobalStatsQuery) -> dict:
         return await self.result_dao.get_global_stats(query.vote_year)
 
     async def get_single_entity(self, query: SingleQuery) -> dict:
-        return await self.result_dao.get_single_entity(query.category, query.name, query.vote_year)
+        return await self.result_dao.get_single_entity(
+            query.category, query.name, query.vote_year
+        )
 
     async def get_reasons(self, query: ReasonQuery) -> dict:
-        reasons = await self.result_dao.get_reasons(query.category, query.name, query.vote_year)
+        reasons = await self.result_dao.get_reasons(
+            query.category, query.name, query.vote_year
+        )
         return {"reasons": reasons}
 
     async def get_covote(self, query: CovoteQuery) -> dict:
@@ -45,7 +51,11 @@ class ResultService:
         return await self.result_dao.get_completion_rates(query.vote_year)
 
     async def get_questionnaire(self, query: QuestionnaireQuery) -> dict:
-        return await self.result_dao.get_questionnaire(query.question_id, query.vote_year)
+        return await self.result_dao.get_questionnaire(
+            query.question_id, query.vote_year
+        )
 
     async def get_questionnaire_trend(self, query: QuestionnaireTrendQuery) -> dict:
-        return await self.result_dao.get_questionnaire_trend(query.question_id, query.vote_year)
+        return await self.result_dao.get_questionnaire_trend(
+            query.question_id, query.vote_year
+        )

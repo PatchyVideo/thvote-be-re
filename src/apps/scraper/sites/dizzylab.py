@@ -53,7 +53,7 @@ async def dizzydata(wid: str, udid: str | None = None) -> RespBody:
             s = t.find("发布于")
             e = t.find("日")
             if s != -1 and e != -1:
-                time_str = t[s + 3: e + 1]
+                time_str = t[s + 3 : e + 1]
                 try:
                     dt_struct = dt.datetime.strptime(time_str, "%Y年%m月%d日")
                     ptime = dt_struct.strftime("%Y-%m-%d %H:%M:%S +0800")

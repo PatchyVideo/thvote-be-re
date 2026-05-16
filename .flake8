@@ -1,0 +1,6 @@
+[flake8]
+max-line-length = 88
+extend-ignore = E203
+per-file-ignores =
+    src/main.py: E402
+    src/common/redis.py: E402
