@@ -28,6 +28,9 @@ class User(Base):
     nickname: Mapped[str | None] = mapped_column(String(64), nullable=True)
     pfp: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
+    thbwiki_uid: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    qq_openid: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
     removed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     register_date: Mapped[DateTime] = mapped_column(
