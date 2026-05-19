@@ -411,13 +411,19 @@ class UserService:
             )
 
     async def _require_session_token(self, user_token: str) -> User:
-        """Decode a session token and return the User, raising UnauthorizedError if invalid."""
+        """Decode a session token and return the User.
+
+        Raises UnauthorizedError if the token is missing, invalid, or the user
+        is removed.
+        """
         if not user_token:
             raise UnauthorizedError("INVALID_SESSION_TOKEN", "Missing session token")
         try:
             payload = self.auth.decode_session_token(user_token)
         except AppException as exc:
-            raise UnauthorizedError("INVALID_SESSION_TOKEN", "Invalid session token") from exc
+            raise UnauthorizedError(
+                "INVALID_SESSION_TOKEN", "Invalid session token"
+            ) from exc
         user = await self.user_dao.get_by_id(payload.user_id)
         if user is None or user.removed:
             raise UnauthorizedError("INVALID_SESSION_TOKEN", "User not found")
@@ -447,7 +453,8 @@ class UserService:
 
         Raises:
             UnauthorizedError: if user_token is invalid
-            AppException(SSO_ID_ALREADY_BOUND, 409): if the SSO ID belongs to another user
+            AppException(SSO_ID_ALREADY_BOUND, 409): if the SSO ID belongs
+                to another user
         """
         user = await self._require_session_token(user_token)
 

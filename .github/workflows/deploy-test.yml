@@ -119,19 +119,6 @@ jobs:
             echo "exist=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: 设置 Python
-        if: steps.check_tests.outputs.exist == 'true'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: 安装依赖
-        if: steps.check_tests.outputs.exist == 'true'
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e '.[test]'
-          pip install pytest pytest-asyncio httpx
-
       - name: 应用 Alembic 迁移（针对真实 Postgres，作为迁移脚本的烟雾测试）
         if: steps.check_tests.outputs.exist == 'true'
         env:
@@ -255,16 +242,16 @@ jobs:
             fi
 
             # 写入 .env - Nacos 配置从 Secret 获取，敏感配置从 Nacos 获取
-            cat > .env << 'ENVEOF'
-            NACOS_ENABLED=true
-            NACOS_SERVER_ADDRS=${{ secrets.NACOS_SERVER_ADDRS }}
-            NACOS_NAMESPACE=${{ secrets.TEST_NACOS_NAMESPACE }}
-            NACOS_GROUP=DEFAULT_GROUP
-            NACOS_DATA_ID=thvote_be
-            NACOS_USERNAME=${{ secrets.TEST_NACOS_USERNAME }}
-            NACOS_PASSWORD=${{ secrets.TEST_NACOS_PASSWORD }}
-            BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ env.BACKEND_TAG }}
-            ENVEOF
+            cat > .env <<ENVEOF
+NACOS_ENABLED=true
+NACOS_SERVER_ADDRS=${{ secrets.NACOS_SERVER_ADDRS }}
+NACOS_NAMESPACE=${{ secrets.TEST_NACOS_NAMESPACE }}
+NACOS_GROUP=DEFAULT_GROUP
+NACOS_DATA_ID=thvote_be
+NACOS_USERNAME=${{ secrets.TEST_NACOS_USERNAME }}
+NACOS_PASSWORD=${{ secrets.TEST_NACOS_PASSWORD }}
+BACKEND_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ env.BACKEND_TAG }}
+ENVEOF
 
             # 首次部署或 compose 缺少 Nacos 配置时重写 docker-compose.yml
             RECREATE_COMPOSE="false"
@@ -274,87 +261,83 @@ jobs:
               RECREATE_COMPOSE="true"
             fi
             if [ "$RECREATE_COMPOSE" = "true" ]; then
-              cat > docker-compose.yml << 'COMPOSEEOF'
-            version: "3.8"
+              cat > docker-compose.yml <<'COMPOSEEOF'
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: thvote-redis
+    restart: unless-stopped
+    networks:
+      - thvote-net
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
-            x-common-backend: &common_backend
-              restart: unless-stopped
-              networks:
-                - thvote-net
-              healthcheck:
-                test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-                interval: 15s
-                timeout: 5s
-                retries: 5
-                start_period: 20s
+  backend:
+    image: ${BACKEND_IMAGE}
+    container_name: thvote-backend
+    restart: unless-stopped
+    networks:
+      - thvote-net
+    env_file:
+      - .env
+    environment:
+      NACOS_ENABLED: "true"
+      NACOS_SERVER_ADDRS: "${NACOS_SERVER_ADDRS}"
+      NACOS_NAMESPACE: "${NACOS_NAMESPACE}"
+      NACOS_GROUP: "DEFAULT_GROUP"
+      NACOS_DATA_ID: "thvote_be"
+      NACOS_USERNAME: "${NACOS_USERNAME}"
+      NACOS_PASSWORD: "${NACOS_PASSWORD}"
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "8000"
+    ports:
+      - "18000:8000"
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
-            services:
-              redis:
-                image: redis:7-alpine
-                container_name: thvote-redis
-                <<: *common_backend
-                command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-                volumes:
-                  - redis-data:/data
-                healthcheck:
-                  test: ["CMD", "redis-cli", "ping"]
-                  interval: 10s
-                  timeout: 3s
-                  retries: 5
+networks:
+  thvote-net:
+    name: thvote-net
+    external: true
 
-              backend:
-                image: ${BACKEND_IMAGE}
-                container_name: thvote-backend
-                <<: *common_backend
-                env_file:
-                  - .env
-                environment:
-                  NACOS_ENABLED: "true"
-                  NACOS_SERVER_ADDRS: "${NACOS_SERVER_ADDRS}"
-                  NACOS_NAMESPACE: "${NACOS_NAMESPACE}"
-                  NACOS_GROUP: "DEFAULT_GROUP"
-                  NACOS_DATA_ID: "thvote_be"
-                  NACOS_USERNAME: "${NACOS_USERNAME}"
-                  NACOS_PASSWORD: "${NACOS_PASSWORD}"
-                  APP_HOST: "0.0.0.0"
-                  APP_PORT: "8000"
-                ports:
-                  - "18000:8000"
-                volumes:
-                  - ./logs:/app/logs
-                depends_on:
-                  redis:
-                    condition: service_healthy
-                profiles:
-                  - backend
-
-            networks:
-              thvote-net:
-                name: thvote-net
-                external: true
-
-            volumes:
-              redis-data:
-            COMPOSEEOF
+volumes:
+  redis-data:
+COMPOSEEOF
               echo "docker-compose.yml 已按 Nacos 配置中心重建（使用阿里云 RDS）"
             else
-              sed -i "s|image: .*/thvote-backend:.*|image: ${BACKEND_IMAGE}|" docker-compose.yml
+              sed -i "s|image: .*thvote-backend:.*|image: ${BACKEND_IMAGE}|" docker-compose.yml
               echo "docker-compose.yml 已更新（仅替换 backend 镜像 tag）"
             fi
 
             # 拉取镜像
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ env.BACKEND_TAG }} || true
 
-            # 仅当 redis 未运行时才启动（postgres 使用阿里云 RDS）
+            # 仅当 redis 未运行时才启动
             if docker ps --format '{{.Names}}' | grep -q '^thvote-redis$'; then
               echo "redis 正在运行，跳过启动"
             else
-              docker-compose up -d redis
+              docker compose up -d redis
             fi
 
             # 等 Postgres 真正可连
             for i in $(seq 1 30); do
-              if docker exec thvote-postgres pg_isready -U "${POSTGRES_USER:-thvote_test}" >/dev/null 2>&1; then
+              if docker exec thvote-postgres pg_isready -U thvote >/dev/null 2>&1; then
+                echo "postgres 就绪"
                 break
               fi
               echo "等待 postgres 就绪... ($i/30)"
@@ -362,17 +345,25 @@ jobs:
             done
 
             # 应用 Alembic 迁移（幂等：已是最新版会立即返回）
-            # 用 backend 镜像里的 alembic 跑，避免在部署机额外装 Python 环境
+            # 用 backend 镜像里的 alembic 跑，DATABASE_URL 由 Nacos 下发
             echo "执行 alembic upgrade head ..."
-            docker-compose run --rm \
-              -e DATABASE_URL="postgresql+asyncpg://${POSTGRES_USER:-thvote_test}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-thvote_test}" \
-              backend alembic upgrade head
+            docker run --rm \
+              --network thvote-net \
+              -e NACOS_ENABLED=true \
+              -e NACOS_SERVER_ADDRS="${NACOS_SERVER_ADDRS}" \
+              -e NACOS_NAMESPACE="${NACOS_NAMESPACE}" \
+              -e NACOS_GROUP=DEFAULT_GROUP \
+              -e NACOS_DATA_ID=thvote_be \
+              -e NACOS_USERNAME="${NACOS_USERNAME}" \
+              -e NACOS_PASSWORD="${NACOS_PASSWORD}" \
+              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ env.BACKEND_TAG }} \
+              alembic upgrade head
 
-            # 启动后端（直接指定 backend 服务，避免老版本 docker-compose 不支持 --profile）
-            docker-compose up -d backend
+            # 启动后端
+            docker compose up -d backend
 
             # 等待健康检查
-            for i in $(seq 1 30); do
+            for i in $(seq 1 40); do
               BACKEND_HEALTH="$(docker inspect -f '{{.State.Health.Status}}' thvote-backend 2>/dev/null || true)"
               if [ "$BACKEND_HEALTH" = "healthy" ]; then
                 echo "后端就绪"
@@ -380,18 +371,18 @@ jobs:
               fi
               if [ "$BACKEND_HEALTH" = "unhealthy" ]; then
                 echo "后端已进入 unhealthy 状态"
-                docker-compose logs backend | tail -50
+                docker compose logs backend | tail -50
                 exit 1
               fi
-              echo "等待后端启动... ($i/30), 当前状态: ${BACKEND_HEALTH:-starting}"
-              sleep 2
+              echo "等待后端启动... ($i/40), 当前状态: ${BACKEND_HEALTH:-starting}"
+              sleep 3
             done
 
             # 验证
             BACKEND_HEALTH="$(docker inspect -f '{{.State.Health.Status}}' thvote-backend 2>/dev/null || true)"
             if [ "$BACKEND_HEALTH" != "healthy" ]; then
               echo "后端健康检查失败，当前状态: ${BACKEND_HEALTH:-unknown}"
-              docker-compose logs backend | tail -50
+              docker compose logs backend | tail -50
               exit 1
             fi
 

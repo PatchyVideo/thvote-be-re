@@ -51,9 +51,7 @@ line-length = 88
 [tool.setuptools.packages.find]
 where = ["."]
 include = [
-    "common*",
-    "apps*",
-    "api*",
+    "src*",
 ]
 exclude = [
     "local_db*",
