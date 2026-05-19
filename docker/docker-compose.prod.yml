@@ -1,0 +1,55 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: thvote-redis
+    restart: unless-stopped
+    networks:
+      - thvote-net
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    image: ${BACKEND_IMAGE}
+    container_name: thvote-backend
+    restart: unless-stopped
+    networks:
+      - thvote-net
+    env_file:
+      - .env
+    environment:
+      NACOS_ENABLED: "true"
+      NACOS_SERVER_ADDRS: "${NACOS_SERVER_ADDRS}"
+      NACOS_NAMESPACE: "${NACOS_NAMESPACE}"
+      NACOS_GROUP: "DEFAULT_GROUP"
+      NACOS_DATA_ID: "thvote_be"
+      NACOS_USERNAME: "${NACOS_USERNAME}"
+      NACOS_PASSWORD: "${NACOS_PASSWORD}"
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "8000"
+    ports:
+      - "18000:8000"
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+networks:
+  thvote-net:
+    name: thvote-net
+    external: true
+
+volumes:
+  redis-data:
