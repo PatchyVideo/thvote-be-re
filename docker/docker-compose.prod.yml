@@ -36,9 +36,6 @@ services:
       - "18000:8000"
     volumes:
       - ./logs:/app/logs
-    depends_on:
-      redis:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s

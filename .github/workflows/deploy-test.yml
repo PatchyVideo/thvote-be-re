@@ -281,7 +281,7 @@ jobs:
             if docker ps --format '{{.Names}}' | grep -q '^thvote-redis$'; then
               echo "redis 正在运行，跳过启动"
             else
-              docker compose up -d redis
+              docker-compose up -d redis
             fi
 
             # 等 Postgres 就绪
@@ -296,20 +296,10 @@ jobs:
 
             # 应用 Alembic 迁移（DATABASE_URL 由 Nacos 下发）
             echo "执行 alembic upgrade head ..."
-            docker run --rm \
-              --network thvote-net \
-              -e NACOS_ENABLED=true \
-              -e NACOS_SERVER_ADDRS="${NACOS_SERVER_ADDRS}" \
-              -e NACOS_NAMESPACE="${NACOS_NAMESPACE}" \
-              -e NACOS_GROUP=DEFAULT_GROUP \
-              -e NACOS_DATA_ID=thvote_be \
-              -e NACOS_USERNAME="${NACOS_USERNAME}" \
-              -e NACOS_PASSWORD="${NACOS_PASSWORD}" \
-              "${BACKEND_IMAGE}" \
-              alembic upgrade head
+            docker run --rm --network thvote-net -e NACOS_ENABLED=true -e NACOS_SERVER_ADDRS="${NACOS_SERVER_ADDRS}" -e NACOS_NAMESPACE="${NACOS_NAMESPACE}" -e NACOS_GROUP=DEFAULT_GROUP -e NACOS_DATA_ID=thvote_be -e NACOS_USERNAME="${NACOS_USERNAME}" -e NACOS_PASSWORD="${NACOS_PASSWORD}" "${BACKEND_IMAGE}" alembic upgrade head
 
             # 启动后端
-            docker compose up -d backend
+            docker-compose up -d backend
 
             # 等待健康检查
             for i in $(seq 1 40); do
@@ -320,7 +310,7 @@ jobs:
               fi
               if [ "$BACKEND_HEALTH" = "unhealthy" ]; then
                 echo "后端已进入 unhealthy 状态"
-                docker compose logs backend | tail -50
+                docker-compose logs backend | tail -50
                 exit 1
               fi
               echo "等待后端启动... ($i/40), 当前状态: ${BACKEND_HEALTH:-starting}"
@@ -331,7 +321,7 @@ jobs:
             BACKEND_HEALTH="$(docker inspect -f '{{.State.Health.Status}}' thvote-backend 2>/dev/null || true)"
             if [ "$BACKEND_HEALTH" != "healthy" ]; then
               echo "后端健康检查失败，当前状态: ${BACKEND_HEALTH:-unknown}"
-              docker compose logs backend | tail -50
+              docker-compose logs backend | tail -50
               exit 1
             fi
 
