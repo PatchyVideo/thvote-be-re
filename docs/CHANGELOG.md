@@ -3,7 +3,172 @@
 > 仓库级变更记录，按 CLAUDE.md §4 维护。日期格式 `YYYY-MM-DD`。
 >
 > 创建日期：2026-04-27
-> 最后更新：2026-05-12（合入 zfq_dev：Apollo→Nacos、移除 docker/、workflow 重构）
+
+> 最后更新：2026-06-07（GraphQL submit 桥接:投票提交/回读适配前端契约）
+
+## [2026-06-07] GraphQL Submit 桥接(投票提交/回读适配前端契约)
+
+### Added
+- `src/api/graphql/resolvers/submit_bridge.py`:按前端(旧 Rust gateway)契约新增 5 个 mutation(`submitCharacterVote/submitMusicVote/submitCPVote/submitPaperVote/submitDojin`,入参 `content: …GQL!`,返回 `Boolean`)与 5 个回读 query(`getSubmit*Vote(voteToken)`)。resolver 内 `voteToken`→`user_id`(即 vote_id),meta(时间/IP)服务端生成,不信任客户端;限流与提交锁按 token 身份。`DojinType` GraphQL 枚举(入库存枚举名)。SDL 契约由 `tests/unit/test_submit_bridge_schema.py` 钉死(21 例)。
+- `src/api/graphql/errors.py`:错误映射工具从 resolvers/user.py 下沉共享;`_extensions` 支持异常自带 `human_readable_message` 优先于文案表;文案表新增 `SUBMIT_LOCKED`。
+- `AppException` 增可选 `human_readable_message`(向后兼容)。
+
+### Fixed
+- `validate_paper` 重写为「合法 JSON + UTF-8 ≤256KB」:旧实现要求"非空列表+整数 id",是按想象格式写的,会拒掉前端真实载荷(嵌套对象);统计侧不读原始 papers_json,无下游结构依赖。REST 路径同步受益。错误文案改为面向用户("问卷数据不是合法 JSON，请重试"/"问卷数据过大")。
+- 修复 `test_legacy_token_status` 两例日期依赖(session token 在 freeze 块外签发)。
+
+### Changed / ⚠️ 唯一旧字段例外
+- **`submitDojin` 新旧同名**:GraphQL 不允许同名字段并存,桥版本(`content: DojinSubmitGQL!`→`Boolean!`)经 MRO 取代旧版本(`input:`→`SubmitSuccess!`)。旧版本本就因 `SubmitService(db)` 传参错误不可用,无实际调用方。连带效应:旧版本独占的输入类型 `DojinSubmitInput`/`DojinSubmitMutationInput` 因无字段引用而从 SDL 剪除(strawberry 只输出可达类型)。其余旧字段(`submitCharacter(input:)` ×4、`getCharacterSubmit(voteId)` ×7)按决策原样保留。
+
+### 兼容性 / 刻意差异(记录)
+- service 校验错误(`ValueError`)以 `error_kind=INVALID_CONTENT` + 中文原文(`human_readable_message`)返回;锁冲突=`SUBMIT_LOCKED`(429)。
+- 提交锁 key 为全局 `lock-submit-{user_id}`(对齐 Python REST 现状),与 Rust 的按类别 `lock-submit_character_v1-{vote_id}` 不同——刻意沿用 Python 约定。
+- 回读 query 不限流(与 REST get-* 端点一致的刻意不对称;读是幂等的)。
+- 桥未做 user 桥那种 per-IP 预解码限流:伪造 token 仅消耗 JWT 验签 CPU,提交频率天然受限,刻意从简。
+
+## [2026-05-31] GraphQL 全局错误格式化器（保证 errors 必带 extensions）
+
+### Added
+- 新增 `src/api/graphql/http.py::AppGraphQLRouter`,override `process_result` 给**每一个**出站 GraphQL 错误兜底补 `extensions`(`{service,url,error_kind,error_message,human_readable_message,upstream_response_string}`)。`src/main.py` 改用它挂载 `/graphql`。
+
+### Fixed
+- 此前 `map_app_errors` 只覆盖被它包住的 resolver 内部错误;**schema 校验错误**(如 `Cannot query field 'X'`)、parse 错误、漏套 wrapper 的 resolver 异常会**无 `extensions`** 到达前端,导致前端 `extensions.error_kind` 直接崩(`Uncaught TypeError: extensions is undefined`)。现统一兜底:校验/parse 错误 → `error_kind="BAD_REQUEST"`;漏网运行时异常 → `error_kind="INTERNAL_ERROR"` 且 message 脱敏为 `Internal server error`(不泄露 SQL/SDK 细节,与 `map_app_errors` 的 INTERNAL_ERROR 处理一致)。
+
+### 兼容性
+- 已被 `map_app_errors` 赋了 `error_kind` 的错误**原样保留**,不覆盖。
+- 纯增强,不改任何 query/mutation 行为;前端可选链兜底(Touhou-Vote `4df20d4`)与此构成防御纵深。
+- 与 B-019(错误响应 shape 统一)同向。
+
+## [2026-05-31] 补齐账号管理 GraphQL mutation + 错误中文文案
+
+### Added
+- 新增 4 个 GraphQL mutation,适配前端 `UserSettings.vue`:`updateNickname` / `updatePassword`(`oldPassword` 可选) / `updatePhone` / `updateEmail`。此前后端只在 service/REST(`/api/v1/user/update-*`)实现,GraphQL 未适配,前端调用直接报 `Cannot query field 'updatePassword'`(并触发前端 `extensions is undefined` 崩溃)。逻辑仍在 `UserService`,本次只做 GraphQL→service 的桥接(与登录 mutation 同模式),并复用 REST 同款限流(per-IP 30/60s + per-user 5/60s;改密码 5/300s,B-012)。
+- `_extensions` 现按 `error_kind` 填充 `human_readable_message`(中文文案表)。此前恒为 `None`,导致前端改密码/改昵称兜底分支显示"原因:null"。
+
+### Changed
+- `map_app_errors` 新增可选 `remap` 参数:把 service 的通用 `USER_ALREADY_EXIST` 翻译成前端期望的 `PHONE_IN_USE` / `EMAIL_IN_USE`(`human_readable_message` 跟随 remap 后的 kind)。
+
+### 兼容性
+- 纯新增/增强,不改既有 mutation 与 REST。`removeVoter`(注销)前端未调用,未桥接。
+- 已知未覆盖(非阻塞):投票提交(submit)路径前端用 `submitCharacterVote(content:...)` 等,与后端 `submitCharacter(input:...)` 名称+入参不一致,属同类 GraphQL 适配缺口,另行处理。
+
+
+## [2026-05-31] session_token 有效期可配置，默认 7 → 30 天
+
+### Changed
+- `session_token` 有效期从写死的 **7 天**改为可配置:env/Nacos `SESSION_EXPIRE_DAYS`，默认 **30**。语义=用户多久不活跃就要重新发验证码登录;调长以**减少短信发送**与重复登录,权衡是会话被盗用窗口更长。`src/common/security/jwt.py:create_session_token` 改为读 `Settings.session_expire_days`。
+
+### 兼容性 / 注意
+- 已签发的旧 token 不受影响(各自带自己的 `exp`);仅新登录按新值签发。
+- 改值需**重启容器**生效(`Settings` 是 `lru_cache` 单例,见 BACKLOG B-017)。
+- `voteToken` 仍到投票季结束(`VOTE_END_ISO`),不受此项影响。
+
+## [2026-05-31] 修复登录成功后又被弹回登录页（REST 契约漂移）
+
+### Added
+- 新增 legacy-compat 路由层 `src/api/rest/legacy/`，挂在后端**根路径**（无 `/api/v1` 前缀），首个端点 `POST /user-token-status`，复刻旧 Rust gateway 契约 `{status:"valid"|"invalid", voting_status, papers_json}`（HTTP 恒 200）。
+
+### Fixed
+- **登录后闪现投票页又被弹回登录页**:登录走 GraphQL 成功,但前端 bootstrap 的 `checkLoginStatus()` 会 `POST /v11-be/user-token-status`,而该扁平路径在 Python 后端是 404(真实路由在 `/api/v1/user/token-status`,且原实现返回空体而非 `{status:"valid"}`)。前端拿不到 `status:"valid"` 就 `deleteUserData()` 登出 → bounce。新增的 legacy-compat 端点同时修好**路径**和**响应 shape**,前端无需改动。
+
+### 兼容性 / 迁移
+- 纯新增,不影响 `/api/v1` 与 GraphQL 现有路由;旧 `POST /api/v1/user/token-status`（空体）保留。
+- 这是迁移期兼容垫片,**移除条件**已记入 BACKLOG **B-033** 与 `docs/migration/legacy-rest-compat.md`:Rust gateway 下线 + 前端 REST 迁移到 `/api/v1`。
+- 已知未覆盖:`/v11-be/doujin/api` 同类 404 本次未处理。
+
+## [2026-05-31] 修复部署用旧镜像导致迁移不生效
+
+### Fixed
+- 部署脚本 `docker pull "${BACKEND_IMAGE}" || true` 在拉取失败时**静默使用本地旧镜像**,加上浮动 `:prod`/`:test` tag,导致 `alembic upgrade head` 可能跑旧镜像里的迁移(只到 0004),deploy 却报成功——迁移/代码悄悄没更新(0005 因此没生效,`alembic_version` 卡在 0004)。
+- 改为:**用本次构建产出的不可变 digest**(`...-backend@<digest>`)部署;`docker pull` **去掉 `|| true`**(重试一次后仍失败则硬红终止),不再静默用旧镜像。移除已无用的 `BACKEND_TAG`。
+
+### 注意
+- 排查期间已直接对 RDS 补齐 `user` 表缺失列解锁登录;本修复保证后续迁移/镜像可靠交付。`alembic/**` 也已纳入 push 触发路径(迁移改动会触发部署)。
+
+---
+
+## [2026-05-31] 修复 user 表 schema 漂移(migration 0005)
+
+### Fixed
+- 测试库 `user` 表缺 `phone_verified` 等 0001 列(根因:`env.py` 的 `_maybe_baseline_existing_schema` 把一张残缺旧表自动 stamp 成 0001,0001 的建表从未真正执行),导致 `loginPhone` 报 `UndefinedColumnError` → `INTERNAL_ERROR`。
+- 新增 migration `0005_reconcile_user_columns`:幂等 `ALTER TABLE "user" ADD COLUMN IF NOT EXISTS ...` 补齐所有 user 列(Postgres-only,非 PG 方言 no-op;干净库上全部 no-op)。
+
+### 注意
+- 这是针对 `user` 表的定向补丁以解锁登录;其他表可能有同源漂移,根治仍是在有权限时空库重建(BACKLOG B-025/B-026)。
+
+---
+
+## [2026-05-31] PNVS 短信模板参数可配置
+
+### Fixed
+- PNVS 之前写死 `template_param='{"code":"##code##"}'`,对含额外变量(如有效期 `min`)的短信模板会被阿里云判「模板内容与模板参数不匹配」(SMS_SEND_FAILED)。改为可配置 `ALIYUN_PNVS_TEMPLATE_PARAM`(默认仍为 `{"code":"##code##"}`,行为不变)。
+- PNVS 频控码 `biz.FREQUENCY`(同号码发送过频)之前落到 `SMS_SEND_FAILED` 兜底,前端只显示"网络错误"。现归类为 `REQUEST_TOO_FREQUENT`,前端正确显示"请求过于频繁"。同时兜住 `*_LIMIT_CONTROL` / 含 `FREQUENCY` 的频控变体。
+- 校验路径 `_parse_check_response` / `check_sms_verify_code` 抛 `SMS_VERIFY_FAILED` 时现在也带上游 `upstream_response_string`/`error_message`(此前缺,code review M3 遗留),便于排查"验证码失效/过期"类校验失败的真实阿里云返回码。
+
+### Added
+- `Settings.aliyun_pnvs_template_param`(env `ALIYUN_PNVS_TEMPLATE_PARAM`)。模板有 `min` 等变量时填 `{"code":"##code##","min":"5"}`。
+
+### 兼容性
+- 向后兼容:未设置时维持原默认值。
+
+---
+
+## [2026-05-31] CI 手动触发部署 + 登录配置清单文档
+
+### Changed
+- `deploy-test.yml`:`build-backend` / `deploy-test` 现在也响应 `workflow_dispatch`（之前 deploy 仅限 push）。job `if` 改为显式校验依赖结果，`skip_tests=true` 时仍可构建/部署。
+- 部署步骤改 `docker-compose up -d --force-recreate backend`：即使镜像未变也重建容器，使**改完 Nacos 配置后手动触发即可让配置生效**，无需 SSH 上服务器 `docker restart`。
+
+### Added
+- `docs/operations/login-config-checklist.md`:登录模块所需 Nacos 配置项**待填清单**（按登录方式分组、必填/可选、JSON 骨架、R-NACOS `:10848` 访问入口、阿里云参数获取指引）。
+
+### Changed（文档）
+- `docs/operations/nacos-config-center.md` §四:补 R-NACOS 双控制台（协议口 `:8848` vs 鉴权控制台 `:10848`）访问方式;注明测试环境 dataId 为 `thvote_be`（下划线）。
+- `docs/operations/cicd-pipeline.md` §6.2:更新手动触发行为说明。
+
+### 兼容性
+- 无破坏:push 触发行为不变;新增的是手动触发可部署的能力。
+
+---
+
+## [2026-05-30] GraphQL 登录 mutation 桥接
+
+### Added
+- GraphQL `UserMutation`：`requestPhoneCode` / `requestEmailCode` / `loginPhone` / `loginEmail` / `loginEmailPassword`，包装现有 `UserService`，对齐前端 `LoginBox.vue` 既定契约。
+- `LoginResult { user: VoterFE, sessionToken, voteToken }` GraphQL 类型。
+
+### Changed
+- `AppException` 增加可选 `error_message` / `upstream_response_string`（向后兼容）。
+- PNVS 发送失败时透传阿里云上游 code/message（复刻 Rust `ServiceError` 诊断信息）。
+- GraphQL 错误 `extensions` 复刻 Rust shape：`{service,url,error_kind,error_message,human_readable_message,upstream_response_string}`。
+
+### 兼容性
+- 纯增量：REST `/user/*` 与 submit/result GraphQL 行为不变。
+- GraphQL schema 新增 5 个 mutation 字段，无破坏。
+
+### 已知差异
+- `login_email_password` 对"用户不存在"返回 `INCORRECT_PASSWORD`（防枚举），前端 `NOT_FOUND` 分支不触发——刻意保留。
+- 老用户密码登录仍依赖 B-008 历史数据回填（未做）。
+
+---
+
+## [2026-05-30] 文档对账：BACKLOG / REFACTOR_TODO 与 main 同步
+
+> 不涉及代码变更，仅修正两份"进度仪表盘"与 `main`（HEAD `d4a3247`，2026-05-19）的偏差。
+> 背景：`BACKLOG.md` 停在 2026-05-12、`REFACTOR_TODO.md` 停在 2026-05-13，而 `feat/user-and-verify` 期间（05-13..05-17）完成的一批 backlog 已合入 main 但未回标。
+
+### Changed
+- **`docs/BACKLOG.md`**：状态表标记以下为 ✅ 已完成（附 commit）：B-003(`8724e39`)、B-004/009/012(`9684643`)、B-007 SSO(`19d659f`..`e19d941`)、B-014/015/016(`581102f`)、B-017(`ab7a642`)、B-018(`fe993e4`)、B-025(`76facaa`)、B-027(`6d73de6`)、B-029(`0e340e9`)、B-030(`fce832a`)。B-011/B-026 阻塞已解除（依赖项 B-007/B-025 完成）→ 移入「可立即做」。重写「🟢/🟡/🔴」分组（去掉已失效的"等 PR merge"维度）。
+- **`REFACTOR_TODO.md`**：用户模块补 SSO 已落地；autocomplete 由 ❌ 修正为 ⚠️（角色/音乐已实现 ILIKE，仅 `search_cps()` 仍空）；scraper 头部 ⚠️→✅；migration 表补 0004（SSO 列）；重排「建议实施顺序」并修复一处 markdown 残缺块。
+
+### Fixed（文档准确性）
+- 修正 B-008 描述：此前列为"可立即做"，实为**仅设计稿完成、实现未做**（`scripts/` 仍空）。
+- 修正 B-028：2026-05-19 的 3 个 `fix(ci)` 提交只是修 `deploy-test.yml` 的 YAML/包发现 bug，**未补 prod 部署通道**，此项仍开放且为当前最高优先级。
+
+### 兼容性
+- 无（纯文档）。
+
+---
 
 ## [2026-05-12] 合入 zfq_dev 基础设施：Apollo→Nacos、移除 docker/、workflow 精简
 

@@ -19,6 +19,7 @@ on:
       - zfq_dev
     paths:
       - 'src/**'
+      - 'alembic/**'        # 迁移改动必须触发部署(deploy 阶段会 alembic upgrade head)
       - 'pyproject.toml'
       - 'Dockerfile'
       - 'scripts/**'
@@ -157,7 +158,9 @@ jobs:
     name: 构建后端镜像
     runs-on: ubuntu-latest
     needs: [lint, test]
-    if: github.event_name == 'push'
+    # push 触发，或手动 workflow_dispatch（用于重新部署 / 应用 Nacos 配置变更）。
+    # 显式校验依赖结果：test 被 skip（skip_tests=true）时仍允许构建。
+    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
 
     outputs:
       backend-tag: ${{ steps.meta.outputs.tags }}
@@ -204,11 +207,10 @@ jobs:
     name: 部署到测试环境
     runs-on: ubuntu-latest
     needs: [build-backend]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/zfq_dev')
+    # push 到 main/zfq_dev，或在任意分支手动 workflow_dispatch（手动触发常用于
+    # 改完 Nacos 配置后强制重建容器使其生效，见下方 --force-recreate）。
+    if: ${{ needs.build-backend.result == 'success' && ((github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/zfq_dev')) || github.event_name == 'workflow_dispatch') }}
     environment: test
-
-    env:
-      BACKEND_TAG: ${{ github.ref_name == 'main' && 'prod' || 'test' }}
 
     steps:
       - name: 检出部署配置
@@ -235,7 +237,8 @@ jobs:
           NACOS_NAMESPACE: ${{ secrets.TEST_NACOS_NAMESPACE }}
           NACOS_USERNAME: ${{ secrets.TEST_NACOS_USERNAME }}
           NACOS_PASSWORD: ${{ secrets.TEST_NACOS_PASSWORD }}
-          BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ env.BACKEND_TAG }}
+          # 用本次构建产出的不可变 digest,避免浮动 :prod/:test tag 在拉取时取到旧镜像
+          BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend@${{ needs.build-backend.outputs.backend-digest }}
           REGISTRY: ${{ env.REGISTRY }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -275,7 +278,8 @@ jobs:
             echo "docker-compose.yml 已从仓库模板更新"
 
             # 拉取镜像
-            docker pull "${BACKEND_IMAGE}" || true
+            # 拉失败必须硬红(不再 || true 静默用旧镜像):重试一次后仍失败则终止部署
+            docker pull "${BACKEND_IMAGE}" || { sleep 5; docker pull "${BACKEND_IMAGE}"; } || { echo "镜像拉取失败,终止"; exit 1; }
 
             # 仅当 redis 未运行时才启动
             if docker ps --format '{{.Names}}' | grep -q '^thvote-redis$'; then
@@ -298,8 +302,9 @@ jobs:
             echo "执行 alembic upgrade head ..."
             docker run --rm --network thvote-net -e NACOS_ENABLED=true -e NACOS_SERVER_ADDRS="${NACOS_SERVER_ADDRS}" -e NACOS_NAMESPACE="${NACOS_NAMESPACE}" -e NACOS_GROUP=DEFAULT_GROUP -e NACOS_DATA_ID=thvote_be -e NACOS_USERNAME="${NACOS_USERNAME}" -e NACOS_PASSWORD="${NACOS_PASSWORD}" "${BACKEND_IMAGE}" alembic upgrade head
 
-            # 启动后端
-            docker-compose up -d backend
+            # 启动后端（--force-recreate：即使镜像未变也重建容器，
+            # 这样手动触发 + 改完 Nacos 配置后能重启进程让新配置生效）
+            docker-compose up -d --force-recreate backend
 
             # 等待健康检查
             for i in $(seq 1 40); do

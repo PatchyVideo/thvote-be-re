@@ -12,7 +12,8 @@ from ...common.exceptions import AppException
 
 SESSION_AUDIENCE = "userspace"
 VOTE_AUDIENCE = "vote"
-SESSION_EXPIRE_DAYS = 7
+# session_token 有效期改为可配置(env/Nacos `SESSION_EXPIRE_DAYS`,默认 30 天),
+# 见 Settings.session_expire_days。改值需重启容器生效(lru_cache 单例,B-017)。
 
 
 class JWTConfigurationError(AppException):
@@ -109,14 +110,20 @@ def _decode(token: str, audience: str) -> dict[str, Any]:
 
 
 def create_session_token(user_id: str) -> str:
-    """Create a userspace session token."""
+    """Create a userspace session token.
+
+    Lifetime is ``Settings.session_expire_days`` (env/Nacos ``SESSION_EXPIRE_DAYS``,
+    default 30).  After it expires the user must log in again (a new verify code),
+    so a longer value means fewer SMS sends at the cost of a longer-lived token.
+    """
     now = datetime.now(UTC)
+    expire_days = get_settings().session_expire_days
     payload = {
         "sub": user_id,
         "aud": SESSION_AUDIENCE,
         "user_id": user_id,
         "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(days=SESSION_EXPIRE_DAYS)).timestamp()),
+        "exp": int((now + timedelta(days=expire_days)).timestamp()),
     }
     return _encode(payload)
 

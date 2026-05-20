@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 from freezegun import freeze_time
@@ -55,3 +55,39 @@ def test_vote_token_rejected_after_window() -> None:
     with freeze_time("2030-01-01"):
         with pytest.raises(JWTValidationError):
             decode_vote_token(token)
+
+
+def _read_exp(token: str) -> int:
+    """Read the exp claim of a session token (signature checked, time claims not
+    — caller may decode at a frozen time other than the token's iat)."""
+    import jwt as pyjwt
+
+    from src.common.config import get_settings
+
+    s = get_settings()
+    claims = pyjwt.decode(
+        token,
+        s.jwt_secret_key,
+        algorithms=[s.jwt_algorithm],
+        audience="userspace",
+        options={"verify_exp": False, "verify_iat": False, "verify_nbf": False},
+    )
+    return int(claims["exp"])
+
+
+def test_session_token_default_expiry_is_30_days() -> None:
+    with freeze_time("2026-06-01"):
+        token = create_session_token("u")
+        # 2026-06-01 + 30d = 2026-07-01
+        assert _read_exp(token) == int(datetime(2026, 7, 1, tzinfo=UTC).timestamp())
+
+
+def test_session_token_expiry_is_configurable(monkeypatch) -> None:
+    from src.common.config import get_settings
+
+    custom = get_settings().model_copy(update={"session_expire_days": 5})
+    monkeypatch.setattr("src.common.security.jwt.get_settings", lambda: custom)
+    with freeze_time("2026-06-01"):
+        token = create_session_token("u")
+        # 2026-06-01 + 5d = 2026-06-06
+        assert _read_exp(token) == int(datetime(2026, 6, 6, tzinfo=UTC).timestamp())

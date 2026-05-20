@@ -13,6 +13,7 @@ from src.apps.submit.schemas import MusicSubmit as MusicSubmitPydantic
 from src.apps.submit.schemas import SubmitMetadata as SubmitMetadataPydantic
 from src.apps.submit.schemas import VotingStatistics as VotingStatisticsPydantic
 from src.apps.submit.schemas import VotingStatus as VotingStatusPydantic
+from src.apps.user.schemas import LoginResponse as LoginResponsePydantic
 
 # ── Custom scalars ────────────────────────────────────────────────────
 
@@ -525,4 +526,44 @@ def pydantic_to_graphql_voting_statistics(
         num_cp=stats.num_cp,
         num_music=stats.num_music,
         num_dojin=stats.num_dojin,
+    )
+
+
+@strawberry.type(name="VoterFE")
+class VoterFEType:
+    # created_at is non-null: the Pydantic VoterFE always provides it, so the
+    # GraphQL contract stays exact (createdAt: DateTime!). Declared first
+    # because it has no default and must precede the defaulted fields.
+    created_at: datetime
+    username: Optional[str] = None
+    pfp: Optional[str] = None
+    password: bool = False
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    thbwiki: bool = False
+    patchyvideo: bool = False
+
+
+@strawberry.type
+class LoginResult:
+    user: VoterFEType
+    session_token: str
+    vote_token: str
+
+
+def pydantic_to_graphql_login_result(resp: LoginResponsePydantic) -> LoginResult:
+    u = resp.user
+    return LoginResult(
+        user=VoterFEType(
+            username=u.username,
+            pfp=u.pfp,
+            password=u.password,
+            phone=u.phone,
+            email=u.email,
+            thbwiki=u.thbwiki,
+            patchyvideo=u.patchyvideo,
+            created_at=u.created_at,
+        ),
+        session_token=resp.session_token,
+        vote_token=resp.vote_token,
     )

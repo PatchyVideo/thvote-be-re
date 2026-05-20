@@ -164,6 +164,9 @@ class Settings(BaseSettings):
     jwt_secret_key_file: Optional[str] = Field(None)
     jwt_public_key_path: Optional[str] = Field(None)
     jwt_private_key_path: Optional[str] = Field(None)
+    # session_token 有效期(天)。决定"多久不来就要重新发验证码登录"。
+    # 默认 30:覆盖较长的不活跃间隔以减少短信发送;权衡是会话被盗用窗口更长。
+    session_expire_days: int = Field(30, validation_alias="SESSION_EXPIRE_DAYS")
 
     # Nacos 配置
     nacos_enabled: bool = Field(False)
@@ -243,6 +246,12 @@ class Settings(BaseSettings):
     )
     aliyun_pnvs_interval: Optional[int] = Field(
         None, validation_alias="ALIYUN_PNVS_INTERVAL"
+    )
+    # 短信模板参数 JSON。``##code##`` 是 PNVS 自动填充验证码的占位符。
+    # 默认只含 code；若模板还有别的变量（如有效期 min），需在此提供匹配的 JSON，
+    # 否则阿里云会报「模板内容与模板参数不匹配」(SMS_SEND_FAILED)。
+    aliyun_pnvs_template_param: Optional[str] = Field(
+        None, validation_alias="ALIYUN_PNVS_TEMPLATE_PARAM"
     )
 
     # 阿里云邮件配置

@@ -1,7 +1,7 @@
 # Nacos 配置中心 + 服务注册接入说明
 
 > 创建日期：2026-05-12
-> 最后更新：2026-05-12
+> 最后更新：2026-05-30（补 §四 R-NACOS 双控制台访问方式;注明测试 dataId 为 thvote_be）
 >
 > 用途：说清楚 thvote-be-re 如何从 Nacos 加载配置、如何注册到 Nacos naming service，以及运维同学需要在 Nacos 控制台做哪些事。
 > 关联代码：`src/common/nacos.py`（812 行）、`src/common/config.py`（顶层 `_load_nacos_sync()`）、`src/main.py`（lifespan 内的注册流程）
@@ -72,6 +72,19 @@ Settings()  →  Pydantic BaseSettings 从 os.environ 读取
 
 ## 四、控制台上要做什么
 
+### 4.0 访问控制台（R-NACOS,2026-05-30 实测补充）
+
+测试环境跑的是 **R-NACOS**(Nacos 兼容的 Rust 实现),它把端口拆成两个:
+
+| 端口 | 用途 |
+|---|---|
+| `:8848` | Nacos **协议 API**(配置/服务发现)——**后端程序**连这个(用 `NACOS_USERNAME/PASSWORD`)。自带的"无鉴权控制台"默认**关闭** |
+| **`:10848`** | **带登录的管理控制台** `/rnacos/` —— **人**用浏览器改配置走这里 |
+
+- 改配置入口:**`http://154.37.215.62:10848/rnacos/`**(不是 8848;开 8848 会提示"未开启无鉴权控制台")。
+- **不要**为图方便开 `RNACOS_ENABLE_NO_AUTH_CONSOLE=true`——那等于把可读写 DB 串/密钥的后台无密码暴露公网。
+- 控制台登录账号与后端连 Nacos 的账号**可能是两套**:后端用的是 `thvote_test`(见 `.env.test.example`);控制台管理员由部署时的 `RNACOS_INIT_ADMIN_USERNAME/PASSWORD` 决定,进不去就找环境搭建者要。
+
 ### 4.1 创建命名空间
 
 Nacos 控制台 → 命名空间 → 新建：
@@ -83,7 +96,7 @@ Nacos 控制台 → 命名空间 → 新建：
 ### 4.2 创建配置项
 
 Nacos 控制台 → 配置管理 → 配置列表 → "+"：
-- Data ID：`thvote-be`（与 `NACOS_DATA_ID` 默认一致）
+- Data ID：代码默认 `thvote-be`，但**测试环境实际下发的是 `thvote_be`（下划线）**(CI / compose / `.env.test.example` 覆盖了默认值)。改测试配置请编辑 `thvote_be`，别建错连字符那个。登录模块完整待填清单见 [`login-config-checklist.md`](./login-config-checklist.md)
 - Group：`DEFAULT_GROUP`
 - 配置格式：**JSON**（推荐）或 Properties
 - 配置内容样例：

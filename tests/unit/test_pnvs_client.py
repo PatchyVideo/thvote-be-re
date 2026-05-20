@@ -100,8 +100,11 @@ def test_parse_check_api_failure_raises() -> None:
             model=None,
         )
     )
-    with pytest.raises(ExternalAPIError):
+    with pytest.raises(ExternalAPIError) as ei:
         _parse_check_response(response)
+    assert ei.value.message == "SMS_VERIFY_FAILED"
+    assert ei.value.upstream_response_string == "isv.SOMETHING_WRONG"
+    assert ei.value.error_message == "oops"
 
 
 @pytest.mark.asyncio
@@ -135,3 +138,57 @@ async def test_send_sms_verify_code_dispatches(monkeypatch) -> None:
     req = captured["request"]
     assert req.phone_number == "13800000000"
     assert req.return_verify_code is False
+    # default template_param when ALIYUN_PNVS_TEMPLATE_PARAM is unset
+    assert req.template_param == '{"code":"##code##"}'
+
+
+def _client_with_keys(**extra):
+    from src.common.config import get_settings
+
+    base = {
+        "aliyun_pnvs_access_key_id": "id",
+        "aliyun_pnvs_access_key_secret": "secret",
+        "aliyun_pnvs_endpoint": "host",
+        "aliyun_pnvs_sms_sign_name": "sign",
+        "aliyun_pnvs_sms_template_code": "100001",
+    }
+    base.update(extra)
+    return AliyunPnvsClient(get_settings().model_copy(update=base))
+
+
+@pytest.mark.asyncio
+async def test_send_sms_uses_configured_template_param(monkeypatch) -> None:
+    """A template needing extra vars (e.g. min) is honored via ALIYUN_PNVS_TEMPLATE_PARAM."""
+    client = _client_with_keys(
+        aliyun_pnvs_template_param='{"code":"##code##","min":"5"}'
+    )
+    captured = {}
+
+    def fake_send(request):
+        captured["request"] = request
+        return _ok_send_response()
+
+    monkeypatch.setattr(
+        client, "_ensure_client", lambda: SimpleNamespace(send_sms_verify_code=fake_send)
+    )
+
+    await client.send_sms_verify_code("13800000000")
+    assert captured["request"].template_param == '{"code":"##code##","min":"5"}'
+
+
+@pytest.mark.asyncio
+async def test_send_sms_defaults_template_param_when_unset(monkeypatch) -> None:
+    """When ALIYUN_PNVS_TEMPLATE_PARAM is None, fall back to the code-only param."""
+    client = _client_with_keys()  # aliyun_pnvs_template_param defaults to None
+    captured = {}
+
+    def fake_send(request):
+        captured["request"] = request
+        return _ok_send_response()
+
+    monkeypatch.setattr(
+        client, "_ensure_client", lambda: SimpleNamespace(send_sms_verify_code=fake_send)
+    )
+
+    await client.send_sms_verify_code("13800000000")
+    assert captured["request"].template_param == '{"code":"##code##"}'

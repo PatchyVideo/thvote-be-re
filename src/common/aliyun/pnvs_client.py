@@ -100,7 +100,7 @@ class AliyunPnvsClient:
             phone_number=phone,
             sign_name=s.aliyun_pnvs_sms_sign_name,
             template_code=s.aliyun_pnvs_sms_template_code,
-            template_param='{"code":"##code##"}',
+            template_param=s.aliyun_pnvs_template_param or '{"code":"##code##"}',
             scheme_name=s.aliyun_pnvs_scheme_name or None,
             code_length=s.aliyun_pnvs_code_length,
             valid_time=s.aliyun_pnvs_valid_time,
@@ -112,6 +112,9 @@ class AliyunPnvsClient:
         try:
             response = await _async_call(client.send_sms_verify_code, request)
         except Exception as exc:  # SDK / network failures
+            # Log the raw exception for diagnosis, but do NOT surface str(exc)
+            # to API consumers via GraphQL error extensions — it can leak
+            # internal URLs / SDK details. error_message stays None.
             logger.exception("PNVS send_sms_verify_code transport failure")
             raise ExternalAPIError("SMS_SEND_FAILED", details=502) from exc
 
@@ -136,7 +139,9 @@ class AliyunPnvsClient:
             response = await _async_call(client.check_sms_verify_code, request)
         except Exception as exc:
             logger.exception("PNVS check_sms_verify_code transport failure")
-            raise ExternalAPIError("SMS_VERIFY_FAILED", details=502) from exc
+            raise ExternalAPIError(
+                "SMS_VERIFY_FAILED", details=502, error_message=str(exc)
+            ) from exc
 
         return _parse_check_response(response)
 
@@ -159,14 +164,29 @@ def _parse_send_response(response: Any) -> PnvsSendResult:
         request_id,
     )
     if code in {"isv.MOBILE_NUMBER_ILLEGAL", "isv.MOBILE_COUNTRY_NOT_SUPPORTED"}:
-        raise ValidationError("INVALID_PHONE", details=400)
-    if code in {
-        "isv.BUSINESS_LIMIT_CONTROL",
-        "isv.OUT_OF_SERVICE",
-        "isv.SMS_TEST_NUMBER_NOT_LOGIN",
-    } or (code or "").endswith("_LIMIT_CONTROL"):
-        raise RateLimitError("REQUEST_TOO_FREQUENT", details=429)
-    raise ExternalAPIError("SMS_SEND_FAILED", details=502)
+        raise ValidationError(
+            "INVALID_PHONE", details=400,
+            error_message=message, upstream_response_string=code,
+        )
+    code_str = code or ""
+    if (
+        code in {
+            "isv.BUSINESS_LIMIT_CONTROL",
+            "isv.OUT_OF_SERVICE",
+            "isv.SMS_TEST_NUMBER_NOT_LOGIN",
+            "biz.FREQUENCY",  # PNVS 同号码发送间隔频控（biz.* 系列）
+        }
+        or code_str.endswith("_LIMIT_CONTROL")
+        or "FREQUENCY" in code_str  # 兜住 biz.DAY_FREQUENCY 等频控变体
+    ):
+        raise RateLimitError(
+            "REQUEST_TOO_FREQUENT", details=429,
+            error_message=message, upstream_response_string=code,
+        )
+    raise ExternalAPIError(
+        "SMS_SEND_FAILED", details=502,
+        error_message=message, upstream_response_string=code,
+    )
 
 
 def _parse_check_response(response: Any) -> PnvsResult:
@@ -183,7 +203,10 @@ def _parse_check_response(response: Any) -> PnvsResult:
             message,
             request_id,
         )
-        raise ExternalAPIError("SMS_VERIFY_FAILED", details=502)
+        raise ExternalAPIError(
+            "SMS_VERIFY_FAILED", details=502,
+            error_message=message, upstream_response_string=code,
+        )
 
     model = _attr(body, "model")
     verify_result = _attr(model, "verify_result")
