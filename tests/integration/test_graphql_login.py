@@ -161,8 +161,9 @@ mutation($phone: String!, $verifyCode: String!, $nickname: String) {
 
 
 @pytest.mark.asyncio
-async def test_login_phone_success_with_mocked_pnvs(gql_schema, fake_pnvs):
-    # fake_pnvs.check_sms_verify_code default passed=True → 新用户注册成功
+async def test_login_phone_success_with_mocked_pnvs(gql_schema):
+    # PNVS is mocked via the user_service fixture (check returns passed=True),
+    # so any verifyCode passes and a new phone registers a user.
     result = await gql_schema.execute(
         LOGIN_PHONE,
         variable_values={"phone": "13800000000", "verifyCode": "123456", "nickname": None},
@@ -171,11 +172,15 @@ async def test_login_phone_success_with_mocked_pnvs(gql_schema, fake_pnvs):
     assert result.errors is None, result.errors
     assert result.data["loginPhone"]["user"]["phone"] == "13800000000"
     assert result.data["loginPhone"]["sessionToken"]
+    # voteToken is always a string ("" outside the vote window); assert the field resolves.
+    assert isinstance(result.data["loginPhone"]["voteToken"], str)
 
 
 @pytest.mark.asyncio
-async def test_login_rate_limited_after_5_requests(gql_schema, fake_pnvs):
-    # 第 6 次同 IP 登录应被限流 → REQUEST_TOO_FREQUENT（key: login-1.2.3.4）
+async def test_login_rate_limited_on_6th_request(gql_schema):
+    # Per-IP login limit is 5/60s (key: rate-limit-login-1.2.3.4): calls 1-5 pass,
+    # the 6th is rejected with REQUEST_TOO_FREQUENT. patch_redis gives a fresh
+    # per-test counter, so this is deterministic and isolated.
     last = None
     for _ in range(6):
         last = await gql_schema.execute(
