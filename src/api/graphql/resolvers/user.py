@@ -36,7 +36,9 @@ def build_user_service(db) -> UserService:
 
     Mirrors deps.get_user_service but omits redis: these login flows never
     carry an SSO sid, and UserService._merge_sso_session no-ops when redis
-    is None.
+    is None.  ActivityLogDAO intentionally gets its own session
+    (get_session_maker()) for best-effort audit isolation, matching
+    deps.get_user_service.
     """
     return UserService(
         user_dao=UserDAO(db),
@@ -106,7 +108,8 @@ class UserMutation:
             req = SendSmsCodeRequest(phone=phone, meta=Meta(user_ip=ip))
             async for db in get_db_session():
                 await build_user_service(db).send_sms_code(req)
-        return True
+                return True
+        raise RuntimeError("unreachable")  # pragma: no cover
 
     @strawberry.mutation
     async def request_email_code(self, info: strawberry.Info, email: str) -> bool:
@@ -115,7 +118,8 @@ class UserMutation:
             req = SendEmailCodeRequest(email=email, meta=Meta(user_ip=ip))
             async for db in get_db_session():
                 await build_user_service(db).send_email_code(req)
-        return True
+                return True
+        raise RuntimeError("unreachable")  # pragma: no cover
 
     @strawberry.mutation
     async def login_phone(
