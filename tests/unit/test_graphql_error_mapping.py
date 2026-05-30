@@ -60,3 +60,20 @@ def test_client_ip_from_dict_context():
         context = {"request": _R()}
 
     assert _client_ip_from_info(_Info()) == "9.9.9.9"
+
+
+def test_client_ip_from_object_context():
+    class _C:
+        host = "8.8.8.8"
+
+    class _R:
+        client = _C()
+        headers: dict = {}
+
+    class _Ctx:
+        request = _R()
+
+    class _Info:
+        context = _Ctx()
+
+    assert _client_ip_from_info(_Info()) == "8.8.8.8"

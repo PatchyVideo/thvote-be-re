@@ -8,7 +8,7 @@ holds the shared helpers; the mutation resolvers are added on top of them.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 import strawberry
 from fastapi import HTTPException
@@ -17,7 +17,8 @@ from graphql import GraphQLError
 from src.apps.user.dao import ActivityLogDAO, UserDAO
 from src.apps.user.deps import get_client_ip
 from src.apps.user.service import UserService
-from src.common.database import get_db_session, get_session_maker  # noqa: F401
+from src.common.database import get_db_session  # noqa: F401  # used by Task 5 resolvers
+from src.common.database import get_session_maker
 from src.common.exceptions import AppException
 
 
@@ -43,7 +44,13 @@ def _client_ip_from_info(info: "strawberry.Info") -> str:
     return get_client_ip(request)
 
 
-def _extensions(service: str, error_kind: str, *, error_message=None, upstream=None) -> dict:
+def _extensions(
+    service: str,
+    error_kind: str,
+    *,
+    error_message: Optional[str] = None,
+    upstream: Optional[str] = None,
+) -> dict[str, object]:
     return {
         "service": service,
         "url": None,
@@ -73,6 +80,8 @@ async def map_app_errors(service: str) -> AsyncIterator[None]:
         raise GraphQLError(
             "Error", extensions=_extensions(service, str(exc.detail))
         ) from exc
+    except GraphQLError:
+        raise  # already-mapped error — pass through unchanged
     except Exception as exc:
         raise GraphQLError(
             "Error", extensions=_extensions(service, "INTERNAL_ERROR")
