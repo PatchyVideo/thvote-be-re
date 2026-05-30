@@ -24,6 +24,7 @@ class _FakeRequest:
     headers: dict = {}
 
 
+# Read-only request context for schema.execute; tests must never mutate it.
 CTX = {"request": _FakeRequest()}
 
 
@@ -32,6 +33,8 @@ async def gql_schema(monkeypatch, session, user_service):
     """schema，其 user resolver 被指向测试 session + 假外部服务的 user_service。"""
     import src.api.graphql.resolvers.user as user_resolver
 
+    # Resolver consumes this with `async for db in get_db_session()`, so the
+    # double must be an async generator (yields the test session once).
     async def _fake_db():
         yield session
 
@@ -130,6 +133,7 @@ async def test_login_email_wrong_code_error_kind(gql_schema):
     )
     assert result.errors is not None
     assert result.errors[0].extensions["error_kind"] == "INCORRECT_VERIFY_CODE"
+    assert result.errors[0].extensions["service"] == "user-manager"
 
 
 @pytest.mark.asyncio
