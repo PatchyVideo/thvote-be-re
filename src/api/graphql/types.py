@@ -13,6 +13,7 @@ from src.apps.submit.schemas import MusicSubmit as MusicSubmitPydantic
 from src.apps.submit.schemas import SubmitMetadata as SubmitMetadataPydantic
 from src.apps.submit.schemas import VotingStatistics as VotingStatisticsPydantic
 from src.apps.submit.schemas import VotingStatus as VotingStatusPydantic
+from src.apps.user.schemas import LoginResponse as LoginResponsePydantic
 
 
 @strawberry.type
@@ -252,19 +253,16 @@ def pydantic_to_graphql_voting_statistics(
     )
 
 
-from src.apps.user.schemas import LoginResponse as LoginResponsePydantic  # noqa: E402
-
-
 @strawberry.type(name="VoterFE")
 class VoterFEType:
-    username: Optional[str]
-    pfp: Optional[str]
-    password: bool
-    phone: Optional[str]
-    email: Optional[str]
-    thbwiki: bool
-    patchyvideo: bool
-    created_at: datetime
+    username: Optional[str] = None
+    pfp: Optional[str] = None
+    password: bool = False
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    thbwiki: bool = False
+    patchyvideo: bool = False
+    created_at: Optional[datetime] = None
 
 
 @strawberry.type
@@ -274,7 +272,7 @@ class LoginResult:
     vote_token: str
 
 
-def login_result_from_pydantic(resp: "LoginResponsePydantic") -> LoginResult:
+def pydantic_to_graphql_login_result(resp: LoginResponsePydantic) -> LoginResult:
     u = resp.user
     return LoginResult(
         user=VoterFEType(
