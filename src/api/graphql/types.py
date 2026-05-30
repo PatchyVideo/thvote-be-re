@@ -250,3 +250,43 @@ def pydantic_to_graphql_voting_statistics(
         num_music=stats.num_music,
         num_dojin=stats.num_dojin,
     )
+
+
+from src.apps.user.schemas import LoginResponse as LoginResponsePydantic  # noqa: E402
+
+
+@strawberry.type(name="VoterFE")
+class VoterFEType:
+    username: Optional[str]
+    pfp: Optional[str]
+    password: bool
+    phone: Optional[str]
+    email: Optional[str]
+    thbwiki: bool
+    patchyvideo: bool
+    created_at: datetime
+
+
+@strawberry.type
+class LoginResult:
+    user: VoterFEType
+    session_token: str
+    vote_token: str
+
+
+def login_result_from_pydantic(resp: "LoginResponsePydantic") -> LoginResult:
+    u = resp.user
+    return LoginResult(
+        user=VoterFEType(
+            username=u.username,
+            pfp=u.pfp,
+            password=u.password,
+            phone=u.phone,
+            email=u.email,
+            thbwiki=u.thbwiki,
+            patchyvideo=u.patchyvideo,
+            created_at=u.created_at,
+        ),
+        session_token=resp.session_token,
+        vote_token=resp.vote_token,
+    )
