@@ -5,6 +5,27 @@
 > 创建日期：2026-04-27
 > 最后更新：2026-05-30（仪表盘文档与 main 对账）
 
+## [2026-05-30] GraphQL 登录 mutation 桥接
+
+### Added
+- GraphQL `UserMutation`：`requestPhoneCode` / `requestEmailCode` / `loginPhone` / `loginEmail` / `loginEmailPassword`，包装现有 `UserService`，对齐前端 `LoginBox.vue` 既定契约。
+- `LoginResult { user: VoterFE, sessionToken, voteToken }` GraphQL 类型。
+
+### Changed
+- `AppException` 增加可选 `error_message` / `upstream_response_string`（向后兼容）。
+- PNVS 发送失败时透传阿里云上游 code/message（复刻 Rust `ServiceError` 诊断信息）。
+- GraphQL 错误 `extensions` 复刻 Rust shape：`{service,url,error_kind,error_message,human_readable_message,upstream_response_string}`。
+
+### 兼容性
+- 纯增量：REST `/user/*` 与 submit/result GraphQL 行为不变。
+- GraphQL schema 新增 5 个 mutation 字段，无破坏。
+
+### 已知差异
+- `login_email_password` 对"用户不存在"返回 `INCORRECT_PASSWORD`（防枚举），前端 `NOT_FOUND` 分支不触发——刻意保留。
+- 老用户密码登录仍依赖 B-008 历史数据回填（未做）。
+
+---
+
 ## [2026-05-30] 文档对账：BACKLOG / REFACTOR_TODO 与 main 同步
 
 > 不涉及代码变更，仅修正两份"进度仪表盘"与 `main`（HEAD `d4a3247`，2026-05-19）的偏差。

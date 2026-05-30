@@ -102,6 +102,7 @@
 - ✅ [B-012] `update-password` 单独限流（2026-05-15）
 - ✅ [B-014/015/016] vote_token / GET me / bcrypt 升级集成测试（2026-05-15）
 - ✅ [B-018] `_safe_log` 失败可见性（2026-05-17）
+- ✅ GraphQL 登录 mutation 桥接（2026-05-30）：5 个登录 mutation 包装 UserService，前端 LoginBox 契约打通
 - 仍开放：[B-024] `UserDAO.save()` 加 `session.merge()` 防 detached instance；[B-011] 移除 `at_least_one_identifier` 约束（SSO 已落地，阻塞解除）
 
 ---
