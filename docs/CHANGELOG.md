@@ -3,7 +3,25 @@
 > 仓库级变更记录，按 CLAUDE.md §4 维护。日期格式 `YYYY-MM-DD`。
 >
 > 创建日期：2026-04-27
-> 最后更新：2026-05-12（合入 zfq_dev：Apollo→Nacos、移除 docker/、workflow 重构）
+> 最后更新：2026-05-30（仪表盘文档与 main 对账）
+
+## [2026-05-30] 文档对账：BACKLOG / REFACTOR_TODO 与 main 同步
+
+> 不涉及代码变更，仅修正两份"进度仪表盘"与 `main`（HEAD `d4a3247`，2026-05-19）的偏差。
+> 背景：`BACKLOG.md` 停在 2026-05-12、`REFACTOR_TODO.md` 停在 2026-05-13，而 `feat/user-and-verify` 期间（05-13..05-17）完成的一批 backlog 已合入 main 但未回标。
+
+### Changed
+- **`docs/BACKLOG.md`**：状态表标记以下为 ✅ 已完成（附 commit）：B-003(`8724e39`)、B-004/009/012(`9684643`)、B-007 SSO(`19d659f`..`e19d941`)、B-014/015/016(`581102f`)、B-017(`ab7a642`)、B-018(`fe993e4`)、B-025(`76facaa`)、B-027(`6d73de6`)、B-029(`0e340e9`)、B-030(`fce832a`)。B-011/B-026 阻塞已解除（依赖项 B-007/B-025 完成）→ 移入「可立即做」。重写「🟢/🟡/🔴」分组（去掉已失效的"等 PR merge"维度）。
+- **`REFACTOR_TODO.md`**：用户模块补 SSO 已落地；autocomplete 由 ❌ 修正为 ⚠️（角色/音乐已实现 ILIKE，仅 `search_cps()` 仍空）；scraper 头部 ⚠️→✅；migration 表补 0004（SSO 列）；重排「建议实施顺序」并修复一处 markdown 残缺块。
+
+### Fixed（文档准确性）
+- 修正 B-008 描述：此前列为"可立即做"，实为**仅设计稿完成、实现未做**（`scripts/` 仍空）。
+- 修正 B-028：2026-05-19 的 3 个 `fix(ci)` 提交只是修 `deploy-test.yml` 的 YAML/包发现 bug，**未补 prod 部署通道**，此项仍开放且为当前最高优先级。
+
+### 兼容性
+- 无（纯文档）。
+
+---
 
 ## [2026-05-12] 合入 zfq_dev 基础设施：Apollo→Nacos、移除 docker/、workflow 精简
 
