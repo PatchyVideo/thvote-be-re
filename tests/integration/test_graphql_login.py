@@ -147,3 +147,41 @@ async def test_login_email_registers_new_user_after_valid_code(gql_schema, patch
     assert result.errors is None, result.errors
     assert result.data["loginEmail"]["user"]["email"] == "erin@example.com"
     assert result.data["loginEmail"]["sessionToken"]
+
+
+LOGIN_PHONE = """
+mutation($phone: String!, $verifyCode: String!, $nickname: String) {
+  loginPhone(phone: $phone, verifyCode: $verifyCode, nickname: $nickname) {
+    user { phone }
+    sessionToken
+    voteToken
+  }
+}
+"""
+
+
+@pytest.mark.asyncio
+async def test_login_phone_success_with_mocked_pnvs(gql_schema, fake_pnvs):
+    # fake_pnvs.check_sms_verify_code default passed=True → 新用户注册成功
+    result = await gql_schema.execute(
+        LOGIN_PHONE,
+        variable_values={"phone": "13800000000", "verifyCode": "123456", "nickname": None},
+        context_value=CTX,
+    )
+    assert result.errors is None, result.errors
+    assert result.data["loginPhone"]["user"]["phone"] == "13800000000"
+    assert result.data["loginPhone"]["sessionToken"]
+
+
+@pytest.mark.asyncio
+async def test_login_rate_limited_after_5_requests(gql_schema, fake_pnvs):
+    # 第 6 次同 IP 登录应被限流 → REQUEST_TOO_FREQUENT（key: login-1.2.3.4）
+    last = None
+    for _ in range(6):
+        last = await gql_schema.execute(
+            LOGIN_PHONE,
+            variable_values={"phone": "13800000001", "verifyCode": "123456", "nickname": None},
+            context_value=CTX,
+        )
+    assert last.errors is not None
+    assert last.errors[0].extensions["error_kind"] == "REQUEST_TOO_FREQUENT"
