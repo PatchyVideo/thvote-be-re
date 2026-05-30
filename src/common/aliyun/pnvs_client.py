@@ -113,7 +113,9 @@ class AliyunPnvsClient:
             response = await _async_call(client.send_sms_verify_code, request)
         except Exception as exc:  # SDK / network failures
             logger.exception("PNVS send_sms_verify_code transport failure")
-            raise ExternalAPIError("SMS_SEND_FAILED", details=502) from exc
+            raise ExternalAPIError(
+                "SMS_SEND_FAILED", details=502, error_message=str(exc)
+            ) from exc
 
         return _parse_send_response(response)
 
@@ -159,14 +161,23 @@ def _parse_send_response(response: Any) -> PnvsSendResult:
         request_id,
     )
     if code in {"isv.MOBILE_NUMBER_ILLEGAL", "isv.MOBILE_COUNTRY_NOT_SUPPORTED"}:
-        raise ValidationError("INVALID_PHONE", details=400)
+        raise ValidationError(
+            "INVALID_PHONE", details=400,
+            error_message=message, upstream_response_string=code,
+        )
     if code in {
         "isv.BUSINESS_LIMIT_CONTROL",
         "isv.OUT_OF_SERVICE",
         "isv.SMS_TEST_NUMBER_NOT_LOGIN",
     } or (code or "").endswith("_LIMIT_CONTROL"):
-        raise RateLimitError("REQUEST_TOO_FREQUENT", details=429)
-    raise ExternalAPIError("SMS_SEND_FAILED", details=502)
+        raise RateLimitError(
+            "REQUEST_TOO_FREQUENT", details=429,
+            error_message=message, upstream_response_string=code,
+        )
+    raise ExternalAPIError(
+        "SMS_SEND_FAILED", details=502,
+        error_message=message, upstream_response_string=code,
+    )
 
 
 def _parse_check_response(response: Any) -> PnvsResult:
