@@ -6,9 +6,17 @@ from typing import Any, Optional
 class AppException(Exception):
     """Base exception for all application exceptions."""
 
-    def __init__(self, message: str, details: Optional[Any] = None):
+    def __init__(
+        self,
+        message: str,
+        details: Optional[Any] = None,
+        error_message: Optional[str] = None,
+        upstream_response_string: Optional[str] = None,
+    ):
         self.message = message
         self.details = details
+        self.error_message = error_message
+        self.upstream_response_string = upstream_response_string
         super().__init__(self.message)
 
 
