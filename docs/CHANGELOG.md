@@ -3,7 +3,20 @@
 > 仓库级变更记录，按 CLAUDE.md §4 维护。日期格式 `YYYY-MM-DD`。
 >
 > 创建日期：2026-04-27
-> 最后更新：2026-05-31（CI 手动触发部署 + 登录配置文档）
+> 最后更新：2026-05-31（PNVS template_param 可配置 + CI 手动触发部署 + 登录配置文档）
+
+## [2026-05-31] PNVS 短信模板参数可配置
+
+### Fixed
+- PNVS 之前写死 `template_param='{"code":"##code##"}'`,对含额外变量(如有效期 `min`)的短信模板会被阿里云判「模板内容与模板参数不匹配」(SMS_SEND_FAILED)。改为可配置 `ALIYUN_PNVS_TEMPLATE_PARAM`(默认仍为 `{"code":"##code##"}`,行为不变)。
+
+### Added
+- `Settings.aliyun_pnvs_template_param`(env `ALIYUN_PNVS_TEMPLATE_PARAM`)。模板有 `min` 等变量时填 `{"code":"##code##","min":"5"}`。
+
+### 兼容性
+- 向后兼容:未设置时维持原默认值。
+
+---
 
 ## [2026-05-31] CI 手动触发部署 + 登录配置清单文档
 

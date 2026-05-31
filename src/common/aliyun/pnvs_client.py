@@ -100,7 +100,7 @@ class AliyunPnvsClient:
             phone_number=phone,
             sign_name=s.aliyun_pnvs_sms_sign_name,
             template_code=s.aliyun_pnvs_sms_template_code,
-            template_param='{"code":"##code##"}',
+            template_param=s.aliyun_pnvs_template_param or '{"code":"##code##"}',
             scheme_name=s.aliyun_pnvs_scheme_name or None,
             code_length=s.aliyun_pnvs_code_length,
             valid_time=s.aliyun_pnvs_valid_time,

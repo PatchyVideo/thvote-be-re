@@ -53,8 +53,9 @@
 - [ ] `ALIYUN_PNVS_REGION_ID` —— 可选,`cn-hangzhou`
 - [ ] `ALIYUN_PNVS_SCHEME_NAME` —— 可选
 - [ ] `ALIYUN_PNVS_CODE_LENGTH` / `_VALID_TIME` / `_INTERVAL` —— 可选,`6` / `300` / `120`
+- [ ] `ALIYUN_PNVS_TEMPLATE_PARAM` —— 可选,默认 `{"code":"##code##"}`。**若模板有除 code 外的变量(如有效期 min),必须填匹配的 JSON**,否则报「模板内容与模板参数不匹配」(SMS_SEND_FAILED)。例:模板 `100001` 需 `{"code":"##code##","min":"5"}`,在 Nacos 里写 `"ALIYUN_PNVS_TEMPLATE_PARAM": "{\"code\":\"##code##\",\"min\":\"5\"}"`
 
-> 前 5 个缺任一 → 发短信抛 `ALIYUN_NOT_CONFIGURED`。
+> 前 5 个(AK ID/Secret/Endpoint/签名/模板)缺任一 → 发短信抛 `ALIYUN_NOT_CONFIGURED`。`##code##` 是 PNVS 自动填验证码的占位符,不要自己填值。
 
 ### C. 邮箱登录(阿里云 DirectMail,走 SMTP)
 

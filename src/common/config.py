@@ -244,6 +244,12 @@ class Settings(BaseSettings):
     aliyun_pnvs_interval: Optional[int] = Field(
         None, validation_alias="ALIYUN_PNVS_INTERVAL"
     )
+    # 短信模板参数 JSON。``##code##`` 是 PNVS 自动填充验证码的占位符。
+    # 默认只含 code；若模板还有别的变量（如有效期 min），需在此提供匹配的 JSON，
+    # 否则阿里云会报「模板内容与模板参数不匹配」(SMS_SEND_FAILED)。
+    aliyun_pnvs_template_param: Optional[str] = Field(
+        None, validation_alias="ALIYUN_PNVS_TEMPLATE_PARAM"
+    )
 
     # 阿里云邮件配置
     aliyun_dm_access_key_id: Optional[str] = Field(
