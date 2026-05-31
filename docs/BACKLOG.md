@@ -9,7 +9,7 @@
 
 ---
 
-## 状态总览（B-001..B-031）
+## 状态总览（B-001..B-032）
 
 | 编号 | 主题 | 严重度 | 可并行做？ | 源文档 |
 |---|---|---|---|---|
@@ -44,18 +44,20 @@
 | **B-029** | ~~deploy 步骤里 `docker-compose up -d redis` / `docker exec thvote-postgres` 依赖部署机上**仓库外**维护的 `docker-compose.yml`（`docker/` 目录已从仓库删除）。这层耦合需要文档化~~ | ✅ 已完成 (2026-05-16, `0e340e9`) | — | `docs/operations/deploy-server-setup.md` |
 | **B-030** | ~~Nacos 接入有一个**模块加载期阻塞调用**：`src/common/config.py` 顶层执行 `_load_nacos_sync()`，import config 即触发同步网络调用——Nacos 不可达时 import 全挂~~ | ✅ 已完成 (2026-05-17, `fce832a`) | — | 改为首次 `get_settings()` 时 lazy load |
 | **B-031** | `src/common/nacos.py` 的 `_parse_config_content` 自带 JS 风格 JSON 容错解析（正则提取），属于隐式技术债——上游 Nacos 配置应该写标准 JSON，让解析器走 `json.loads`。如果是为了兼容某个老 dataId，需文档化该 dataId 的写法约束 | 低 | 🟢 可立即做 | `src/common/nacos.py:29-97` |
+| **B-032** ⚡ | 删除（或收紧）`alembic/env.py` 的 `_maybe_baseline_existing_schema`。它只按"表是否存在"自动 stamp、**不校验列是否匹配**，会**掩盖 schema 漂移**——2026-05-31 测试库 `user` 表缺 `phone_verified` 等列、登录全挂就是它造成的（残缺旧表被 stamp 成 0001，0001 的正确建表从未执行）。B-025 已移除 init_db 后门,该 shim 已无存在必要。**首选直接删除**(让 `alembic upgrade head` 老实从 0001 跑)+ 空库重建一次清除残留漂移;次选 stamp 前校验列匹配、不匹配则报错而非闷头 stamp。归属 B-025/B-026 DB 治理。 | 中 | 🟢 可立即做（B-025 已完成,前置解除） | `alembic/env.py:48-94` |
 
 ---
 
 > **2026-05-30 对账说明：** `feat/user-and-verify` 已全部合入 `main`，原先「🟡 等本 PR merge」的依赖前提消失。下面按「现在还开放的项」重新分组，不再用「等 PR」维度。已完成项保留在上方状态表（标 ✅ + commit）。
 
-## 🟢 现在可立即做（9 项，全部已解除阻塞）
+## 🟢 现在可立即做（10 项，全部已解除阻塞）
 
 按建议优先级排序：
 
 | 编号 | 一句话 | 估时 |
 |---|---|---|
 | **B-028** ⚡ | 确认/补齐 prod 部署通道（当前 `deploy-test.yml` 是孤本，main push 也只到 test） | 1 天（视真实部署现状而定） |
+| **B-032** ⚡ | 删除/收紧 `_maybe_baseline_existing_schema`（按表存在 stamp、不校验列，掩盖 schema 漂移；2026-05-31 登录全挂的根因）+ 空库重建清残留 | 半天（含空库重建验证） |
 | **B-008** | MongoDB → PG 数据回填脚本**实现**（设计稿已写，`scripts/` 仍空，不动主代码） | 1-3 天（看数据量与边界） |
 | **B-020** | mypy 在 CI 改硬门禁前先清告警 | 半天-1 天（看现存告警量） |
 | **B-021** | Pydantic V1→V2 配置迁移（清 deprecation 告警） | 半天 |

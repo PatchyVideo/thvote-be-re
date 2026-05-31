@@ -1,7 +1,7 @@
 # 数据库 Schema 管理 — 现状与演进路线图
 
 > 创建日期：2026-04-27
-> 最后更新：2026-05-12（阶段 2 完成 ✅；阶段 3 阻塞解除）
+> 最后更新：2026-05-31（§四 加 `_maybe_baseline_existing_schema` 待删除告警 → B-032）
 >
 > 触发：本次 PR (`feat/user-and-verify`) 引入 Alembic，但只覆盖 user + activity_log，与既有 `init_db()` create_all 共存，状态混杂。本文记录现状、目标态、和分阶段演进 TODO。
 
@@ -128,6 +128,8 @@ psql ... -c "SELECT version_num FROM alembic_version;"   # 应该是 0002
 ```
 
 **已有部署升级到 0002（首次）：** 直接跑 `alembic upgrade head` 即可。`alembic/env.py` 在跑迁移前会自动检测"已有 managed 表但无 alembic_version"的状态并 stamp 到合适的 revision（实现见 `_maybe_baseline_existing_schema`），不再需要手工 `alembic stamp 0002`。
+
+> ⚠️ **`_maybe_baseline_existing_schema` 待删除（B-032）。** 它只按"表是否存在"自动 stamp、**不校验列是否匹配**,会**掩盖 schema 漂移**:一张残缺旧表会被 stamp 成 0001/0002,使该版本的正确建表永不执行。2026-05-31 测试库 `user` 表缺 `phone_verified` 等列、登录全挂就是它造成的。B-025 移除 init_db 后门后,这个 shim 已无存在必要,**首选直接删除 + 空库重建**。详见 BACKLOG **B-032**。
 
 **注意 `DEBUG=true` 后门仍存在但已无必要：** B-001 完成后，全部表都在 Alembic 中，`init_db()` 不再补任何东西。B-025 落地后该路径会被彻底删除。
 
