@@ -5,6 +5,17 @@
 > 创建日期：2026-04-27
 > 最后更新：2026-05-31（PNVS template_param 可配置 + CI 手动触发部署 + 登录配置文档）
 
+## [2026-05-31] 修复 user 表 schema 漂移(migration 0005)
+
+### Fixed
+- 测试库 `user` 表缺 `phone_verified` 等 0001 列(根因:`env.py` 的 `_maybe_baseline_existing_schema` 把一张残缺旧表自动 stamp 成 0001,0001 的建表从未真正执行),导致 `loginPhone` 报 `UndefinedColumnError` → `INTERNAL_ERROR`。
+- 新增 migration `0005_reconcile_user_columns`:幂等 `ALTER TABLE "user" ADD COLUMN IF NOT EXISTS ...` 补齐所有 user 列(Postgres-only,非 PG 方言 no-op;干净库上全部 no-op)。
+
+### 注意
+- 这是针对 `user` 表的定向补丁以解锁登录;其他表可能有同源漂移,根治仍是在有权限时空库重建(BACKLOG B-025/B-026)。
+
+---
+
 ## [2026-05-31] PNVS 短信模板参数可配置
 
 ### Fixed
