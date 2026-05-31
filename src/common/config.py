@@ -164,6 +164,9 @@ class Settings(BaseSettings):
     jwt_secret_key_file: Optional[str] = Field(None)
     jwt_public_key_path: Optional[str] = Field(None)
     jwt_private_key_path: Optional[str] = Field(None)
+    # session_token 有效期(天)。决定"多久不来就要重新发验证码登录"。
+    # 默认 30:覆盖较长的不活跃间隔以减少短信发送;权衡是会话被盗用窗口更长。
+    session_expire_days: int = Field(30, validation_alias="SESSION_EXPIRE_DAYS")
 
     # Nacos 配置
     nacos_enabled: bool = Field(False)

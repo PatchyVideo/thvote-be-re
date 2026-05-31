@@ -3,7 +3,17 @@
 > 仓库级变更记录，按 CLAUDE.md §4 维护。日期格式 `YYYY-MM-DD`。
 >
 > 创建日期：2026-04-27
-> 最后更新：2026-05-31（legacy-compat `/user-token-status` 修复登录后弹回登录页 + PNVS template_param 可配置 + CI 手动触发部署）
+> 最后更新：2026-05-31（session_token 有效期可配置 7→30 天 + legacy-compat `/user-token-status` 修复登录后弹回 + PNVS template_param 可配置）
+
+## [2026-05-31] session_token 有效期可配置，默认 7 → 30 天
+
+### Changed
+- `session_token` 有效期从写死的 **7 天**改为可配置:env/Nacos `SESSION_EXPIRE_DAYS`，默认 **30**。语义=用户多久不活跃就要重新发验证码登录;调长以**减少短信发送**与重复登录,权衡是会话被盗用窗口更长。`src/common/security/jwt.py:create_session_token` 改为读 `Settings.session_expire_days`。
+
+### 兼容性 / 注意
+- 已签发的旧 token 不受影响(各自带自己的 `exp`);仅新登录按新值签发。
+- 改值需**重启容器**生效(`Settings` 是 `lru_cache` 单例,见 BACKLOG B-017)。
+- `voteToken` 仍到投票季结束(`VOTE_END_ISO`),不受此项影响。
 
 ## [2026-05-31] 修复登录成功后又被弹回登录页（REST 契约漂移）
 
