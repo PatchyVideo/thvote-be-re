@@ -19,6 +19,7 @@ on:
       - zfq_dev
     paths:
       - 'src/**'
+      - 'alembic/**'        # 迁移改动必须触发部署(deploy 阶段会 alembic upgrade head)
       - 'pyproject.toml'
       - 'Dockerfile'
       - 'scripts/**'
