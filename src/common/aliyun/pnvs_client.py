@@ -112,10 +112,11 @@ class AliyunPnvsClient:
         try:
             response = await _async_call(client.send_sms_verify_code, request)
         except Exception as exc:  # SDK / network failures
+            # Log the raw exception for diagnosis, but do NOT surface str(exc)
+            # to API consumers via GraphQL error extensions — it can leak
+            # internal URLs / SDK details. error_message stays None.
             logger.exception("PNVS send_sms_verify_code transport failure")
-            raise ExternalAPIError(
-                "SMS_SEND_FAILED", details=502, error_message=str(exc)
-            ) from exc
+            raise ExternalAPIError("SMS_SEND_FAILED", details=502) from exc
 
         return _parse_send_response(response)
 

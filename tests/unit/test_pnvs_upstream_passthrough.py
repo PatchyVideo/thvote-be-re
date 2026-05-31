@@ -38,3 +38,41 @@ def test_unknown_failure_is_sms_send_failed_with_upstream():
     assert ei.value.message == "SMS_SEND_FAILED"
     assert ei.value.upstream_response_string == "isv.SOMETHING_ELSE"
     assert ei.value.error_message == "boom"
+
+
+@pytest.mark.asyncio
+async def test_transport_failure_does_not_leak_exception_detail(monkeypatch):
+    """A raw SDK/network exception must NOT be surfaced to API consumers.
+
+    The provider `code`/`message` (test above) is safe to pass through, but
+    the raw transport exception string can contain internal URLs / SDK
+    diagnostics — it belongs only in logs, not in error extensions.
+    """
+    from types import SimpleNamespace
+
+    from src.common.aliyun.pnvs_client import AliyunPnvsClient
+    from src.common.config import get_settings
+
+    settings = get_settings().model_copy(
+        update={
+            "aliyun_pnvs_access_key_id": "id",
+            "aliyun_pnvs_access_key_secret": "secret",
+            "aliyun_pnvs_endpoint": "host",
+            "aliyun_pnvs_sms_sign_name": "sign",
+            "aliyun_pnvs_sms_template_code": "tpl",
+        }
+    )
+    client = AliyunPnvsClient(settings)
+
+    def boom(request):
+        raise RuntimeError("internal-host://secret-sdk-detail")
+
+    monkeypatch.setattr(
+        client, "_ensure_client", lambda: SimpleNamespace(send_sms_verify_code=boom)
+    )
+
+    with pytest.raises(ExternalAPIError) as ei:
+        await client.send_sms_verify_code("13800000000")
+    assert ei.value.message == "SMS_SEND_FAILED"
+    assert ei.value.error_message is None
+    assert "secret-sdk-detail" not in (ei.value.error_message or "")

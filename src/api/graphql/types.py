@@ -255,6 +255,10 @@ def pydantic_to_graphql_voting_statistics(
 
 @strawberry.type(name="VoterFE")
 class VoterFEType:
+    # created_at is non-null: the Pydantic VoterFE always provides it, so the
+    # GraphQL contract stays exact (createdAt: DateTime!). Declared first
+    # because it has no default and must precede the defaulted fields.
+    created_at: datetime
     username: Optional[str] = None
     pfp: Optional[str] = None
     password: bool = False
@@ -262,7 +266,6 @@ class VoterFEType:
     email: Optional[str] = None
     thbwiki: bool = False
     patchyvideo: bool = False
-    created_at: Optional[datetime] = None
 
 
 @strawberry.type
