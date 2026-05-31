@@ -3,6 +3,7 @@
 > 仓库级变更记录，按 CLAUDE.md §4 维护。日期格式 `YYYY-MM-DD`。
 >
 > 创建日期：2026-04-27
+
 > 最后更新：2026-05-31（GraphQL 全局错误格式化器 + session_token 30 天 + legacy-compat `/user-token-status`）
 
 ## [2026-05-31] GraphQL 全局错误格式化器（保证 errors 必带 extensions）
@@ -17,6 +18,20 @@
 - 已被 `map_app_errors` 赋了 `error_kind` 的错误**原样保留**,不覆盖。
 - 纯增强,不改任何 query/mutation 行为;前端可选链兜底(Touhou-Vote `4df20d4`)与此构成防御纵深。
 - 与 B-019(错误响应 shape 统一)同向。
+
+## [2026-05-31] 补齐账号管理 GraphQL mutation + 错误中文文案
+
+### Added
+- 新增 4 个 GraphQL mutation,适配前端 `UserSettings.vue`:`updateNickname` / `updatePassword`(`oldPassword` 可选) / `updatePhone` / `updateEmail`。此前后端只在 service/REST(`/api/v1/user/update-*`)实现,GraphQL 未适配,前端调用直接报 `Cannot query field 'updatePassword'`(并触发前端 `extensions is undefined` 崩溃)。逻辑仍在 `UserService`,本次只做 GraphQL→service 的桥接(与登录 mutation 同模式),并复用 REST 同款限流(per-IP 30/60s + per-user 5/60s;改密码 5/300s,B-012)。
+- `_extensions` 现按 `error_kind` 填充 `human_readable_message`(中文文案表)。此前恒为 `None`,导致前端改密码/改昵称兜底分支显示"原因:null"。
+
+### Changed
+- `map_app_errors` 新增可选 `remap` 参数:把 service 的通用 `USER_ALREADY_EXIST` 翻译成前端期望的 `PHONE_IN_USE` / `EMAIL_IN_USE`(`human_readable_message` 跟随 remap 后的 kind)。
+
+### 兼容性
+- 纯新增/增强,不改既有 mutation 与 REST。`removeVoter`(注销)前端未调用,未桥接。
+- 已知未覆盖(非阻塞):投票提交(submit)路径前端用 `submitCharacterVote(content:...)` 等,与后端 `submitCharacter(input:...)` 名称+入参不一致,属同类 GraphQL 适配缺口,另行处理。
+
 
 ## [2026-05-31] session_token 有效期可配置，默认 7 → 30 天
 
