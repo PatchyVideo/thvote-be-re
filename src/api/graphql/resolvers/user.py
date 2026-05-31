@@ -97,14 +97,12 @@ async def map_app_errors(service: str) -> AsyncIterator[None]:
     except GraphQLError:
         raise  # already-mapped error — pass through unchanged
     except Exception as exc:
+        # 真实异常进日志(含堆栈),响应只暴露稳定的 INTERNAL_ERROR,
+        # 不向调用方透出内部细节(SDK/SQL/类名等)。
         logger.exception("Unhandled error in GraphQL resolver (service=%s)", service)
-        # TEMP DEBUG(测试期,服务器无 SSH):把真实异常透出到响应便于定位 INTERNAL_ERROR。
-        # 定位完成后改回 `error_message=None`(避免向调用方泄露内部细节)。
         raise GraphQLError(
             "Error",
-            extensions=_extensions(
-                service, "INTERNAL_ERROR", error_message=f"{type(exc).__name__}: {exc}"
-            ),
+            extensions=_extensions(service, "INTERNAL_ERROR", error_message=None),
         ) from exc
 
 
