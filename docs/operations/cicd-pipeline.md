@@ -1,7 +1,7 @@
 # CI/CD 流水线说明
 
 > 创建日期：2026-04-27
-> 最后更新：2026-05-12（合入 zfq_dev：删除 `deploy-prod.yml` / `deploy.yml` / `pylint.yml`；Apollo→Nacos；移除仓库内 `docker/`）
+> 最后更新：2026-05-31（手动触发 workflow_dispatch 现在会完整部署 + `--force-recreate`，用于改完 Nacos 配置后免 SSH 重启）
 >
 > 用途：说清当前 GitHub Actions workflow 的职责、触发条件、关键步骤，并记录最近的改动与遗留问题。
 > 关联：[`operations/aliyun-onboarding.md`](./aliyun-onboarding.md)、[`operations/nacos-config-center.md`](./nacos-config-center.md)、[`superpowers/specs/2026-04-27-user-auth-implementation-report.md`](../superpowers/specs/2026-04-27-user-auth-implementation-report.md)
@@ -180,7 +180,9 @@ PR 触发：上述分支的 PR 都会跑 lint+test+build，但 **不会** 触发
 
 `workflow_dispatch` 输入：`skip_tests: false/true`。
 
-用途：紧急部署可以选跳过测试（**不建议**，仅救火）。
+**2026-05-31 起：手动触发现在会完整跑 build-backend + deploy-test**（之前 deploy-test 仅限 push 事件，手动触发只跑 lint+test）。deploy 步骤用 `docker-compose up -d --force-recreate backend`，**即使镜像未变也会重建容器**。
+
+主要用途:**改完 Nacos 配置后,在 Actions 点 "Run workflow" 即可让配置生效**（容器重启→重新读 Nacos),不必 SSH 上服务器 `docker restart`。注意 `--force-recreate` 配合 `skip_tests`:救火时可勾 `skip_tests=true` 跳过测试直接重建。
 
 ### 6.3 生产环境部署
 

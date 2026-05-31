@@ -157,7 +157,9 @@ jobs:
     name: 构建后端镜像
     runs-on: ubuntu-latest
     needs: [lint, test]
-    if: github.event_name == 'push'
+    # push 触发，或手动 workflow_dispatch（用于重新部署 / 应用 Nacos 配置变更）。
+    # 显式校验依赖结果：test 被 skip（skip_tests=true）时仍允许构建。
+    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
 
     outputs:
       backend-tag: ${{ steps.meta.outputs.tags }}
@@ -204,7 +206,9 @@ jobs:
     name: 部署到测试环境
     runs-on: ubuntu-latest
     needs: [build-backend]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/zfq_dev')
+    # push 到 main/zfq_dev，或在任意分支手动 workflow_dispatch（手动触发常用于
+    # 改完 Nacos 配置后强制重建容器使其生效，见下方 --force-recreate）。
+    if: ${{ needs.build-backend.result == 'success' && ((github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/zfq_dev')) || github.event_name == 'workflow_dispatch') }}
     environment: test
 
     env:
@@ -298,8 +302,9 @@ jobs:
             echo "执行 alembic upgrade head ..."
             docker run --rm --network thvote-net -e NACOS_ENABLED=true -e NACOS_SERVER_ADDRS="${NACOS_SERVER_ADDRS}" -e NACOS_NAMESPACE="${NACOS_NAMESPACE}" -e NACOS_GROUP=DEFAULT_GROUP -e NACOS_DATA_ID=thvote_be -e NACOS_USERNAME="${NACOS_USERNAME}" -e NACOS_PASSWORD="${NACOS_PASSWORD}" "${BACKEND_IMAGE}" alembic upgrade head
 
-            # 启动后端
-            docker-compose up -d backend
+            # 启动后端（--force-recreate：即使镜像未变也重建容器，
+            # 这样手动触发 + 改完 Nacos 配置后能重启进程让新配置生效）
+            docker-compose up -d --force-recreate backend
 
             # 等待健康检查
             for i in $(seq 1 40); do
