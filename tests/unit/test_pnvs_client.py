@@ -100,8 +100,11 @@ def test_parse_check_api_failure_raises() -> None:
             model=None,
         )
     )
-    with pytest.raises(ExternalAPIError):
+    with pytest.raises(ExternalAPIError) as ei:
         _parse_check_response(response)
+    assert ei.value.message == "SMS_VERIFY_FAILED"
+    assert ei.value.upstream_response_string == "isv.SOMETHING_WRONG"
+    assert ei.value.error_message == "oops"
 
 
 @pytest.mark.asyncio

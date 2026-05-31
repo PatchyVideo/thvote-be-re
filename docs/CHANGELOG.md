@@ -32,6 +32,7 @@
 ### Fixed
 - PNVS 之前写死 `template_param='{"code":"##code##"}'`,对含额外变量(如有效期 `min`)的短信模板会被阿里云判「模板内容与模板参数不匹配」(SMS_SEND_FAILED)。改为可配置 `ALIYUN_PNVS_TEMPLATE_PARAM`(默认仍为 `{"code":"##code##"}`,行为不变)。
 - PNVS 频控码 `biz.FREQUENCY`(同号码发送过频)之前落到 `SMS_SEND_FAILED` 兜底,前端只显示"网络错误"。现归类为 `REQUEST_TOO_FREQUENT`,前端正确显示"请求过于频繁"。同时兜住 `*_LIMIT_CONTROL` / 含 `FREQUENCY` 的频控变体。
+- 校验路径 `_parse_check_response` / `check_sms_verify_code` 抛 `SMS_VERIFY_FAILED` 时现在也带上游 `upstream_response_string`/`error_message`(此前缺,code review M3 遗留),便于排查"验证码失效/过期"类校验失败的真实阿里云返回码。
 
 ### Added
 - `Settings.aliyun_pnvs_template_param`(env `ALIYUN_PNVS_TEMPLATE_PARAM`)。模板有 `min` 等变量时填 `{"code":"##code##","min":"5"}`。

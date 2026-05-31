@@ -139,7 +139,9 @@ class AliyunPnvsClient:
             response = await _async_call(client.check_sms_verify_code, request)
         except Exception as exc:
             logger.exception("PNVS check_sms_verify_code transport failure")
-            raise ExternalAPIError("SMS_VERIFY_FAILED", details=502) from exc
+            raise ExternalAPIError(
+                "SMS_VERIFY_FAILED", details=502, error_message=str(exc)
+            ) from exc
 
         return _parse_check_response(response)
 
@@ -201,7 +203,10 @@ def _parse_check_response(response: Any) -> PnvsResult:
             message,
             request_id,
         )
-        raise ExternalAPIError("SMS_VERIFY_FAILED", details=502)
+        raise ExternalAPIError(
+            "SMS_VERIFY_FAILED", details=502,
+            error_message=message, upstream_response_string=code,
+        )
 
     model = _attr(body, "model")
     verify_result = _attr(model, "verify_result")
