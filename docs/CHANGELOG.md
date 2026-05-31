@@ -3,7 +3,21 @@
 > 仓库级变更记录，按 CLAUDE.md §4 维护。日期格式 `YYYY-MM-DD`。
 >
 > 创建日期：2026-04-27
-> 最后更新：2026-05-31（账号管理 GraphQL mutation 适配 + human_readable_message + session_token 30 天 + legacy-compat `/user-token-status`）
+
+> 最后更新：2026-05-31（GraphQL 全局错误格式化器 + session_token 30 天 + legacy-compat `/user-token-status`）
+
+## [2026-05-31] GraphQL 全局错误格式化器（保证 errors 必带 extensions）
+
+### Added
+- 新增 `src/api/graphql/http.py::AppGraphQLRouter`,override `process_result` 给**每一个**出站 GraphQL 错误兜底补 `extensions`(`{service,url,error_kind,error_message,human_readable_message,upstream_response_string}`)。`src/main.py` 改用它挂载 `/graphql`。
+
+### Fixed
+- 此前 `map_app_errors` 只覆盖被它包住的 resolver 内部错误;**schema 校验错误**(如 `Cannot query field 'X'`)、parse 错误、漏套 wrapper 的 resolver 异常会**无 `extensions`** 到达前端,导致前端 `extensions.error_kind` 直接崩(`Uncaught TypeError: extensions is undefined`)。现统一兜底:校验/parse 错误 → `error_kind="BAD_REQUEST"`;漏网运行时异常 → `error_kind="INTERNAL_ERROR"` 且 message 脱敏为 `Internal server error`(不泄露 SQL/SDK 细节,与 `map_app_errors` 的 INTERNAL_ERROR 处理一致)。
+
+### 兼容性
+- 已被 `map_app_errors` 赋了 `error_kind` 的错误**原样保留**,不覆盖。
+- 纯增强,不改任何 query/mutation 行为;前端可选链兜底(Touhou-Vote `4df20d4`)与此构成防御纵深。
+- 与 B-019(错误响应 shape 统一)同向。
 
 ## [2026-05-31] 补齐账号管理 GraphQL mutation + 错误中文文案
 
@@ -17,6 +31,7 @@
 ### 兼容性
 - 纯新增/增强,不改既有 mutation 与 REST。`removeVoter`(注销)前端未调用,未桥接。
 - 已知未覆盖(非阻塞):投票提交(submit)路径前端用 `submitCharacterVote(content:...)` 等,与后端 `submitCharacter(input:...)` 名称+入参不一致,属同类 GraphQL 适配缺口,另行处理。
+
 
 ## [2026-05-31] session_token 有效期可配置，默认 7 → 30 天
 
