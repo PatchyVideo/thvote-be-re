@@ -15,7 +15,30 @@ async def test_maps_appexception_to_rust_extension_shape():
     assert ext["service"] == "user-manager"
     assert ext["error_kind"] == "INCORRECT_PASSWORD"
     assert ext["url"] is None
-    assert ext["human_readable_message"] is None
+    # mapped to a user-facing message (was None before, caused frontend "原因：null")
+    assert ext["human_readable_message"] == "密码错误"
+
+
+@pytest.mark.asyncio
+async def test_unmapped_error_kind_has_null_human_readable():
+    with pytest.raises(GraphQLError) as ei:
+        async with map_app_errors(service="user-manager"):
+            raise ValidationError("SOME_NEW_KIND", details=400)
+    assert ei.value.extensions["human_readable_message"] is None
+
+
+@pytest.mark.asyncio
+async def test_remap_translates_kind_and_its_human_message():
+    # update_phone surfaces the service's USER_ALREADY_EXIST as PHONE_IN_USE,
+    # and the human message must follow the *remapped* kind.
+    with pytest.raises(GraphQLError) as ei:
+        async with map_app_errors(
+            service="user-manager", remap={"USER_ALREADY_EXIST": "PHONE_IN_USE"}
+        ):
+            raise ValidationError("USER_ALREADY_EXIST", details=409)
+    ext = ei.value.extensions
+    assert ext["error_kind"] == "PHONE_IN_USE"
+    assert ext["human_readable_message"] == "该手机号已被使用"
 
 
 @pytest.mark.asyncio
