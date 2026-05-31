@@ -7,6 +7,7 @@ holds the shared helpers; the mutation resolvers are added on top of them.
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Optional
 
@@ -29,6 +30,8 @@ from src.apps.user.service import UserService
 from src.common.database import get_db_session, get_session_maker
 from src.common.exceptions import AppException
 from src.common.middleware.rate_limit import rate_limit
+
+logger = logging.getLogger(__name__)
 
 
 def build_user_service(db) -> UserService:
@@ -94,8 +97,14 @@ async def map_app_errors(service: str) -> AsyncIterator[None]:
     except GraphQLError:
         raise  # already-mapped error — pass through unchanged
     except Exception as exc:
+        logger.exception("Unhandled error in GraphQL resolver (service=%s)", service)
+        # TEMP DEBUG(测试期,服务器无 SSH):把真实异常透出到响应便于定位 INTERNAL_ERROR。
+        # 定位完成后改回 `error_message=None`(避免向调用方泄露内部细节)。
         raise GraphQLError(
-            "Error", extensions=_extensions(service, "INTERNAL_ERROR")
+            "Error",
+            extensions=_extensions(
+                service, "INTERNAL_ERROR", error_message=f"{type(exc).__name__}: {exc}"
+            ),
         ) from exc
 
 
