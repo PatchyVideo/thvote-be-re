@@ -1,7 +1,7 @@
 # REFACTOR_TODO.md — 重构进度总览
 
 > 创建日期：2026-05-12
-> 最后更新：2026-05-13
+> 最后更新：2026-05-30（与 main 对账：SSO/B-007 已落地、autocomplete 角色+音乐已实现、B-017/018/025/027/029/030 完成；详见 BACKLOG.md）
 >
 > **与其他文档的分工：**
 > - 本文件：模块级别的"移植完成了多少"——宏观进度看板
@@ -28,14 +28,14 @@
 
 | 模块 | 对应 Rust 服务 | Python 路由 | 状态 | 备注 |
 |---|---|---|---|---|
-| 用户与认证 | `user-manager` | `apps/user` | ✅ | 12 端点完整，有测试 |
+| 用户与认证 | `user-manager` | `apps/user` | ✅ | 12 端点 + SSO（QQ/THBWiki，B-007 已落地），有测试 |
 | 投票提交（原始）| `submit-handler` | `apps/submit` | ✅ | 11 端点 + vote_token 鉴权 + 测试（2026-05-13）|
 | 投票数据（处理后）| `vote-data`（Rust 存根）| `apps/vote_data` | ✅ | Python 新增，非 Rust 移植 |
 | 查询结果 | `result-query` | `apps/result` | ✅ | 9 端点 + ComputeService + Redis 缓存（2026-05-13）|
-| 自动补全 | `autocomplete`（Rust 存根）| `apps/autocomplete` | ✅ | candidate 表 ILIKE 查询，4 单元+8 集成测试（2026-05-13）|
+| 自动补全 | `autocomplete`（Rust 存根）| `apps/autocomplete` | ⚠️ | 角色/音乐 candidate 表 ILIKE 已实现；**CP 搜索 `search_cps()` 仍 `return []`** |
 | 爬虫 | `scraper`（Python）| `apps/scraper` | ✅ | 16/18 站点（全部旧后端站点已移植，2026-05-14）|
 | GraphQL | `gateway` | `api/graphql` | ✅ | submit + ResultQuery 8 个字段，JSON scalar（2026-05-13）|
-| 数据库迁移 | — | `alembic/versions/` | ✅ | 0001+0002+0003 已覆盖所有表 |
+| 数据库迁移 | — | `alembic/versions/` | ✅ | 0001+0002+0003+0004（0004=SSO 列）已覆盖所有表 |
 | 基础设施公共层 | — | `common/` | ✅ | config/db/redis/jwt/rate_limit 已就绪 |
 
 ---
@@ -46,7 +46,7 @@
 
 | 组件 | 文件 | 状态 |
 |---|---|---|
-| 配置（Nacos + Apollo + env）| `common/config.py` | ✅ |
+| 配置（Nacos + env；Apollo 已移除）| `common/config.py` | ✅（B-030 lazy load 已修）|
 | 数据库引擎（async，多方言）| `common/database.py` | ✅ |
 | Redis 客户端 | `common/redis.py` | ✅ |
 | JWT 签发/校验 | `common/security/jwt.py` | ✅ |
@@ -65,7 +65,7 @@
 | mypy CI 硬门禁 | `mypy.ini` / CI | 🟢 [B-020] |
 | Pydantic V2 迁移 | 全 `common/` | 🟢 [B-021] |
 
-**BACKLOG 关联：** B-004, B-009（trusted proxies）, B-017（Apollo+lru_cache）, B-020, B-021, B-025（移除 init_db 后门）, B-026, ~~B-027~~✅
+**BACKLOG 关联：** ~~B-004~~✅ ~~B-009~~✅ ~~B-017~~✅ ~~B-025~~✅ ~~B-027~~✅ ~~B-030~~✅；仍开放：B-020（mypy 硬门禁）, B-021（Pydantic V2）, B-026（DB 治理纪律，阻塞已解除）, B-031（Nacos JSON 容错分支）
 
 ---
 
@@ -92,17 +92,18 @@
 | `POST /user/token-status` | ✅ | 契约 ✅ |
 | `GET /user/me` | ✅ | 契约 ✅（集成 ❌ [B-015]）|
 
-**未移植（超出当前范围）：**
-- Rust 的 `thbwiki_login.rs / qq_binding.rs / legacy_login.rs` → [B-007] SSO 接入，计划中
+**SSO（B-007 已落地，2026-05-17）：**
+- Rust 的 `thbwiki_login.rs / qq_binding.rs` → 已迁移：`sso_clients.py` + `sso_session.py`，6 个 SSO 端点（QQ / THBWiki authorize/callback/bind）+ Redis LoginSession + migration 0004（`thbwiki_uid` / `qq_openid` 列）
+- **未含**：PatchyVideo SSO、Rust `legacy_login.rs`（旧账号体系，归入 B-008 历史数据回填范畴）
 
-**BACKLOG 关联（高优先级）：**
-- ✅ [B-003] submit 端点 vote_token JWT 校验（2026-05-13 完成）
-- 🟡 [B-012] `update-password` 单独限流（5 req/300s）
-- 🟡 [B-014] `vote_token` 签发集成测试（3 场景）
-- 🟡 [B-015] `GET /me` 集成测试
-- 🟡 [B-016] bcrypt → argon2 升级端到端测试
-- 🟡 [B-018] `_safe_log` 失败无可见性
-- 🟡 [B-024] `UserDAO.save()` 加 `session.merge()` 防 detached instance
+**BACKLOG 关联：**
+- ✅ [B-003] submit 端点 vote_token JWT 校验（2026-05-13）
+- ✅ [B-007] SSO 接入（2026-05-17）
+- ✅ [B-012] `update-password` 单独限流（2026-05-15）
+- ✅ [B-014/015/016] vote_token / GET me / bcrypt 升级集成测试（2026-05-15）
+- ✅ [B-018] `_safe_log` 失败可见性（2026-05-17）
+- ✅ GraphQL 登录 mutation 桥接（2026-05-30）：5 个登录 mutation 包装 UserService，前端 LoginBox 契约打通
+- 仍开放：[B-024] `UserDAO.save()` 加 `session.merge()` 防 detached instance；[B-011] 移除 `at_least_one_identifier` 约束（SSO 已落地，阻塞解除）
 
 ---
 
@@ -135,7 +136,7 @@
 - 同人：各字段 ≤ 4096 ✅
 
 **BACKLOG 关联：**
-- 🔴 [B-003] submit 端点当前只靠 `meta.vote_id` 加分布锁，未做 `vote_token` JWT 校验
+- ✅ [B-003] submit 端点 `vote_token` JWT 校验已落地（2026-05-13, `8724e39`）
 
 ---
 
@@ -174,27 +175,29 @@
 
 ---
 
-## 六、自动补全 ❌
+## 六、自动补全 ⚠️（角色/音乐已实现，CP 待做）
 
 **对应 Rust：** `autocomplete/`（Rust 原版是空存根，Python 侧为新实现）
 
-**现状：** 路由 + 服务骨架存在，DAO 三个方法全部返回空列表 `[]`。
+**现状：** 路由 + 服务 + DAO 已接通；`candidate_character` / `candidate_music` 表（migration 0003）已作为数据源。
+
+| DAO 方法 | 状态 |
+|---|---|
+| `search_characters(query, limit)` — `candidate_character` ILIKE | ✅ 已实现 |
+| `search_music(query, limit)` — `candidate_music` ILIKE | ✅ 已实现 |
+| `search_cps(query, limit)` | ❌ 仍 `return []`（`src/apps/autocomplete/dao.py:56`）|
 
 | 端点 | 状态 |
 |---|---|
-| `POST /autocomplete/search` | ❌（调用链通，返回空结果） |
+| `POST /autocomplete/search` | ⚠️ 角色/音乐返回真实结果，CP 永远空 |
 
 ### 待实现
 
-现在 `candidate_character` / `candidate_music` 表已存在（migration 0003），可直接用作数据源：
-
-- `AutocompleteDAO.search_characters(query, limit)` — 在 `candidate_character.name` / `name_jp` 做模糊匹配（`ILIKE %query%`）
-- `AutocompleteDAO.search_music(query, limit)` — 同上，查 `candidate_music`
-- `AutocompleteDAO.search_cps(query, limit)` — 可从已提交的 `cp.cp_list` JSON 中提取唯一 CP 名称
+- `AutocompleteDAO.search_cps(query, limit)` — 从已提交的 `cp.cp_list` JSON 中提取唯一 CP 名称做模糊匹配（无现成 candidate 表，是唯一缺口）
 
 ---
 
-## 七、爬虫 ⚠️
+## 七、爬虫 ✅（18 站点全部移植，唯缺测试）
 
 **对应：** 旧 `scraper/`（Python 实现，非 Rust 移植）
 
@@ -254,10 +257,11 @@
 | `0001_initial_user_and_activity_log` | `user` + `activity_log` 表 + 索引 | ✅ |
 | `0002_voting_tables` | `raw_character/music/cp/paper/dojin` + `character/music/cp/questionnaire` 遗留表 | ✅ |
 | `0003_candidate_and_final_ranking` | `candidate_character`、`candidate_music`、`final_ranking` | ✅ |
+| `0004_sso_columns` | `user.thbwiki_uid` / `user.qq_openid` SSO 列 | ✅（B-007）|
 
 **BACKLOG 关联：**
-- 🟡 [B-025] 移除 `init_db()` / `DEBUG` 后门
-- 🟡 [B-026] DB 治理纪律（PR 模板 + `alembic check` CI 门禁）
+- ✅ [B-025] 移除 `init_db()` / `DEBUG` 后门（2026-05-17, `76facaa`；启动改连通性检查）
+- 🟢 [B-026] DB 治理纪律（PR 模板 + `alembic check` CI 门禁）——B-025 已完成，阻塞解除，可立即做
 
 > 如果 `autocomplete` 需要新建候选项目表，需要第三张 migration（见第六节"数据来源待定"）。
 
@@ -303,52 +307,54 @@
 
 | 编号 | 问题 | 严重度 |
 |---|---|---|
-| ~~B-003~~ | ~~submit 端点未做 `vote_token` JWT 校验~~ | ✅ 已完成 2026-05-13 |
-| B-004 | CORS `allow_origins=["*"]` + `allow_credentials=True` 危险组合 | 中 |
-| B-007 | THBWiki / QQ / PatchyVideo SSO 接入 | 中 |
-| B-008 | MongoDB → PostgreSQL 历史数据回填脚本 | 中 |
-| B-009 | trusted proxies / `X-Forwarded-For` 处理 | 中 |
-| B-012 | `update-password` 专用限流 | 中 |
+| ~~B-003~~ | ~~submit 端点未做 `vote_token` JWT 校验~~ | ✅ 2026-05-13 |
+| ~~B-004~~ | ~~CORS `allow_origins=["*"]` 危险组合~~ | ✅ 2026-05-15 |
+| ~~B-007~~ | ~~THBWiki / QQ SSO 接入~~（PatchyVideo SSO 未含）| ✅ 2026-05-17 |
+| ~~B-009~~ | ~~trusted proxies / `X-Forwarded-For` 处理~~ | ✅ 2026-05-15 |
+| ~~B-012~~ | ~~`update-password` 专用限流~~ | ✅ 2026-05-15 |
+| **B-028** | **prod 部署通道缺失**（main push 也只到 test 环境）| **高（当前最高优先级）** |
+| B-008 | MongoDB → PostgreSQL 历史数据回填脚本（设计稿已写，实现未做）| 中 |
+| B-011 | 移除 `at_least_one_identifier` 约束（阻塞已解除）| 低 |
 | B-019 | 错误体 `{"detail":"..."}` 与 Rust `{"error":"..."}` 格式不一致 | 低 |
 | B-020 | mypy CI 硬门禁 | 低 |
 
 ---
 
-## 十二、建议实施顺序
+## 十二、建议实施顺序（2026-05-30 重排）
 
-### 立即可开工（独立，不依赖其他 PR）
-
-```
-1. B-004  CORS 收紧（30 分钟）
-2. B-009  trusted proxies / X-Forwarded-For（1 小时）
-3. B-012  update-password 专用限流（1 小时）
-4. B-020+B-027  mypy 清告警 + CI lint 改硬（半天）
-5. B-021  Pydantic V2 迁移（半天）
-6. B-014/015/016 测试补全（1-2 天）
-7. vote_data 模块测试（半天）
-8. B-008  数据回填脚本（独立 scripts/ 目录）
-```
-5. B-021  Pydantic V2 迁移（半天）
-6. B-008  数据回填脚本设计（独立 scripts/ 目录）
-7. 爬虫站点补充（nicovideo / youtube / thbwiki，按本届需求排序）
-```
-
-### 下一个主要 PR（可基于 result DAO 解锁）
+### 优先级最高
 
 ```
-GraphQL ResultQuery — result DAO 已就绪，可直接封装 Strawberry 类型
+1. B-028  prod 部署通道（确认现状或补 deploy-prod.yml）—— 上线硬阻塞
+2. B-008  MongoDB → PG 历史数据回填脚本实现（设计稿已就绪，scripts/ 仍空）
 ```
 
-### 依赖链
+### 立即可开工（独立、阻塞已解除）
 
 ```
-B-007 SSO 落地
-  └── B-011 移除 at_least_one_identifier 约束
+3. autocomplete search_cps() 实现（角色/音乐已完成，唯一功能缺口）
+4. B-011  移除 at_least_one_identifier 约束（需新 migration，1 小时）
+5. B-026  DB 治理纪律 CI 门禁（alembic check + PR 模板）
+6. B-020+B-021  mypy 清告警 + Pydantic V2 迁移（半天-1 天）
+7. B-022/023  PG 契约测试 + importorskip 改硬 import
+8. B-031  Nacos 配置约束标准 JSON 后删 _parse_config_content 容错分支
+```
 
-B-025 移除 init_db 后门
-  └── B-026 DB 治理纪律 CI 门禁
+### 待条件成熟 / 低优先级
 
-result DAO ✅（已完成）
-  └── GraphQL ResultQuery ← 下一步
-  └── Autocomplete ← 候选表已就绪，可立即做
+```
+- B-010  覆盖率门禁 fail_under=80（模块稳定 1-2 sprint 后）
+- B-013  发送幂等性
+- B-019  错误响应格式与 Rust 统一（等前端反馈）
+- B-024  UserDAO.save() 加 session.merge()
+- scraper 18 站点测试补全（需 mock 外部 HTTP）
+- GET /server-time 端点移植（低优先级）
+```
+
+### 已解除的依赖链（记录用）
+
+```
+B-007 SSO 落地 ✅ → B-011 移除 at_least_one_identifier 约束（现可做）
+B-025 移除 init_db 后门 ✅ → B-026 DB 治理纪律 CI 门禁（现可做）
+result DAO ✅ → GraphQL ResultQuery ✅ / Autocomplete 角色+音乐 ✅（CP 待做）
 ```
