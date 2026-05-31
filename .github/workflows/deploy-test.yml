@@ -212,9 +212,6 @@ jobs:
     if: ${{ needs.build-backend.result == 'success' && ((github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/zfq_dev')) || github.event_name == 'workflow_dispatch') }}
     environment: test
 
-    env:
-      BACKEND_TAG: ${{ github.ref_name == 'main' && 'prod' || 'test' }}
-
     steps:
       - name: 检出部署配置
         uses: actions/checkout@v4
@@ -240,7 +237,8 @@ jobs:
           NACOS_NAMESPACE: ${{ secrets.TEST_NACOS_NAMESPACE }}
           NACOS_USERNAME: ${{ secrets.TEST_NACOS_USERNAME }}
           NACOS_PASSWORD: ${{ secrets.TEST_NACOS_PASSWORD }}
-          BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ env.BACKEND_TAG }}
+          # 用本次构建产出的不可变 digest,避免浮动 :prod/:test tag 在拉取时取到旧镜像
+          BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend@${{ needs.build-backend.outputs.backend-digest }}
           REGISTRY: ${{ env.REGISTRY }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -280,7 +278,8 @@ jobs:
             echo "docker-compose.yml 已从仓库模板更新"
 
             # 拉取镜像
-            docker pull "${BACKEND_IMAGE}" || true
+            # 拉失败必须硬红(不再 || true 静默用旧镜像):重试一次后仍失败则终止部署
+            docker pull "${BACKEND_IMAGE}" || { sleep 5; docker pull "${BACKEND_IMAGE}"; } || { echo "镜像拉取失败,终止"; exit 1; }
 
             # 仅当 redis 未运行时才启动
             if docker ps --format '{{.Names}}' | grep -q '^thvote-redis$'; then

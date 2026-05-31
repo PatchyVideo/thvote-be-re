@@ -5,6 +5,17 @@
 > 创建日期：2026-04-27
 > 最后更新：2026-05-31（PNVS template_param 可配置 + CI 手动触发部署 + 登录配置文档）
 
+## [2026-05-31] 修复部署用旧镜像导致迁移不生效
+
+### Fixed
+- 部署脚本 `docker pull "${BACKEND_IMAGE}" || true` 在拉取失败时**静默使用本地旧镜像**,加上浮动 `:prod`/`:test` tag,导致 `alembic upgrade head` 可能跑旧镜像里的迁移(只到 0004),deploy 却报成功——迁移/代码悄悄没更新(0005 因此没生效,`alembic_version` 卡在 0004)。
+- 改为:**用本次构建产出的不可变 digest**(`...-backend@<digest>`)部署;`docker pull` **去掉 `|| true`**(重试一次后仍失败则硬红终止),不再静默用旧镜像。移除已无用的 `BACKEND_TAG`。
+
+### 注意
+- 排查期间已直接对 RDS 补齐 `user` 表缺失列解锁登录;本修复保证后续迁移/镜像可靠交付。`alembic/**` 也已纳入 push 触发路径(迁移改动会触发部署)。
+
+---
+
 ## [2026-05-31] 修复 user 表 schema 漂移(migration 0005)
 
 ### Fixed
