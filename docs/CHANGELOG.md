@@ -3,7 +3,20 @@
 > 仓库级变更记录，按 CLAUDE.md §4 维护。日期格式 `YYYY-MM-DD`。
 >
 > 创建日期：2026-04-27
-> 最后更新：2026-05-31（PNVS template_param 可配置 + CI 手动触发部署 + 登录配置文档）
+> 最后更新：2026-05-31（legacy-compat `/user-token-status` 修复登录后弹回登录页 + PNVS template_param 可配置 + CI 手动触发部署）
+
+## [2026-05-31] 修复登录成功后又被弹回登录页（REST 契约漂移）
+
+### Added
+- 新增 legacy-compat 路由层 `src/api/rest/legacy/`，挂在后端**根路径**（无 `/api/v1` 前缀），首个端点 `POST /user-token-status`，复刻旧 Rust gateway 契约 `{status:"valid"|"invalid", voting_status, papers_json}`（HTTP 恒 200）。
+
+### Fixed
+- **登录后闪现投票页又被弹回登录页**:登录走 GraphQL 成功,但前端 bootstrap 的 `checkLoginStatus()` 会 `POST /v11-be/user-token-status`,而该扁平路径在 Python 后端是 404(真实路由在 `/api/v1/user/token-status`,且原实现返回空体而非 `{status:"valid"}`)。前端拿不到 `status:"valid"` 就 `deleteUserData()` 登出 → bounce。新增的 legacy-compat 端点同时修好**路径**和**响应 shape**,前端无需改动。
+
+### 兼容性 / 迁移
+- 纯新增,不影响 `/api/v1` 与 GraphQL 现有路由;旧 `POST /api/v1/user/token-status`（空体）保留。
+- 这是迁移期兼容垫片,**移除条件**已记入 BACKLOG **B-033** 与 `docs/migration/legacy-rest-compat.md`:Rust gateway 下线 + 前端 REST 迁移到 `/api/v1`。
+- 已知未覆盖:`/v11-be/doujin/api` 同类 404 本次未处理。
 
 ## [2026-05-31] 修复部署用旧镜像导致迁移不生效
 

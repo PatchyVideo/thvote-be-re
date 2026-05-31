@@ -9,7 +9,7 @@
 
 ---
 
-## 状态总览（B-001..B-032）
+## 状态总览（B-001..B-033）
 
 | 编号 | 主题 | 严重度 | 可并行做？ | 源文档 |
 |---|---|---|---|---|
@@ -69,12 +69,13 @@
 
 > ⚡ = 当前最高优先级
 
-## 🟡 需要判断 / 等条件成熟（3 项）
+## 🟡 需要判断 / 等条件成熟（5 项）
 
 - **B-010** 覆盖率门禁切 `fail_under=80`（依赖模块运行 1-2 sprint 稳定后再切）
 - **B-013** 邮件/短信发送幂等性（低优先级，发送链路已稳定后做）
 - **B-019** 错误响应 `{"detail"}` → 与 Rust `{"error","service"}` 统一（等前端反馈是否需要）
 - **B-024** `UserDAO.save()` 加 `session.merge()` 防 detached instance（防御性加固）
+- **B-033** 删除 legacy-compat 路由层 `src/api/rest/legacy/`（2026-05-31 新增，保留旧 Rust gateway 扁平契约 `/user-token-status`，供与 Rust 部署共享的前端无改动对接 Python 后端，修复登录后 bounce 回登录页）。**移除条件**：① Rust gateway 下线（无部署再依赖扁平契约）且 ② 前端 REST 调用迁移到原生 `/api/v1/...` + 新响应 shape。与 B-019（错误响应 shape 统一）、`/server-time` 缺口同属 Rust→Python REST 契约收敛，宜一并处理。详见 `docs/migration/legacy-rest-compat.md`。
 
 ## 🟢 模块功能缺口（不在 B 编号体系内）
 

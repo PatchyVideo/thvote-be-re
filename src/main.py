@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from strawberry.fastapi import GraphQLRouter
 
 from .api.graphql.schema import schema as graphql_schema
+from .api.rest.legacy import legacy_router
 from .api.rest.v1 import api_router
 from .common.config import (
     get_settings,
@@ -259,6 +260,10 @@ def create_app() -> FastAPI:
 
     # REST API v1 endpoints
     app.include_router(api_router)
+
+    # Legacy flat routes (old Rust gateway contract, served at root path).
+    # See src/api/rest/legacy/ for the removal condition.
+    app.include_router(legacy_router)
 
     # GraphQL endpoint (Strawberry)
     graphql_app = GraphQLRouter(graphql_schema)
