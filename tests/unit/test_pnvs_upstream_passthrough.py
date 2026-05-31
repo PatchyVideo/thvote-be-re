@@ -23,6 +23,16 @@ def test_rate_limit_failure_passes_upstream_code():
     assert ei.value.error_message == "too many"
 
 
+def test_biz_frequency_maps_to_rate_limit():
+    # PNVS 同号码发送频控码 biz.FREQUENCY → REQUEST_TOO_FREQUENT(前端显示"请求过于频繁")
+    resp = _Resp(_Body(code="biz.FREQUENCY", message="check frequency failed", request_id="r9"))
+    with pytest.raises(RateLimitError) as ei:
+        _parse_send_response(resp)
+    assert ei.value.message == "REQUEST_TOO_FREQUENT"
+    assert ei.value.upstream_response_string == "biz.FREQUENCY"
+    assert ei.value.error_message == "check frequency failed"
+
+
 def test_invalid_phone_passes_upstream_code():
     resp = _Resp(_Body(code="isv.MOBILE_NUMBER_ILLEGAL", message="bad", request_id="r2"))
     with pytest.raises(ValidationError) as ei:

@@ -166,11 +166,17 @@ def _parse_send_response(response: Any) -> PnvsSendResult:
             "INVALID_PHONE", details=400,
             error_message=message, upstream_response_string=code,
         )
-    if code in {
-        "isv.BUSINESS_LIMIT_CONTROL",
-        "isv.OUT_OF_SERVICE",
-        "isv.SMS_TEST_NUMBER_NOT_LOGIN",
-    } or (code or "").endswith("_LIMIT_CONTROL"):
+    code_str = code or ""
+    if (
+        code in {
+            "isv.BUSINESS_LIMIT_CONTROL",
+            "isv.OUT_OF_SERVICE",
+            "isv.SMS_TEST_NUMBER_NOT_LOGIN",
+            "biz.FREQUENCY",  # PNVS 同号码发送间隔频控（biz.* 系列）
+        }
+        or code_str.endswith("_LIMIT_CONTROL")
+        or "FREQUENCY" in code_str  # 兜住 biz.DAY_FREQUENCY 等频控变体
+    ):
         raise RateLimitError(
             "REQUEST_TOO_FREQUENT", details=429,
             error_message=message, upstream_response_string=code,
