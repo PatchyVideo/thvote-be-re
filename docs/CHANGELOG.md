@@ -3,7 +3,25 @@
 > 仓库级变更记录，按 CLAUDE.md §4 维护。日期格式 `YYYY-MM-DD`。
 >
 > 创建日期：2026-04-27
-> 最后更新：2026-05-30（仪表盘文档与 main 对账）
+> 最后更新：2026-05-31（CI 手动触发部署 + 登录配置文档）
+
+## [2026-05-31] CI 手动触发部署 + 登录配置清单文档
+
+### Changed
+- `deploy-test.yml`:`build-backend` / `deploy-test` 现在也响应 `workflow_dispatch`（之前 deploy 仅限 push）。job `if` 改为显式校验依赖结果，`skip_tests=true` 时仍可构建/部署。
+- 部署步骤改 `docker-compose up -d --force-recreate backend`：即使镜像未变也重建容器，使**改完 Nacos 配置后手动触发即可让配置生效**，无需 SSH 上服务器 `docker restart`。
+
+### Added
+- `docs/operations/login-config-checklist.md`:登录模块所需 Nacos 配置项**待填清单**（按登录方式分组、必填/可选、JSON 骨架、R-NACOS `:10848` 访问入口、阿里云参数获取指引）。
+
+### Changed（文档）
+- `docs/operations/nacos-config-center.md` §四:补 R-NACOS 双控制台（协议口 `:8848` vs 鉴权控制台 `:10848`）访问方式;注明测试环境 dataId 为 `thvote_be`（下划线）。
+- `docs/operations/cicd-pipeline.md` §6.2:更新手动触发行为说明。
+
+### 兼容性
+- 无破坏:push 触发行为不变;新增的是手动触发可部署的能力。
+
+---
 
 ## [2026-05-30] GraphQL 登录 mutation 桥接
 
