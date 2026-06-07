@@ -224,3 +224,42 @@ class ComputeDAO:
         )
         await self.session.commit()
         return result.rowcount > 0
+
+    async def update_candidate(
+        self, candidate_id: int, category: str, fields: dict
+    ) -> str:
+        """Update one candidate row. Returns 'ok' / 'not_found' / 'conflict'.
+
+        insertSelective: only columns present in ``fields`` (and belonging to
+        the model) are written. Renaming to a name that already exists in the
+        same vote_year returns 'conflict'.
+        """
+        from src.db_model.candidate import CandidateCharacter, CandidateMusic
+
+        model = CandidateCharacter if category == "character" else CandidateMusic
+        valid_cols = {
+            c.key for c in model.__table__.columns if c.key not in ("id", "vote_year")
+        }
+        row = (await self.session.execute(
+            select(model).where(model.id == candidate_id)
+        )).scalar_one_or_none()
+        if row is None:
+            return "not_found"
+
+        new_name = fields.get("name")
+        if new_name and new_name != row.name:
+            dup = (await self.session.execute(
+                select(model).where(
+                    model.vote_year == row.vote_year,
+                    model.name == new_name,
+                    model.id != candidate_id,
+                )
+            )).scalar_one_or_none()
+            if dup is not None:
+                return "conflict"
+
+        for k, v in fields.items():
+            if k in valid_cols:
+                setattr(row, k, v)
+        await self.session.commit()
+        return "ok"

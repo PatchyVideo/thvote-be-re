@@ -133,6 +133,43 @@ class AdminService:
     async def delete_candidate(self, candidate_id: int, category: str) -> bool:
         return await self.compute_dao.delete_candidate(candidate_id, category)
 
+    def get_candidate_fields(self, category: str) -> list[dict]:
+        from src.apps.admin.candidate_service import candidate_field_specs
+        return candidate_field_specs(category)
+
+    async def import_candidates_from_content(
+        self,
+        vote_year: int,
+        category: str,
+        fmt: str,
+        content: str,
+        dry_run: bool,
+    ) -> dict:
+        from src.apps.admin.candidate_service import parse_content, validate_items
+
+        rows, parse_errors = parse_content(fmt, content)
+        if parse_errors:
+            return {"parse_error": parse_errors[0]["reason"]}
+        valid, rejected = validate_items(category, rows)
+        imported = 0
+        if not dry_run and valid:
+            imported = await self.compute_dao.upsert_candidates(
+                vote_year, category, valid
+            )
+        return {
+            "valid": valid,
+            "valid_count": len(valid),
+            "rejected": rejected,
+            "imported": imported,
+        }
+
+    async def update_candidate(
+        self, candidate_id: int, category: str, fields: dict
+    ) -> str:
+        return await self.compute_dao.update_candidate(
+            candidate_id, category, fields
+        )
+
     async def list_activity_logs(
         self,
         user_id: str | None,

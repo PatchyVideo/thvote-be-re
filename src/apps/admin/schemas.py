@@ -155,3 +155,41 @@ class SyncHistoryItem(BaseModel):
 class SyncHistoryResponse(BaseModel):
     items: list[SyncHistoryItem]
     total: int
+
+
+# ── Candidate management schemas ───────────────────────────────────────────────
+
+class CandidateFieldSpec(BaseModel):
+    name: str
+    required: bool
+
+
+class CandidateFieldsResponse(BaseModel):
+    category: str
+    fields: list[CandidateFieldSpec]
+
+
+class CandidateImportRequest(BaseModel):
+    vote_year: int
+    category: Literal["character", "music"]
+    format: Literal["auto", "csv", "json"] = "auto"
+    content: str
+    dry_run: bool = True
+
+
+class CandidateRejected(BaseModel):
+    line: int
+    reason: str
+
+
+class CandidateImportResponse(BaseModel):
+    ok: bool = True
+    valid_count: int
+    imported: int = 0
+    valid: list[dict] = []
+    rejected: list[CandidateRejected] = []
+
+
+class CandidateUpdateRequest(BaseModel):
+    category: Literal["character", "music"]
+    fields: dict

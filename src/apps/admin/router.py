@@ -13,7 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.apps.admin.schemas import (
     ActivityLogResponse,
     BanResponse,
+    CandidateFieldsResponse,
+    CandidateImportRequest,
+    CandidateImportResponse,
     CandidateListResponse,
+    CandidateUpdateRequest,
     ComputeResultsResponse,
     FinalizeRankingResponse,
     ImportCandidatesRequest,
@@ -225,6 +229,52 @@ async def list_candidates(
         for r in data["items"]
     ]
     return CandidateListResponse(items=items, total=data["total"])
+
+
+@router.get("/candidates/fields", response_model=CandidateFieldsResponse)
+async def candidate_fields(
+    category: str = "character",
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> CandidateFieldsResponse:
+    _check_admin_secret(settings, x_admin_secret)
+    return CandidateFieldsResponse(
+        category=category, fields=service.get_candidate_fields(category)
+    )
+
+
+@router.post("/candidates/import", response_model=CandidateImportResponse)
+async def import_candidates_content(
+    body: CandidateImportRequest,
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> CandidateImportResponse:
+    _check_admin_secret(settings, x_admin_secret)
+    result = await service.import_candidates_from_content(
+        body.vote_year, body.category, body.format, body.content, body.dry_run
+    )
+    if "parse_error" in result:
+        raise HTTPException(status_code=400, detail=result["parse_error"])
+    return CandidateImportResponse(**result)
+
+
+@router.put("/candidates/{candidate_id}")
+async def update_candidate(
+    candidate_id: int,
+    body: CandidateUpdateRequest,
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    _check_admin_secret(settings, x_admin_secret)
+    result = await service.update_candidate(candidate_id, body.category, body.fields)
+    if result == "not_found":
+        raise HTTPException(status_code=404, detail="CANDIDATE_NOT_FOUND")
+    if result == "conflict":
+        raise HTTPException(status_code=409, detail="CANDIDATE_NAME_CONFLICT")
+    return {"ok": True}
 
 
 @router.delete("/candidates/{candidate_id}")
