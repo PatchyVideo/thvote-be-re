@@ -18,7 +18,7 @@
 - 修复 `test_legacy_token_status` 两例日期依赖(session token 在 freeze 块外签发)。
 
 ### Changed / ⚠️ 唯一旧字段例外
-- **`submitDojin` 新旧同名**:GraphQL 不允许同名字段并存,桥版本(`content: DojinSubmitGQL!`→`Boolean!`)经 MRO 取代旧版本(`input:`→`SubmitSuccess!`)。旧版本本就因 `SubmitService(db)` 传参错误不可用,无实际调用方。其余旧字段(`submitCharacter(input:)` ×4、`getCharacterSubmit(voteId)` ×7)按决策原样保留。
+- **`submitDojin` 新旧同名**:GraphQL 不允许同名字段并存,桥版本(`content: DojinSubmitGQL!`→`Boolean!`)经 MRO 取代旧版本(`input:`→`SubmitSuccess!`)。旧版本本就因 `SubmitService(db)` 传参错误不可用,无实际调用方。连带效应:旧版本独占的输入类型 `DojinSubmitInput`/`DojinSubmitMutationInput` 因无字段引用而从 SDL 剪除(strawberry 只输出可达类型)。其余旧字段(`submitCharacter(input:)` ×4、`getCharacterSubmit(voteId)` ×7)按决策原样保留。
 
 ### 兼容性 / 刻意差异(记录)
 - service 校验错误(`ValueError`)以 `error_kind=INVALID_CONTENT` + 中文原文(`human_readable_message`)返回;锁冲突=`SUBMIT_LOCKED`(429)。
