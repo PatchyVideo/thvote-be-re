@@ -4,7 +4,8 @@ from httpx import AsyncClient, ASGITransport
 
 
 @pytest.mark.asyncio
-async def test_fields_403_without_secret(app):
+async def test_fields_403_without_secret(app, admin_secret):
+    # admin_secret fixture configures a server secret; omitting the header → 403
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.get("/api/v1/admin/candidates/fields?category=character")
     assert resp.status_code == 403
