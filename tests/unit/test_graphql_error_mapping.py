@@ -2,7 +2,7 @@ import pytest
 from fastapi import HTTPException
 from graphql import GraphQLError
 
-from src.api.graphql.resolvers.user import _client_ip_from_info, map_app_errors
+from src.api.graphql.errors import _client_ip_from_info, map_app_errors
 from src.common.exceptions import RateLimitError, ValidationError
 
 
@@ -100,3 +100,15 @@ def test_client_ip_from_object_context():
         context = _Ctx()
 
     assert _client_ip_from_info(_Info()) == "8.8.8.8"
+
+
+@pytest.mark.asyncio
+async def test_exception_carried_human_message_beats_table():
+    # 异常自带的 human_readable_message 优先于文案表(INCORRECT_PASSWORD 表内是"密码错误")
+    with pytest.raises(GraphQLError) as ei:
+        async with map_app_errors(service="submit-handler"):
+            raise ValidationError(
+                "INCORRECT_PASSWORD", details=400,
+                human_readable_message="数量9不在范围内[1,8]"
+            )
+    assert ei.value.extensions["human_readable_message"] == "数量9不在范围内[1,8]"
