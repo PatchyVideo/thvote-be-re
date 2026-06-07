@@ -4,6 +4,7 @@ import strawberry
 
 from .resolvers.result import ResultQuery
 from .resolvers.submit import SubmitMutation, SubmitQuery
+from .resolvers.submit_bridge import SubmitBridgeMutation
 from .resolvers.user import UserMutation
 
 
@@ -15,7 +16,7 @@ class Query(SubmitQuery, ResultQuery):
 
 
 @strawberry.type
-class Mutation(SubmitMutation, UserMutation):
+class Mutation(SubmitMutation, UserMutation, SubmitBridgeMutation):
     """Root GraphQL Mutation."""
 
     pass
