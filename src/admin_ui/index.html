@@ -6,45 +6,66 @@
 <title>THVote Admin</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: system-ui, sans-serif; background: #111; color: #e0e0e0; min-height: 100vh; }
-  #login-overlay { position: fixed; inset: 0; background: #111; display: flex; align-items: center; justify-content: center; z-index: 100; }
-  #login-box { background: #1e1e1e; padding: 2rem; border-radius: 8px; width: 320px; }
-  #login-box h2 { margin-bottom: 1rem; color: #fff; }
-  #login-box input { width: 100%; padding: .6rem; background: #2a2a2a; border: 1px solid #444; color: #e0e0e0; border-radius: 4px; margin-bottom: .8rem; }
-  #login-error { color: #f66; font-size: .85rem; margin-bottom: .5rem; min-height: 1.2em; }
-  nav { background: #1e1e1e; padding: .8rem 1.5rem; display: flex; gap: .5rem; align-items: center; border-bottom: 1px solid #333; }
-  nav .brand { color: #aaa; margin-right: auto; font-weight: bold; }
-  nav button { background: none; border: none; color: #aaa; cursor: pointer; padding: .4rem .8rem; border-radius: 4px; }
-  nav button.active, nav button:hover { background: #2a2a2a; color: #fff; }
+  body { font-family: system-ui, sans-serif; background: #f0f2f5; color: #1a1a1a; min-height: 100vh; }
+  #login-overlay { position: fixed; inset: 0; background: #f0f2f5; display: flex; align-items: center; justify-content: center; z-index: 100; }
+  #login-box { background: #fff; padding: 2rem; border-radius: 8px; width: 320px; border: 1px solid #e2e2e2; box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+  #login-box h2 { margin-bottom: 1rem; color: #111; }
+  #login-box input { width: 100%; padding: .6rem; background: #fff; border: 1px solid #ccc; color: #1a1a1a; border-radius: 4px; margin-bottom: .8rem; }
+  #login-error { color: #dc2626; font-size: .85rem; margin-bottom: .5rem; min-height: 1.2em; }
+  nav { background: #fff; padding: .8rem 1.5rem; display: flex; gap: .5rem; align-items: center; border-bottom: 1px solid #e2e2e2; }
+  nav .brand { color: #555; margin-right: auto; font-weight: bold; }
+  nav button { background: none; border: none; color: #555; cursor: pointer; padding: .4rem .8rem; border-radius: 4px; }
+  nav button.active, nav button:hover { background: #eef2ff; color: #2563eb; }
   #content { padding: 1.5rem; }
-  .card { background: #1e1e1e; border-radius: 8px; padding: 1.2rem; margin-bottom: 1rem; }
+  .card { background: #fff; border: 1px solid #e2e2e2; border-radius: 8px; padding: 1.2rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
   .stats-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
-  .stat-card { background: #2a2a2a; border-radius: 6px; padding: 1rem 1.5rem; min-width: 140px; }
-  .stat-card .val { font-size: 1.8rem; font-weight: bold; color: #7af; }
+  .stat-card { background: #f7f9fc; border: 1px solid #e2e2e2; border-radius: 6px; padding: 1rem 1.5rem; min-width: 140px; }
+  .stat-card .val { font-size: 1.8rem; font-weight: bold; color: #2563eb; }
   .stat-card .lbl { font-size: .8rem; color: #888; margin-top: .2rem; }
-  input[type=text], input[type=number], input[type=password], select {
-    background: #2a2a2a; border: 1px solid #444; color: #e0e0e0;
-    padding: .5rem .7rem; border-radius: 4px; }
-  button.btn { background: #2a5cc7; border: none; color: #fff; padding: .5rem 1rem; border-radius: 4px; cursor: pointer; }
-  button.btn:hover { background: #3a6ed7; }
-  button.btn.danger { background: #c73a2a; }
-  button.btn.danger:hover { background: #d74a3a; }
+  input[type=text], input[type=number], input[type=password], select, textarea {
+    background: #fff; border: 1px solid #ccc; color: #1a1a1a;
+    padding: .5rem .7rem; border-radius: 4px; font-family: inherit; }
+  button.btn { background: #2563eb; border: none; color: #fff; padding: .5rem 1rem; border-radius: 4px; cursor: pointer; }
+  button.btn:hover { background: #1d4ed8; }
+  button.btn.danger { background: #dc2626; }
+  button.btn.danger:hover { background: #b91c1c; }
+  button.btn.green { background: #16a34a; }
+  button.btn.green:hover { background: #15803d; }
+  button.btn.ghost { background: #fff; color: #374151; border: 1px solid #ccc; }
   button.btn.sm { padding: .3rem .6rem; font-size: .85rem; }
   table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-  th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid #2a2a2a; }
-  th { color: #888; font-weight: normal; }
+  th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid #eee; }
+  th { color: #888; font-weight: 500; }
   .search-row { display: flex; gap: .5rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; }
   .badge { display: inline-block; padding: .15rem .5rem; border-radius: 3px; font-size: .8rem; }
-  .badge.open { background: #1a4a1a; color: #4f4; }
-  .badge.closed { background: #3a1a1a; color: #f44; }
-  .badge.upcoming { background: #3a3a1a; color: #ff4; }
+  .badge.open { background: #dcfce7; color: #16a34a; }
+  .badge.closed { background: #fee2e2; color: #dc2626; }
+  .badge.upcoming { background: #fef9c3; color: #a16207; }
   progress { width: 100%; height: 8px; }
   .progress-wrap { margin: .5rem 0; }
-  .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: #333; color: #eee;
+  .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: #1a1a1a; color: #fff;
            padding: .8rem 1.2rem; border-radius: 6px; z-index: 200; opacity: 0;
            transition: opacity .3s; pointer-events: none; }
   .toast.show { opacity: 1; }
-  .loading { color: #666; padding: 1rem; }
+  .loading { color: #888; padding: 1rem; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex;
+                   align-items: flex-start; justify-content: center; padding-top: 6vh; z-index: 150; }
+  .modal { width: 460px; max-width: 92vw; background: #fff; border-radius: 10px;
+           box-shadow: 0 12px 40px rgba(0,0,0,.2); overflow: hidden; }
+  .modal-head { padding: .8rem 1.1rem; border-bottom: 1px solid #eee; font-weight: 600; }
+  .modal-body { padding: 1.1rem; max-height: 60vh; overflow-y: auto; }
+  .modal-foot { display: flex; gap: .5rem; padding: .8rem 1.1rem; border-top: 1px solid #eee; background: #fafafa; }
+  .field { margin-bottom: .7rem; }
+  .field label { display: block; font-size: .8rem; color: #555; margin-bottom: .25rem; }
+  .field label .req { color: #dc2626; }
+  .field input, .field textarea { width: 100%; }
+  .seg { display: inline-flex; border: 1px solid #ccc; border-radius: 5px; overflow: hidden; font-size: .8rem; }
+  .seg span { padding: .35rem .7rem; cursor: pointer; }
+  .seg span.on { background: #2563eb; color: #fff; }
+  .preview { border: 1px solid #eee; border-radius: 6px; margin-top: .6rem; }
+  .preview-head { padding: .4rem .6rem; background: #f7f7f7; font-size: .8rem; border-bottom: 1px solid #eee; }
+  .ok { color: #16a34a; }
+  .err { color: #dc2626; }
 </style>
 </head>
 <body>
@@ -115,6 +136,20 @@ function toast(msg, ms = 3000) {
   el.textContent = msg;
   el.classList.add('show');
   setTimeout(() => el.classList.remove('show'), ms);
+}
+
+function openModal(html) {
+  closeModal();
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.id = 'modal-overlay';
+  ov.innerHTML = '<div class="modal">' + html + '</div>';
+  ov.addEventListener('click', e => { if (e.target === ov) closeModal(); });
+  document.body.appendChild(ov);
+}
+function closeModal() {
+  const ov = document.getElementById('modal-overlay');
+  if (ov) ov.remove();
 }
 
 // ── tabs ──────────────────────────────────────────────────────────────────────
@@ -285,6 +320,7 @@ async function candidates() {
         <input type="number" id="c-year" value="${new Date().getFullYear()}" style="width:80px" />
         <input type="text" id="c-q" placeholder="名称搜索" style="width:180px" />
         <button class="btn" onclick="searchCandidates(1)">搜索</button>
+        <button class="btn green" style="margin-left:auto" onclick="openImportModal()">+ 导入</button>
       </div>
       <div id="candidates-table"></div>
     </div>`;
@@ -298,14 +334,19 @@ async function searchCandidates(page) {
   if (q) url += '&q=' + encodeURIComponent(q);
   const r = await api(url);
   const d = await r.json();
-  const rows = d.items.map(i => `<tr>
-    <td>${i.name}</td><td>${i.name_jp||''}</td><td>${i.type||''}</td>
-    <td>${i.origin||i.album||''}</td><td>${i.first_appearance||''}</td>
-    <td><button class="btn sm danger" onclick="deleteCandidate(${i.id},'${cat}')">删除</button></td>
-  </tr>`).join('');
+  window._candCache = {};
+  const rows = d.items.map(i => {
+    window._candCache[i.id] = i;
+    return `<tr>
+      <td>${i.name}</td><td>${i.name_jp||''}</td><td>${i.type||''}</td>
+      <td>${i.origin||i.album||''}</td><td>${i.first_appearance||''}</td>
+      <td><span style="color:#2563eb;cursor:pointer" onclick="openEditModal(${i.id})">编辑</span>
+      &nbsp;<span style="color:#dc2626;cursor:pointer" onclick="deleteCandidate(${i.id},'${cat}')">删除</span></td>
+    </tr>`;
+  }).join('');
   document.getElementById('candidates-table').innerHTML = `
     <table><thead><tr><th>名称</th><th>日文名</th><th>类型</th><th>来源/专辑</th><th>首登</th><th>操作</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="6" style="color:#666;text-align:center">无结果</td></tr>'}</tbody></table>
+    <tbody>${rows || '<tr><td colspan="6" style="color:#888;text-align:center">无结果</td></tr>'}</tbody></table>
     <div style="margin-top:.8rem;color:#888">共 ${d.total} 条</div>`;
 }
 
@@ -313,6 +354,150 @@ async function deleteCandidate(id, category) {
   if (!confirm('确认删除此候选项？')) return;
   await api('/admin/candidates/' + id + '?category=' + category, { method: 'DELETE' });
   toast('已删除');
+  searchCandidates(1);
+}
+
+// ── candidate import modal ──────────────────────────────────────────────────────
+
+let _impFmt = 'auto';
+
+function openImportModal() {
+  const cat = document.getElementById('c-cat').value;
+  const year = document.getElementById('c-year').value;
+  _impFmt = 'auto';
+  openModal(`
+    <div class="modal-head">导入候选项</div>
+    <div class="modal-body">
+      <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.6rem">
+        <select id="imp-cat"><option value="character"${cat==='character'?' selected':''}>角色</option><option value="music"${cat==='music'?' selected':''}>音乐</option></select>
+        <input type="number" id="imp-year" value="${year}" style="width:80px" />
+        <span class="seg" id="imp-fmt">
+          <span class="on" data-f="auto" onclick="setFmt(this)">自动</span>
+          <span data-f="csv" onclick="setFmt(this)">CSV</span>
+          <span data-f="json" onclick="setFmt(this)">JSON</span>
+        </span>
+      </div>
+      <div class="field"><textarea id="imp-text" rows="4" placeholder="粘贴 CSV / JSON 文本…"></textarea></div>
+      <div style="display:flex;gap:.5rem">
+        <input type="file" id="imp-file" accept=".csv,.json,.txt" style="display:none" onchange="loadImportFile(this)" />
+        <button class="btn ghost" onclick="document.getElementById('imp-file').click()">选择文件</button>
+        <button class="btn" onclick="previewImport()">解析预览</button>
+      </div>
+      <div id="imp-preview"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="imp-confirm" style="display:none" onclick="commitImport()">确认导入</button>
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+    </div>`);
+}
+
+function setFmt(el) {
+  _impFmt = el.dataset.f;
+  el.parentElement.querySelectorAll('span').forEach(s => s.classList.remove('on'));
+  el.classList.add('on');
+}
+
+function loadImportFile(input) {
+  const f = input.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => { document.getElementById('imp-text').value = reader.result; };
+  reader.readAsText(f);
+}
+
+async function _importCall(dryRun) {
+  return api('/admin/candidates/import', {
+    method: 'POST',
+    body: JSON.stringify({
+      vote_year: parseInt(document.getElementById('imp-year').value),
+      category: document.getElementById('imp-cat').value,
+      format: _impFmt,
+      content: document.getElementById('imp-text').value,
+      dry_run: dryRun,
+    }),
+  });
+}
+
+async function previewImport() {
+  const r = await _importCall(true);
+  if (r.status === 400) {
+    const e = await r.json();
+    document.getElementById('imp-preview').innerHTML =
+      `<div class="preview"><div class="preview-head err">解析失败: ${e.detail}</div></div>`;
+    document.getElementById('imp-confirm').style.display = 'none';
+    return;
+  }
+  const d = await r.json();
+  const sample = d.valid.slice(0, 5).map(i =>
+    `<tr><td>${i.name||''}</td><td>${i.name_jp||''}</td><td>${i.type||''}</td><td>${i.origin||i.album||''}</td></tr>`
+  ).join('');
+  const errLines = d.rejected.map(e => `第${e.line}行: ${e.reason}`).join('；');
+  document.getElementById('imp-preview').innerHTML = `
+    <div class="preview">
+      <div class="preview-head">
+        <span class="ok">✓ 有效 ${d.valid_count}</span>
+        ${d.rejected.length ? ` &nbsp; <span class="err">✗ 错误 ${d.rejected.length}（${errLines}）</span>` : ''}
+      </div>
+      <table>${sample}</table>
+    </div>`;
+  const btn = document.getElementById('imp-confirm');
+  btn.textContent = '确认导入 ' + d.valid_count + ' 条';
+  btn.style.display = d.valid_count > 0 ? '' : 'none';
+}
+
+async function commitImport() {
+  const r = await _importCall(false);
+  if (r.status === 400) { const e = await r.json(); toast('解析失败: ' + e.detail); return; }
+  const d = await r.json();
+  toast('成功导入 ' + d.imported + ' 条');
+  closeModal();
+  searchCandidates(1);
+}
+
+// ── candidate edit modal (= detail page) ────────────────────────────────────────
+
+async function openEditModal(id) {
+  const cat = document.getElementById('c-cat').value;
+  const row = (window._candCache || {})[id] || {};
+  const fr = await api('/admin/candidates/fields?category=' + cat);
+  const spec = (await fr.json()).fields;
+  const fieldsHtml = spec.map(f => `
+    <div class="field">
+      <label>${f.name}${f.required ? ' <span class="req">*</span>' : ''}</label>
+      <input id="ed-${f.name}" value="${row[f.name] != null ? String(row[f.name]).replace(/"/g,'&quot;') : ''}" />
+    </div>`).join('');
+  openModal(`
+    <div class="modal-head">编辑：${row.name || ''}</div>
+    <div class="modal-body">${fieldsHtml}</div>
+    <div class="modal-foot">
+      <button class="btn" onclick="saveEdit(${id},'${cat}')">保存</button>
+      <button class="btn danger" onclick="deleteFromEdit(${id},'${cat}')">删除</button>
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+    </div>`);
+  window._editSpec = spec.map(f => f.name);
+}
+
+async function saveEdit(id, cat) {
+  const fields = {};
+  (window._editSpec || []).forEach(n => {
+    fields[n] = document.getElementById('ed-' + n).value;
+  });
+  const r = await api('/admin/candidates/' + id, {
+    method: 'PUT',
+    body: JSON.stringify({ category: cat, fields }),
+  });
+  if (r.status === 409) { toast('该名称在本年份已存在'); return; }
+  if (r.status === 404) { toast('候选项不存在'); return; }
+  toast('已保存');
+  closeModal();
+  searchCandidates(1);
+}
+
+async function deleteFromEdit(id, cat) {
+  if (!confirm('确认删除此候选项？')) return;
+  await api('/admin/candidates/' + id + '?category=' + cat, { method: 'DELETE' });
+  toast('已删除');
+  closeModal();
   searchCandidates(1);
 }
 
