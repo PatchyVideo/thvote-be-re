@@ -4,12 +4,12 @@ import strawberry
 
 from .resolvers.result import ResultQuery
 from .resolvers.submit import SubmitMutation, SubmitQuery
-from .resolvers.submit_bridge import SubmitBridgeMutation
+from .resolvers.submit_bridge import SubmitBridgeMutation, SubmitBridgeQuery
 from .resolvers.user import UserMutation
 
 
 @strawberry.type
-class Query(SubmitQuery, ResultQuery):
+class Query(SubmitQuery, ResultQuery, SubmitBridgeQuery):
     """Root GraphQL Query."""
 
     pass

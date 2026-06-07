@@ -84,6 +84,16 @@ class _FakeService:
         self.bodies.append(body)
         return 1
 
+    async def get_character_submit(self, vote_id):
+        from src.apps.submit.schemas import CharacterSubmitRest, SubmitMetadata
+        self.get_calls = getattr(self, "get_calls", [])
+        self.get_calls.append(vote_id)
+        return CharacterSubmitRest(characters=[], meta=SubmitMetadata())
+
+    async def get_paper_submit(self, vote_id):
+        from src.apps.submit.schemas import PaperSubmitRest, SubmitMetadata
+        return PaperSubmitRest(papers_json="{}", meta=SubmitMetadata())
+
 
 class _Info:
     context = {"request": None}  # _client_ip_from_info(None request) → ""
@@ -151,7 +161,7 @@ async def test_submit_character_value_error_maps_to_invalid_content(fake_env):
 
 
 @pytest.mark.asyncio
-async def test_submit_lock_conflict_maps_to_submit_locked(fake_env, monkeypatch):
+async def test_submit_lock_conflict_maps_to_submit_locked(fake_env):
     # 预占锁:同 user 再提交 → SUBMIT_LOCKED
     redis = await bridge.get_redis_client()
     await redis.set("lock-submit-user-7", "someone-else", nx=True, px=10_000)
@@ -245,3 +255,59 @@ async def test_lock_released_after_value_error(fake_env):
             info=_Info(), content=_character_content(_token("user-7"))
         )
     assert "lock-submit-user-7" not in redis.store  # 异常路径也释放
+
+
+# ── Query 测试 ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_character_query_decodes_token_and_returns_empty(fake_env):
+    out = await bridge.SubmitBridgeQuery().get_submit_character_vote(
+        info=_Info(), vote_token=_token("user-q")
+    )
+    assert out.characters == []
+    assert fake_env["service"].get_calls == ["user-q"]
+
+
+@pytest.mark.asyncio
+async def test_get_paper_query_returns_empty_object_string(fake_env):
+    out = await bridge.SubmitBridgeQuery().get_submit_paper_vote(
+        info=_Info(), vote_token=_token()
+    )
+    assert out.papers_json == "{}"   # 空结果回 "{}",不回 null(spec §3.2)
+
+
+@pytest.mark.asyncio
+async def test_get_query_bad_token_maps_to_invalid_token(fake_env):
+    with pytest.raises(GraphQLError) as ei:
+        await bridge.SubmitBridgeQuery().get_submit_character_vote(
+            info=_Info(), vote_token="garbage"
+        )
+    assert ei.value.extensions["error_kind"] == "INVALID_TOKEN"
+
+
+# ── 参数化 ValueError 错误路径(覆盖其余 4 个 mutation) ────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda token: ("submit_music_vote", dict(content=bridge.MusicSubmitGQL(
+            vote_token=token, musics=[]))),
+        lambda token: ("submit_cp_vote", dict(content=bridge.CPSubmitGQL(
+            vote_token=token, cps=[]))),
+        lambda token: ("submit_paper_vote", dict(content=bridge.PaperSubmitGQL(
+            vote_token=token, paper_json="{}"))),
+        lambda token: ("submit_dojin", dict(content=bridge.DojinSubmitGQL(
+            vote_token=token, dojins=[]))),
+    ],
+)
+async def test_all_mutations_map_value_error(fake_env, call):
+    fake_env["service"] = _FakeService(raise_value_error="数量0不在范围内[1,8]")
+    method, kwargs = call(_token())
+    with pytest.raises(GraphQLError) as ei:
+        await getattr(bridge.SubmitBridgeMutation(), method)(info=_Info(), **kwargs)
+    ext = ei.value.extensions
+    assert ext["error_kind"] == "INVALID_CONTENT"
+    assert ext["human_readable_message"] == "数量0不在范围内[1,8]"

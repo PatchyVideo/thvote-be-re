@@ -17,9 +17,6 @@ from typing import AsyncIterator, Optional
 import strawberry
 
 from src.api.graphql.errors import _client_ip_from_info, map_app_errors
-
-# Tasks 5-6(其余 mutation 与回读 query)会扩展这里的 import:
-# 其余 *SubmitRest / *SubmitPydantic 与 pydantic_to_graphql_* 转换器。
 from src.api.graphql.types import (
     CharacterSubmit,
     CharacterSubmitInput,
@@ -28,6 +25,10 @@ from src.api.graphql.types import (
     DojinSubmit,
     MusicSubmit,
     MusicSubmitInput,
+    pydantic_to_graphql_characters,
+    pydantic_to_graphql_cps,
+    pydantic_to_graphql_dojins,
+    pydantic_to_graphql_musics,
 )
 from src.apps.submit.dao import SubmitDAO
 from src.apps.submit.schemas import CharacterSubmit as CharacterSubmitPydantic
@@ -286,4 +287,72 @@ class SubmitBridgeMutation:
                     meta=_server_meta(user_id, info),
                 )
                 return await _run_submit(body, "submit_dojin")
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+
+# ── Queries(凭 voteToken 回读;空结果=空数组/"{}") ──────────────────
+
+
+@strawberry.type
+class SubmitBridgeQuery:
+    @strawberry.field
+    async def get_submit_character_vote(
+        self, info: strawberry.Info, vote_token: str
+    ) -> CharacterSubmitRestQuery:
+        async with map_app_errors(service=_SERVICE):
+            user_id = _vote_user_id(vote_token)
+            async for db in get_db_session():
+                data = await SubmitService(SubmitDAO(db)).get_character_submit(user_id)
+                return CharacterSubmitRestQuery(
+                    characters=pydantic_to_graphql_characters(data.characters)
+                )
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    @strawberry.field
+    async def get_submit_music_vote(
+        self, info: strawberry.Info, vote_token: str
+    ) -> MusicSubmitRestQuery:
+        async with map_app_errors(service=_SERVICE):
+            user_id = _vote_user_id(vote_token)
+            async for db in get_db_session():
+                data = await SubmitService(SubmitDAO(db)).get_music_submit(user_id)
+                return MusicSubmitRestQuery(
+                    music=pydantic_to_graphql_musics(data.music)
+                )
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    @strawberry.field(name="getSubmitCPVote")
+    async def get_submit_cp_vote(
+        self, info: strawberry.Info, vote_token: str
+    ) -> CPSubmitRestQuery:
+        async with map_app_errors(service=_SERVICE):
+            user_id = _vote_user_id(vote_token)
+            async for db in get_db_session():
+                data = await SubmitService(SubmitDAO(db)).get_cp_submit(user_id)
+                return CPSubmitRestQuery(cps=pydantic_to_graphql_cps(data.cps))
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    @strawberry.field
+    async def get_submit_dojin_vote(
+        self, info: strawberry.Info, vote_token: str
+    ) -> DojinSubmitRestQuery:
+        async with map_app_errors(service=_SERVICE):
+            user_id = _vote_user_id(vote_token)
+            async for db in get_db_session():
+                data = await SubmitService(SubmitDAO(db)).get_dojin_submit(user_id)
+                return DojinSubmitRestQuery(
+                    dojins=pydantic_to_graphql_dojins(data.dojins)
+                )
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    @strawberry.field
+    async def get_submit_paper_vote(
+        self, info: strawberry.Info, vote_token: str
+    ) -> PaperSubmitRestQuery:
+        async with map_app_errors(service=_SERVICE):
+            user_id = _vote_user_id(vote_token)
+            async for db in get_db_session():
+                data = await SubmitService(SubmitDAO(db)).get_paper_submit(user_id)
+                # 空结果回 "{}"(service 现行为),不转 null —— spec §3.2
+                return PaperSubmitRestQuery(papers_json=data.papers_json)
         raise RuntimeError("unreachable")  # pragma: no cover
