@@ -57,6 +57,9 @@ EXPECTED_SIGNATURES = [
     # 回读结果字段(music 单数怪癖 + papersJson)
     "type MusicSubmitRestQuery {\n  music: [MusicSubmit!]!\n}",
     "type PaperSubmitRestQuery {\n  papersJson: String!\n}",
+    "type CharacterSubmitRestQuery {\n  characters: [CharacterSubmit!]!\n}",
+    "type CPSubmitRestQuery {\n  cps: [CPSubmit!]!\n}",
+    "type DojinSubmitRestQuery {\n  dojins: [DojinSubmit!]!\n}",
 ]
 
 DOJIN_ENUM_VALUES = [
@@ -80,4 +83,4 @@ def test_dojin_type_enum_values() -> None:
     sdl = schema.as_str()
     enum_block = sdl.split("enum DojinType {")[1].split("}")[0]
     for value in DOJIN_ENUM_VALUES:
-        assert value in enum_block
+        assert value in enum_block, f"missing DojinType enum value: {value}"

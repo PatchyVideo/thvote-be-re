@@ -1,6 +1,6 @@
 # GraphQL Submit 桥接(投票提交路径适配)— 背景与契约勘探
 
-> 状态:**设计已定稿**(2026-06-07 brainstorming 逐项确认)。实现依据见
+> 状态:**已实现**(2026-06-07,分支 feat/graphql-submit-bridge → PR 待合并)。实现依据见
 > `docs/superpowers/specs/2026-06-07-graphql-submit-bridge-design.md`;本文件保留背景、契约勘探与遗留风险记录。
 > §5 原"待讨论"议题已全部裁决:paper 校验=合法 JSON+256KB(validate_paper 按此重写,统计侧不读原始 papers_json 已核实);
 > ValueError→`INVALID_CONTENT`+中文原文透传;锁冲突=`SUBMIT_LOCKED`;EditDoujin 无独立 gql(第二处是 VoteDoujinDp,同一契约)。
@@ -54,6 +54,13 @@ Python 侧现有 GraphQL submit 字段是自创命名(`submitCharacter(input:)` 
 - **改后端适配前端**(A 方案哲学,同 user 模块):前端零改动。
 - **旧字段保留**(用户拍板,以防万一):`submitCharacter(input:)` ×5、`getCharacterSubmit(voteId)` ×7 暂不删除,双轨并存。
   - ⚠️ 遗留风险记录:`get*(voteId)` 系列**无鉴权可凭裸 voteId 查任意人提交**;保留期间此暴露面继续存在。移除条件:新契约上线且前端验证通过后,单独 PR 清理(届时记 changelog)。
+- ⚠️ 旧 GraphQL submit resolver(resolvers/submit.py)构造服务时传错参数(`SubmitService(db)`,
+  构造函数要 `SubmitDAO`),即旧字段在运行时本就不可用——进一步佐证其无消费者。按"原样保留"
+  决策未修;将来清理旧字段时一并处理。
+- ⚠️ `submitDojin` 例外:新旧 GraphQL 字段同名,无法并存,桥版本经 MRO 取代旧版本(详见
+  CHANGELOG 2026-06-07)。这是"旧字段保留"决策的唯一例外,且旧版本本就不可用。
+- 实现期刻意差异(详见 CHANGELOG):锁 key 全局而非按类别;回读 query 不限流;无 per-IP
+  预解码限流。
 
 ## 5. 待讨论(下次细聊的议题清单)
 
