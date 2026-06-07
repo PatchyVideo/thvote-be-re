@@ -48,6 +48,7 @@
 | **B-035** | ~~管理端扩展（用户管理 + 统计 + 候选项 + 审计日志 + 导出 + Web UI）~~ | ✅ 已完成 (2026-06-07, afdc091) | — | 12 个新端点 + 单文件 Web UI + StaticFiles 挂载 |
 | **B-036** | ~~候选项管理增强：CSV/JSON 导入(dry-run 预览) + 单条编辑 + 列表/详情完善 + 管理端改白色主题~~ | ✅ 已完成 (2026-06-08) | — | 3 端点(fields/import/edit) + 后端解析校验 + 白色主题 + 导入/编辑弹窗 |
 | **B-037** | 安全块：二创提名校验(域名/发布时间/udid去重)+ 人工审核队列 + 提名时间窗 + 投票问卷门禁(弱校验) | 高（**设计稿+plan 已写,实现未做**） | 🟢 可立即做 | 后端[design](./superpowers/specs/2026-06-08-security-backend-design.md)/[plan](./superpowers/plans/2026-06-08-security-backend.md)；前端[design](./superpowers/specs/2026-06-08-security-frontend-design.md)/[plan](./superpowers/plans/2026-06-08-security-frontend.md) |
+| **B-038** | 作品投票全链路：candidate_work+work 表、候选管理扩 work、submit/vote_data/compute/result/graphql 逐层仿角色、/vote-objects/works 列表；前端 vote-work 页(从后端拉) | 高（**设计稿+plan 已写,实现未做**） | 🟡 后端门禁依赖 B-037 | 后端[design](./superpowers/specs/2026-06-08-works-voting-backend-design.md)/[plan](./superpowers/plans/2026-06-08-works-voting-backend.md)；前端[design](./superpowers/specs/2026-06-08-works-voting-frontend-design.md)/[plan](./superpowers/plans/2026-06-08-works-voting-frontend.md) |
 | **B-032** ⚡ | 删除（或收紧）`alembic/env.py` 的 `_maybe_baseline_existing_schema`。它只按"表是否存在"自动 stamp、**不校验列是否匹配**，会**掩盖 schema 漂移**——2026-05-31 测试库 `user` 表缺 `phone_verified` 等列、登录全挂就是它造成的（残缺旧表被 stamp 成 0001，0001 的正确建表从未执行）。B-025 已移除 init_db 后门,该 shim 已无存在必要。**首选直接删除**(让 `alembic upgrade head` 老实从 0001 跑)+ 空库重建一次清除残留漂移;次选 stamp 前校验列匹配、不匹配则报错而非闷头 stamp。归属 B-025/B-026 DB 治理。 | 中 | 🟢 可立即做（B-025 已完成,前置解除） | `alembic/env.py:48-94` |
 
 ---
