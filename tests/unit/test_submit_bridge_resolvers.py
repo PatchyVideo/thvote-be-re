@@ -60,6 +60,30 @@ class _FakeService:
         self.bodies.append(body)
         return 1
 
+    async def submit_music(self, body):
+        if self._raise:
+            raise ValueError(self._raise)
+        self.bodies.append(body)
+        return 1
+
+    async def submit_cp(self, body):
+        if self._raise:
+            raise ValueError(self._raise)
+        self.bodies.append(body)
+        return 1
+
+    async def submit_paper(self, body):
+        if self._raise:
+            raise ValueError(self._raise)
+        self.bodies.append(body)
+        return 1
+
+    async def submit_dojin(self, body):
+        if self._raise:
+            raise ValueError(self._raise)
+        self.bodies.append(body)
+        return 1
+
 
 class _Info:
     context = {"request": None}  # _client_ip_from_info(None request) → ""
@@ -137,3 +161,87 @@ async def test_submit_lock_conflict_maps_to_submit_locked(fake_env, monkeypatch)
         )
     assert ei.value.extensions["error_kind"] == "SUBMIT_LOCKED"
     assert ei.value.extensions["human_readable_message"] == "提交处理中，请稍后再试"
+
+
+@pytest.mark.asyncio
+async def test_submit_music_plural_input_singular_rest_field(fake_env):
+    from src.api.graphql.types import MusicSubmitInput
+
+    out = await bridge.SubmitBridgeMutation().submit_music_vote(
+        info=_Info(),
+        content=bridge.MusicSubmitGQL(
+            vote_token=_token("user-m"),
+            musics=[MusicSubmitInput(id="夜雀", first=True)],
+        ),
+    )
+    assert out is True
+    body = fake_env["service"].bodies[0]
+    assert body.music[0].id == "夜雀"      # REST 模型字段是单数 music
+    assert body.meta.vote_id == "user-m"
+
+
+@pytest.mark.asyncio
+async def test_submit_cp_maps_camel_fields(fake_env):
+    from src.api.graphql.types import CPSubmitInput
+
+    out = await bridge.SubmitBridgeMutation().submit_cp_vote(
+        info=_Info(),
+        content=bridge.CPSubmitGQL(
+            vote_token=_token(),
+            cps=[
+                CPSubmitInput(id_a="reimu", id_b="marisa", active="reimu", first=True)
+            ],
+        ),
+    )
+    assert out is True
+    body = fake_env["service"].bodies[0]
+    assert (body.cps[0].id_a, body.cps[0].id_b) == ("reimu", "marisa")
+
+
+@pytest.mark.asyncio
+async def test_submit_paper_passes_raw_json(fake_env):
+    raw = '{"mainQuestionnaire": {"requiredQuestionnaire": {"id": 11, "answers": []}}}'
+    out = await bridge.SubmitBridgeMutation().submit_paper_vote(
+        info=_Info(),
+        content=bridge.PaperSubmitGQL(vote_token=_token(), paper_json=raw),
+    )
+    assert out is True
+    assert fake_env["service"].bodies[0].papers_json == raw
+
+
+@pytest.mark.asyncio
+async def test_submit_dojin_stores_enum_name(fake_env):
+    out = await bridge.SubmitBridgeMutation().submit_dojin(
+        info=_Info(),
+        content=bridge.DojinSubmitGQL(
+            vote_token=_token(),
+            dojins=[
+                bridge.DojinSubmitItemGQL(
+                    title="t", author="a", url="https://x", reason="r",
+                    dojin_type=bridge.DojinType.MUSIC,
+                )
+            ],
+        ),
+    )
+    assert out is True
+    assert fake_env["service"].bodies[0].dojins[0].dojin_type == "MUSIC"  # 存枚举名
+
+
+@pytest.mark.asyncio
+async def test_lock_released_after_success(fake_env):
+    redis = await bridge.get_redis_client()
+    await bridge.SubmitBridgeMutation().submit_character_vote(
+        info=_Info(), content=_character_content(_token("user-7"))
+    )
+    assert "lock-submit-user-7" not in redis.store  # finally 释放
+
+
+@pytest.mark.asyncio
+async def test_lock_released_after_value_error(fake_env):
+    fake_env["service"] = _FakeService(raise_value_error="多个本命")
+    redis = await bridge.get_redis_client()
+    with pytest.raises(GraphQLError):
+        await bridge.SubmitBridgeMutation().submit_character_vote(
+            info=_Info(), content=_character_content(_token("user-7"))
+        )
+    assert "lock-submit-user-7" not in redis.store  # 异常路径也释放

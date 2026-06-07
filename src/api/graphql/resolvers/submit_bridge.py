@@ -31,7 +31,17 @@ from src.api.graphql.types import (
 )
 from src.apps.submit.dao import SubmitDAO
 from src.apps.submit.schemas import CharacterSubmit as CharacterSubmitPydantic
-from src.apps.submit.schemas import CharacterSubmitRest, SubmitMetadata
+from src.apps.submit.schemas import CPSubmit as CPSubmitPydantic
+from src.apps.submit.schemas import DojinSubmit as DojinSubmitPydantic
+from src.apps.submit.schemas import MusicSubmit as MusicSubmitPydantic
+from src.apps.submit.schemas import (
+    CharacterSubmitRest,
+    CPSubmitRest,
+    DojinSubmitRest,
+    MusicSubmitRest,
+    PaperSubmitRest,
+    SubmitMetadata,
+)
 from src.apps.submit.service import SubmitService
 from src.common.database import get_db_session
 from src.common.exceptions import RateLimitError, UnauthorizedError, ValidationError
@@ -200,4 +210,80 @@ class SubmitBridgeMutation:
                     meta=_server_meta(user_id, info),
                 )
                 return await _run_submit(body, "submit_character")
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    @strawberry.mutation
+    async def submit_music_vote(
+        self, info: strawberry.Info, content: MusicSubmitGQL
+    ) -> bool:
+        async with map_app_errors(service=_SERVICE):
+            user_id = _vote_user_id(content.vote_token)
+            await rate_limit(user_id, await get_redis_client())
+            async with _submit_lock(user_id):
+                body = MusicSubmitRest(
+                    music=[  # REST 模型字段是单数 music(入参是复数 musics)
+                        MusicSubmitPydantic(id=m.id, reason=m.reason, first=m.first)
+                        for m in content.musics
+                    ],
+                    meta=_server_meta(user_id, info),
+                )
+                return await _run_submit(body, "submit_music")
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    @strawberry.mutation(name="submitCPVote")
+    async def submit_cp_vote(
+        self, info: strawberry.Info, content: CPSubmitGQL
+    ) -> bool:
+        async with map_app_errors(service=_SERVICE):
+            user_id = _vote_user_id(content.vote_token)
+            await rate_limit(user_id, await get_redis_client())
+            async with _submit_lock(user_id):
+                body = CPSubmitRest(
+                    cps=[
+                        CPSubmitPydantic(
+                            id_a=c.id_a, id_b=c.id_b, id_c=c.id_c,
+                            active=c.active, first=c.first, reason=c.reason,
+                        )
+                        for c in content.cps
+                    ],
+                    meta=_server_meta(user_id, info),
+                )
+                return await _run_submit(body, "submit_cp")
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    @strawberry.mutation
+    async def submit_paper_vote(
+        self, info: strawberry.Info, content: PaperSubmitGQL
+    ) -> bool:
+        async with map_app_errors(service=_SERVICE):
+            user_id = _vote_user_id(content.vote_token)
+            await rate_limit(user_id, await get_redis_client())
+            async with _submit_lock(user_id):
+                body = PaperSubmitRest(
+                    papers_json=content.paper_json,
+                    meta=_server_meta(user_id, info),
+                )
+                return await _run_submit(body, "submit_paper")
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    @strawberry.mutation
+    async def submit_dojin(
+        self, info: strawberry.Info, content: DojinSubmitGQL
+    ) -> bool:
+        async with map_app_errors(service=_SERVICE):
+            user_id = _vote_user_id(content.vote_token)
+            await rate_limit(user_id, await get_redis_client())
+            async with _submit_lock(user_id):
+                body = DojinSubmitRest(
+                    dojins=[
+                        DojinSubmitPydantic(
+                            dojin_type=d.dojin_type.value,  # 入库存枚举名("MUSIC")
+                            url=d.url, title=d.title, author=d.author,
+                            reason=d.reason, image_url=d.image_url,
+                        )
+                        for d in content.dojins
+                    ],
+                    meta=_server_meta(user_id, info),
+                )
+                return await _run_submit(body, "submit_dojin")
         raise RuntimeError("unreachable")  # pragma: no cover

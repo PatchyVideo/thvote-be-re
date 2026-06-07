@@ -16,8 +16,12 @@ class Query(SubmitQuery, ResultQuery):
 
 
 @strawberry.type
-class Mutation(SubmitMutation, UserMutation, SubmitBridgeMutation):
-    """Root GraphQL Mutation."""
+class Mutation(SubmitBridgeMutation, SubmitMutation, UserMutation):
+    """Root GraphQL Mutation.
+
+    SubmitBridgeMutation 列在首位:它与旧 SubmitMutation 共享 submit_dojin
+    方法名,MRO 使新桥接实现优先生效;其余桥接方法名带 _vote 后缀,无冲突。
+    """
 
     pass
 
