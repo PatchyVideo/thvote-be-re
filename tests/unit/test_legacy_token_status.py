@@ -92,10 +92,10 @@ async def test_valid_user_invalid_vote_token_is_valid_without_status() -> None:
 @pytest.mark.asyncio
 async def test_valid_tokens_attach_voting_status_no_papers() -> None:
     svc = _FakeSubmitService(_vs(characters=True, papers=False))
-    session = create_session_token("user-9")
     start = datetime(2026, 1, 1, tzinfo=UTC)
     end = datetime(2026, 12, 31, tzinfo=UTC)
     with freeze_time("2026-06-01"):
+        session = create_session_token("user-9")
         vote = create_vote_token("user-9", start, end)
         out = await user_token_status(
             TokenStatusInputs(user_token=session, vote_token=vote), svc
@@ -111,10 +111,10 @@ async def test_valid_tokens_attach_voting_status_no_papers() -> None:
 @pytest.mark.asyncio
 async def test_valid_tokens_with_papers_include_papers_json() -> None:
     svc = _FakeSubmitService(_vs(papers=True), papers_json='{"q":1}')
-    session = create_session_token("user-9")
     start = datetime(2026, 1, 1, tzinfo=UTC)
     end = datetime(2026, 12, 31, tzinfo=UTC)
     with freeze_time("2026-06-01"):
+        session = create_session_token("user-9")
         vote = create_vote_token("user-9", start, end)
         out = await user_token_status(
             TokenStatusInputs(user_token=session, vote_token=vote), svc

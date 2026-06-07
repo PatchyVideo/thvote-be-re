@@ -12,11 +12,14 @@ class AppException(Exception):
         details: Optional[Any] = None,
         error_message: Optional[str] = None,
         upstream_response_string: Optional[str] = None,
+        human_readable_message: Optional[str] = None,
     ):
         self.message = message
         self.details = details
         self.error_message = error_message
         self.upstream_response_string = upstream_response_string
+        # 面向终端用户的中文文案;None 时由 GraphQL 层按 error_kind 查表兜底
+        self.human_readable_message = human_readable_message
         super().__init__(self.message)
 
 

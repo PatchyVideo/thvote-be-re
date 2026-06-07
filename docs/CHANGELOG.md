@@ -4,7 +4,27 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-05-31（GraphQL 全局错误格式化器 + session_token 30 天 + legacy-compat `/user-token-status`）
+> 最后更新：2026-06-07（GraphQL submit 桥接:投票提交/回读适配前端契约）
+
+## [2026-06-07] GraphQL Submit 桥接(投票提交/回读适配前端契约)
+
+### Added
+- `src/api/graphql/resolvers/submit_bridge.py`:按前端(旧 Rust gateway)契约新增 5 个 mutation(`submitCharacterVote/submitMusicVote/submitCPVote/submitPaperVote/submitDojin`,入参 `content: …GQL!`,返回 `Boolean`)与 5 个回读 query(`getSubmit*Vote(voteToken)`)。resolver 内 `voteToken`→`user_id`(即 vote_id),meta(时间/IP)服务端生成,不信任客户端;限流与提交锁按 token 身份。`DojinType` GraphQL 枚举(入库存枚举名)。SDL 契约由 `tests/unit/test_submit_bridge_schema.py` 钉死(21 例)。
+- `src/api/graphql/errors.py`:错误映射工具从 resolvers/user.py 下沉共享;`_extensions` 支持异常自带 `human_readable_message` 优先于文案表;文案表新增 `SUBMIT_LOCKED`。
+- `AppException` 增可选 `human_readable_message`(向后兼容)。
+
+### Fixed
+- `validate_paper` 重写为「合法 JSON + UTF-8 ≤256KB」:旧实现要求"非空列表+整数 id",是按想象格式写的,会拒掉前端真实载荷(嵌套对象);统计侧不读原始 papers_json,无下游结构依赖。REST 路径同步受益。错误文案改为面向用户("问卷数据不是合法 JSON，请重试"/"问卷数据过大")。
+- 修复 `test_legacy_token_status` 两例日期依赖(session token 在 freeze 块外签发)。
+
+### Changed / ⚠️ 唯一旧字段例外
+- **`submitDojin` 新旧同名**:GraphQL 不允许同名字段并存,桥版本(`content: DojinSubmitGQL!`→`Boolean!`)经 MRO 取代旧版本(`input:`→`SubmitSuccess!`)。旧版本本就因 `SubmitService(db)` 传参错误不可用,无实际调用方。连带效应:旧版本独占的输入类型 `DojinSubmitInput`/`DojinSubmitMutationInput` 因无字段引用而从 SDL 剪除(strawberry 只输出可达类型)。其余旧字段(`submitCharacter(input:)` ×4、`getCharacterSubmit(voteId)` ×7)按决策原样保留。
+
+### 兼容性 / 刻意差异(记录)
+- service 校验错误(`ValueError`)以 `error_kind=INVALID_CONTENT` + 中文原文(`human_readable_message`)返回;锁冲突=`SUBMIT_LOCKED`(429)。
+- 提交锁 key 为全局 `lock-submit-{user_id}`(对齐 Python REST 现状),与 Rust 的按类别 `lock-submit_character_v1-{vote_id}` 不同——刻意沿用 Python 约定。
+- 回读 query 不限流(与 REST get-* 端点一致的刻意不对称;读是幂等的)。
+- 桥未做 user 桥那种 per-IP 预解码限流:伪造 token 仅消耗 JWT 验签 CPU,提交频率天然受限,刻意从简。
 
 ## [2026-05-31] GraphQL 全局错误格式化器（保证 errors 必带 extensions）
 
