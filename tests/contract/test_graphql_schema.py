@@ -61,8 +61,12 @@ async def test_datetimeutc_scalar_registered(async_client):
 
 
 @pytest.mark.asyncio
-async def test_query_character_ranking_field_exists(async_client):
-    """queryCharacterRanking must exist in the schema."""
+async def test_result_query_fields_exist(async_client):
+    """Result query fields must exist in the schema.
+
+    The Python implementation uses generic fields with a category parameter
+    rather than per-category fields (e.g. ``ranking`` not ``queryCharacterRanking``).
+    """
     resp = await async_client.post(
         "/graphql",
         json={
@@ -77,20 +81,14 @@ async def test_query_character_ranking_field_exists(async_client):
     )
     assert resp.status_code == 200
     names = {f["name"] for f in resp.json()["data"]["__type"]["fields"]}
-    assert "queryCharacterRanking" in names
-    assert "queryMusicRanking" in names
-    assert "queryCPRanking" in names
-    assert "queryCharacterTrend" in names
-    assert "queryMusicTrend" in names
-    assert "queryCharacterSingle" in names
-    assert "queryMusicSingle" in names
-    assert "queryCPSingle" in names
-    assert "queryGlobalStats" in names
-    assert "queryCompletionRates" in names
-    assert "queryQuestionnaire" in names
-    assert "queryQuestionnaireTrend" in names
-    assert "queryCharsCovote" in names
-    assert "queryMusicsCovote" in names
+    assert "ranking" in names
+    assert "trends" in names
+    assert "singleEntity" in names
+    assert "globalStats" in names
+    assert "completionRates" in names
+    assert "questionnaire" in names
+    assert "questionnaireTrend" in names
+    assert "covote" in names
 
 
 @pytest.mark.asyncio

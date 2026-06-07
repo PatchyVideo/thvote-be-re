@@ -1,11 +1,14 @@
 """GraphQL Schema definition."""
 
+from datetime import datetime
+
 import strawberry
 
 from .resolvers.result import ResultQuery
 from .resolvers.submit import SubmitMutation, SubmitQuery
 from .resolvers.submit_bridge import SubmitBridgeMutation, SubmitBridgeQuery
 from .resolvers.user import UserMutation
+from .types import DateTimeUtc
 
 
 @strawberry.type
@@ -26,4 +29,8 @@ class Mutation(SubmitBridgeMutation, SubmitMutation, UserMutation):
     pass
 
 
-schema = strawberry.Schema(query=Query, mutation=Mutation)
+schema = strawberry.Schema(
+    query=Query,
+    mutation=Mutation,
+    scalar_overrides={datetime: DateTimeUtc},
+)
