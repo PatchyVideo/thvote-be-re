@@ -22,6 +22,9 @@ class RawCharacterSubmit(Base):
         String(1024), nullable=True
     )
     payload: Mapped[list] = mapped_column(JSON, nullable=False)
+    legacy_mongo_id: Mapped[str | None] = mapped_column(
+        String(24), nullable=True, unique=True
+    )
 
 
 class RawMusicSubmit(Base):
@@ -39,6 +42,9 @@ class RawMusicSubmit(Base):
         String(1024), nullable=True
     )
     payload: Mapped[list] = mapped_column(JSON, nullable=False)
+    legacy_mongo_id: Mapped[str | None] = mapped_column(
+        String(24), nullable=True, unique=True
+    )
 
 
 class RawCPSubmit(Base):
@@ -56,6 +62,9 @@ class RawCPSubmit(Base):
         String(1024), nullable=True
     )
     payload: Mapped[list] = mapped_column(JSON, nullable=False)
+    legacy_mongo_id: Mapped[str | None] = mapped_column(
+        String(24), nullable=True, unique=True
+    )
 
 
 class RawPaperSubmit(Base):
@@ -73,6 +82,9 @@ class RawPaperSubmit(Base):
         String(1024), nullable=True
     )
     papers_json: Mapped[str] = mapped_column(Text, nullable=False)
+    legacy_mongo_id: Mapped[str | None] = mapped_column(
+        String(24), nullable=True, unique=True
+    )
 
 
 class RawDojinSubmit(Base):
@@ -90,6 +102,9 @@ class RawDojinSubmit(Base):
         String(1024), nullable=True
     )
     payload: Mapped[list] = mapped_column(JSON, nullable=False)
+    legacy_mongo_id: Mapped[str | None] = mapped_column(
+        String(24), nullable=True, unique=True
+    )
 
 
 Index(
@@ -112,4 +127,31 @@ Index(
     "idx_raw_dojin_vote_created",
     RawDojinSubmit.vote_id,
     RawDojinSubmit.created_at.desc(),
+)
+
+
+class RawWorkSubmit(Base):
+    __tablename__ = "raw_work"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    vote_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    attempt: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    user_ip: Mapped[str] = mapped_column(
+        String(255), nullable=False, default="<unknown>"
+    )
+    additional_fingreprint: Mapped[str | None] = mapped_column(
+        String(1024), nullable=True
+    )
+    payload: Mapped[list] = mapped_column(JSON, nullable=False)
+    legacy_mongo_id: Mapped[str | None] = mapped_column(
+        String(24), nullable=True, unique=True
+    )
+
+
+Index(
+    "idx_raw_work_vote_created",
+    RawWorkSubmit.vote_id,
+    RawWorkSubmit.created_at.desc(),
 )

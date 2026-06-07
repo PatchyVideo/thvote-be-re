@@ -17,7 +17,9 @@ from .raw_submit import (
     RawDojinSubmit,
     RawMusicSubmit,
     RawPaperSubmit,
+    RawWorkSubmit,
 )
+from .sync_run_log import SyncRunLog
 from .user import User
 
 __version__ = "1.0.0"
@@ -37,5 +39,7 @@ __all__ = [
     "RawDojinSubmit",
     "RawMusicSubmit",
     "RawPaperSubmit",
+    "RawWorkSubmit",
+    "SyncRunLog",
     "User",
 ]
