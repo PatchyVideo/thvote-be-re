@@ -1,6 +1,9 @@
-# GraphQL Submit 桥接(投票提交路径适配)— Spec 草稿
+# GraphQL Submit 桥接(投票提交路径适配)— 背景与契约勘探
 
-> 状态:**草稿,待讨论定稿**(2026-06-07 起草,基于前端 dev 分支与 thvote-be Rust gateway 的双向契约勘探)。
+> 状态:**设计已定稿**(2026-06-07 brainstorming 逐项确认)。实现依据见
+> `docs/superpowers/specs/2026-06-07-graphql-submit-bridge-design.md`;本文件保留背景、契约勘探与遗留风险记录。
+> §5 原"待讨论"议题已全部裁决:paper 校验=合法 JSON+256KB(validate_paper 按此重写,统计侧不读原始 papers_json 已核实);
+> ValueError→`INVALID_CONTENT`+中文原文透传;锁冲突=`SUBMIT_LOCKED`;EditDoujin 无独立 gql(第二处是 VoteDoujinDp,同一契约)。
 > 模式与已完成的 user 模块桥接(登录 PR #3 / 账号管理 PR #4)相同:**业务逻辑不动(`SubmitService`),只加 GraphQL 桥**。
 
 ## 1. 背景 / 差距
