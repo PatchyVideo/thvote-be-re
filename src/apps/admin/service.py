@@ -3,21 +3,37 @@
 from __future__ import annotations
 
 import json
+import uuid
 
-from sqlalchemy import func as sqlfunc, select
-from sqlalchemy.ext.asyncio import AsyncSession
+import redis.asyncio as aioredis
+from sqlalchemy import desc, func as sqlfunc, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.apps.admin.schemas import ImportCandidatesRequest
+from src.apps.admin.sync.progress import (
+    clear_current_run,
+    get_current_run,
+    get_progress,
+    set_cancel_signal,
+    set_current_run,
+)
+from src.apps.admin.sync.runner import COLLECTION_CONFIG
 from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeService
 from src.apps.result.dao import ResultNotComputedError
 from src.apps.user.dao import UserDAO
 from src.apps.vote_data.dao import VoteDataDAO
 from src.db_model.raw_submit import RawDojinSubmit
+from src.db_model.sync_run_log import SyncRunLog
 
 
 class AdminService:
-    def __init__(self, compute_service: ComputeService, compute_dao: ComputeDAO, session: AsyncSession | None = None):
+    def __init__(
+        self,
+        compute_service: ComputeService,
+        compute_dao: ComputeDAO,
+        session: AsyncSession | None = None,
+    ):
         self.compute_service = compute_service
         self.compute_dao = compute_dao
         self._session = session
@@ -71,7 +87,9 @@ class AdminService:
         cp = await vote_dao.get_cp_by_id(user_id)
         questionnaire = await vote_dao.get_questionnaire_by_id(user_id)
         dojin_count = (await self._session.execute(
-            select(sqlfunc.count()).select_from(RawDojinSubmit).where(RawDojinSubmit.vote_id == user_id)
+            select(sqlfunc.count())
+            .select_from(RawDojinSubmit)
+            .where(RawDojinSubmit.vote_id == user_id)
         )).scalar_one()
         return {
             "user": user,
@@ -175,9 +193,14 @@ class AdminService:
                 break
             for r in rows:
                 payload = getattr(r, "payload", None) or getattr(r, "papers_json", "")
-                payload_str = _json.dumps(payload, ensure_ascii=False).replace('"', '""')
+                payload_str = (
+                    _json.dumps(payload, ensure_ascii=False).replace('"', '""')
+                )
                 created = r.created_at.isoformat() if r.created_at else ""
-                yield f'"{r.vote_id}",{r.attempt or ""},"{created}","{r.user_ip}","{payload_str}"\n'
+                yield (
+                    f'"{r.vote_id}",{r.attempt or ""},'
+                    f'"{created}","{r.user_ip}","{payload_str}"\n'
+                )
             offset += batch_size
 
     async def get_stats(self, vote_year: int | None = None) -> dict:
@@ -207,7 +230,8 @@ class AdminService:
 
         async def _count_distinct_voters(model):
             return (await self._session.execute(
-                select(sqlfunc.count(sqlfunc.distinct(model.vote_id))).select_from(model)
+                select(sqlfunc.count(sqlfunc.distinct(model.vote_id)))
+                .select_from(model)
             )).scalar_one()
 
         return {
@@ -230,25 +254,13 @@ class AdminService:
 
 # ── SyncService ───────────────────────────────────────────────────────────────
 
-import uuid as _uuid
-from sqlalchemy import select as _select, desc as _desc, func as _func
-from sqlalchemy.ext.asyncio import AsyncSession as _AsyncSession, async_sessionmaker as _async_sessionmaker
-import redis.asyncio as _aioredis
-
-from src.apps.admin.sync.progress import (
-    set_current_run, get_current_run, get_progress,
-    set_cancel_signal, clear_current_run,
-)
-from src.apps.admin.sync.runner import COLLECTION_CONFIG
-from src.db_model.sync_run_log import SyncRunLog
-
 
 class SyncService:
     def __init__(
         self,
-        session: _AsyncSession,
-        session_maker: _async_sessionmaker,
-        redis: _aioredis.Redis,
+        session: AsyncSession,
+        session_maker: async_sessionmaker,
+        redis: aioredis.Redis,
         settings,
     ) -> None:
         self._session = session
@@ -257,8 +269,10 @@ class SyncService:
         self._settings = settings
 
     async def start_sync(self, request, initiated_by: str = "api") -> str:
-        run_id = str(_uuid.uuid4())
-        collections_to_run = request.collections or [cfg[1] for cfg in COLLECTION_CONFIG]
+        run_id = str(uuid.uuid4())
+        collections_to_run = (
+            request.collections or [cfg[1] for cfg in COLLECTION_CONFIG]
+        )
         log = SyncRunLog(
             run_id=run_id,
             status="running",
@@ -290,11 +304,11 @@ class SyncService:
 
     async def get_history(self, page: int = 1, page_size: int = 20) -> dict:
         total = (await self._session.execute(
-            _select(_func.count()).select_from(SyncRunLog)
+            select(sqlfunc.count()).select_from(SyncRunLog)
         )).scalar_one()
         rows = (await self._session.execute(
-            _select(SyncRunLog)
-            .order_by(_desc(SyncRunLog.started_at))
+            select(SyncRunLog)
+            .order_by(desc(SyncRunLog.started_at))
             .offset((page - 1) * page_size)
             .limit(page_size)
         )).scalars().all()
@@ -306,11 +320,16 @@ class SyncService:
             await set_cancel_signal(self._redis, run_id)
 
     async def complete_run(
-        self, run_id: str, inserted: int, skipped: int, errors: int, status: str = "completed"
+        self,
+        run_id: str,
+        inserted: int,
+        skipped: int,
+        errors: int,
+        status: str = "completed",
     ) -> None:
         from datetime import datetime, timezone
         result = await self._session.execute(
-            _select(SyncRunLog).where(SyncRunLog.run_id == run_id)
+            select(SyncRunLog).where(SyncRunLog.run_id == run_id)
         )
         log = result.scalar_one_or_none()
         if log:

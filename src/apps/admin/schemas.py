@@ -5,8 +5,6 @@ from typing import Literal, Optional
 from pydantic import BaseModel
 
 
-
-
 class CandidateItem(BaseModel):
     name: str
     name_jp: str = ""

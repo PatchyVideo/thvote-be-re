@@ -215,13 +215,6 @@ class UserGQLType:
     created_at: datetime
 
 
-@strawberry.type
-class LoginResult:
-    user: UserGQLType
-    session_token: str
-    vote_token: str
-
-
 # ── Submit types ──────────────────────────────────────────────────────
 
 

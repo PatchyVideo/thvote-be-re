@@ -113,7 +113,7 @@ def map_candidate_music(doc: dict[str, Any]) -> dict[str, Any]:
 
 # ── collection config ──────────────────────────────────────────────────────────
 
-# Each tuple: (db_attr_on_settings, mongo_collection_name, pg_table_name, mapper_fn, _unused)
+# Each tuple: (settings_db_attr, mongo_collection, pg_table, mapper_fn, _unused)
 COLLECTION_CONFIG = [
     # A: users
     ("mongodb_db_users", "voters", "user", map_voter, "id"),
@@ -247,7 +247,8 @@ async def _flush_batch(
                 cols = ", ".join(f'"{k}"' for k in row)
                 params = ", ".join(f":{k}" for k in row)
                 sql = text(
-                    f'INSERT INTO "{pg_table}" ({cols}) VALUES ({params}) {conflict_clause}'
+                    f'INSERT INTO "{pg_table}" ({cols}) '
+                    f"VALUES ({params}) {conflict_clause}"
                 )
                 try:
                     result = await session.execute(sql, row)

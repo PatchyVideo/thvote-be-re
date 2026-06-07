@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.apps.admin.schemas import (
     ActivityLogResponse,
@@ -18,16 +19,23 @@ from src.apps.admin.schemas import (
     ImportCandidatesRequest,
     ImportCandidatesResponse,
     StatsResponse,
+    SyncHistoryResponse,
+    SyncStartRequest,
+    SyncStartResponse,
+    SyncStatusResponse,
     UserDetailResponse,
     UserListResponse,
 )
-from src.apps.admin.service import AdminService
+from src.apps.admin.service import AdminService, SyncService
+from src.apps.admin.sync.progress import set_current_run
 from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeInProgressError, ComputeService
 from src.apps.result.dao import ResultNotComputedError
 from src.common.config import Settings, get_settings
-from src.common.database import get_db_session
+from src.common.database import get_db_session, get_session_maker
 from src.common.redis import get_redis
+
+_logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -277,19 +285,6 @@ async def export_votes(
 
 # ── Sync endpoints ────────────────────────────────────────────────────────────
 
-import logging as _logging
-
-from fastapi import BackgroundTasks
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from src.apps.admin.schemas import (
-    SyncStartRequest, SyncStartResponse, SyncStatusResponse, SyncHistoryResponse,
-)
-from src.apps.admin.service import SyncService
-from src.apps.admin.sync.progress import set_current_run
-from src.common.database import get_session_maker
-
-_logger = _logging.getLogger(__name__)
-
 
 async def get_sync_service(
     session: AsyncSession = Depends(get_db_session),
@@ -342,7 +337,9 @@ async def _run_all_collections_bg(
         client.close()
         async with session_maker() as session:
             svc = SyncService(session, session_maker, redis, settings)
-            await svc.complete_run(run_id, total_inserted, total_skipped, total_errors, status)
+            await svc.complete_run(
+                run_id, total_inserted, total_skipped, total_errors, status
+            )
 
 
 @router.post("/sync/start", response_model=SyncStartResponse, status_code=202)
@@ -359,7 +356,9 @@ async def start_sync(
     if not settings.mongodb_uri:
         raise HTTPException(status_code=503, detail="MONGODB_NOT_CONFIGURED")
     run_id = await service.start_sync(body)
-    background_tasks.add_task(_run_all_collections_bg, run_id, body, settings, redis, session_maker)
+    background_tasks.add_task(
+        _run_all_collections_bg, run_id, body, settings, redis, session_maker
+    )
     return SyncStartResponse(run_id=run_id, message="Sync started")
 
 
@@ -428,5 +427,7 @@ async def retry_sync(
         raise HTTPException(status_code=503, detail="MONGODB_NOT_CONFIGURED")
     await set_current_run(redis, run_id)
     body = SyncStartRequest()
-    background_tasks.add_task(_run_all_collections_bg, run_id, body, settings, redis, session_maker)
+    background_tasks.add_task(
+        _run_all_collections_bg, run_id, body, settings, redis, session_maker
+    )
     return SyncStartResponse(run_id=run_id, message="Retry started from checkpoint")

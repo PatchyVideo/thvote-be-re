@@ -274,7 +274,11 @@ def create_app() -> FastAPI:
     from fastapi.staticfiles import StaticFiles
     _admin_ui_dir = _os.path.join(_os.path.dirname(__file__), "admin_ui")
     if _os.path.isdir(_admin_ui_dir):
-        app.mount("/admin-ui", StaticFiles(directory=_admin_ui_dir, html=True), name="admin_ui")
+        app.mount(
+            "/admin-ui",
+            StaticFiles(directory=_admin_ui_dir, html=True),
+            name="admin_ui",
+        )
 
     return app
 
