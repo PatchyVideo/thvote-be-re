@@ -70,6 +70,43 @@ class UserDAO:
         )
         return result.scalar_one_or_none()
 
+    async def search_users(
+        self,
+        email: str | None = None,
+        phone: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list, int]:
+        from sqlalchemy import func as sqlfunc
+        query = select(User)
+        if email:
+            query = query.where(User.email.ilike(f"%{email}%"))
+        if phone:
+            query = query.where(User.phone_number.ilike(f"%{phone}%"))
+        count_result = await self.session.execute(
+            select(sqlfunc.count()).select_from(query.subquery())
+        )
+        total = count_result.scalar_one()
+        result = await self.session.execute(
+            query.order_by(User.id).offset((page - 1) * page_size).limit(page_size)
+        )
+        return result.scalars().all(), total
+
+    async def get_by_id_any(self, user_id: str) -> User | None:
+        result = await self.session.execute(
+            select(User).where(User.id == user_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def set_removed(self, user_id: str, removed: bool) -> User | None:
+        user = await self.get_by_id_any(user_id)
+        if user is None:
+            return None
+        user.removed = removed
+        await self.session.commit()
+        await self.session.refresh(user)
+        return user
+
 
 class ActivityLogDAO:
     """Append-only writes to the ``activity_log`` audit table.

@@ -5,6 +5,8 @@ from typing import Literal, Optional
 from pydantic import BaseModel
 
 
+
+
 class CandidateItem(BaseModel):
     name: str
     name_jp: str = ""
@@ -36,3 +38,31 @@ class FinalizeRankingResponse(BaseModel):
     ok: bool = True
     vote_year: int
     saved: int
+
+
+# ── User admin schemas ─────────────────────────────────────────────────────────
+
+class UserAdminItem(BaseModel):
+    id: str
+    nickname: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    email_verified: bool = False
+    phone_verified: bool = False
+    register_date: Optional[str] = None
+    removed: bool = False
+
+
+class UserListResponse(BaseModel):
+    items: list[UserAdminItem]
+    total: int
+
+
+class UserDetailResponse(BaseModel):
+    user: UserAdminItem
+    vote_submitted: dict[str, bool]
+
+
+class BanResponse(BaseModel):
+    ok: bool = True
+    removed: bool

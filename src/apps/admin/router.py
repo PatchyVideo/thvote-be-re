@@ -9,10 +9,13 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.admin.schemas import (
+    BanResponse,
     ComputeResultsResponse,
     FinalizeRankingResponse,
     ImportCandidatesRequest,
     ImportCandidatesResponse,
+    UserDetailResponse,
+    UserListResponse,
 )
 from src.apps.admin.service import AdminService
 from src.apps.result.compute_dao import ComputeDAO
@@ -37,7 +40,7 @@ async def get_admin_service(
 ) -> AdminService:
     compute_dao = ComputeDAO(session)
     compute_svc = ComputeService(compute_dao, redis, settings)
-    return AdminService(compute_svc, compute_dao)
+    return AdminService(compute_svc, compute_dao, session)
 
 
 @router.post("/compute-results", response_model=ComputeResultsResponse)
@@ -82,3 +85,86 @@ async def finalize_ranking(
     except ResultNotComputedError:
         raise HTTPException(status_code=503, detail="RESULT_NOT_COMPUTED")
     return FinalizeRankingResponse(vote_year=year, saved=saved)
+
+
+@router.get("/users", response_model=UserListResponse)
+async def list_users(
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> UserListResponse:
+    _check_admin_secret(settings, x_admin_secret)
+    data = await service.list_users(email, phone, page, page_size)
+    items = [
+        {
+            "id": u.id,
+            "nickname": u.nickname,
+            "email": u.email,
+            "phone": u.phone_number,
+            "email_verified": u.email_verified,
+            "phone_verified": u.phone_verified,
+            "register_date": u.register_date.isoformat() if u.register_date else None,
+            "removed": u.removed,
+        }
+        for u in data["items"]
+    ]
+    return UserListResponse(items=items, total=data["total"])
+
+
+@router.get("/users/{user_id}", response_model=UserDetailResponse)
+async def get_user_detail(
+    user_id: str,
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> UserDetailResponse:
+    _check_admin_secret(settings, x_admin_secret)
+    result = await service.get_user_detail(user_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
+    u = result["user"]
+    return UserDetailResponse(
+        user={
+            "id": u.id,
+            "nickname": u.nickname,
+            "email": u.email,
+            "phone": u.phone_number,
+            "email_verified": u.email_verified,
+            "phone_verified": u.phone_verified,
+            "register_date": u.register_date.isoformat() if u.register_date else None,
+            "removed": u.removed,
+        },
+        vote_submitted=result["vote_submitted"],
+    )
+
+
+@router.patch("/users/{user_id}/ban", response_model=BanResponse)
+async def ban_user(
+    user_id: str,
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> BanResponse:
+    _check_admin_secret(settings, x_admin_secret)
+    user = await service.ban_user(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
+    return BanResponse(removed=user.removed)
+
+
+@router.patch("/users/{user_id}/unban", response_model=BanResponse)
+async def unban_user(
+    user_id: str,
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> BanResponse:
+    _check_admin_secret(settings, x_admin_secret)
+    user = await service.unban_user(user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
+    return BanResponse(removed=user.removed)

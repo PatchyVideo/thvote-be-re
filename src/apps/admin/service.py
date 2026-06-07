@@ -11,9 +11,10 @@ from src.apps.result.dao import ResultNotComputedError
 
 
 class AdminService:
-    def __init__(self, compute_service: ComputeService, compute_dao: ComputeDAO):
+    def __init__(self, compute_service: ComputeService, compute_dao: ComputeDAO, session=None):
         self.compute_service = compute_service
         self.compute_dao = compute_dao
+        self._session = session
 
     async def compute_results(self, vote_year: int) -> dict:
         return await self.compute_service.compute_all(vote_year)
@@ -45,3 +46,42 @@ class AdminService:
                 "No ranking data found in Redis for any category"
             )
         return total
+
+    async def list_users(
+        self, email, phone, page, page_size
+    ) -> dict:
+        from src.apps.user.dao import UserDAO
+        user_dao = UserDAO(self._session)
+        users, total = await user_dao.search_users(email, phone, page, page_size)
+        return {"items": users, "total": total}
+
+    async def get_user_detail(self, user_id: str) -> dict | None:
+        from src.apps.user.dao import UserDAO
+        from src.apps.vote_data.dao import VoteDataDAO
+        user_dao = UserDAO(self._session)
+        user = await user_dao.get_by_id_any(user_id)
+        if user is None:
+            return None
+        vote_dao = VoteDataDAO(self._session)
+        char = await vote_dao.get_character_by_id(user_id)
+        music = await vote_dao.get_music_by_id(user_id)
+        cp = await vote_dao.get_cp_by_id(user_id)
+        questionnaire = await vote_dao.get_questionnaire_by_id(user_id)
+        return {
+            "user": user,
+            "vote_submitted": {
+                "character": char is not None,
+                "music": music is not None,
+                "cp": cp is not None,
+                "paper": questionnaire is not None,
+                "dojin": False,
+            },
+        }
+
+    async def ban_user(self, user_id: str):
+        from src.apps.user.dao import UserDAO
+        return await UserDAO(self._session).set_removed(user_id, removed=True)
+
+    async def unban_user(self, user_id: str):
+        from src.apps.user.dao import UserDAO
+        return await UserDAO(self._session).set_removed(user_id, removed=False)
