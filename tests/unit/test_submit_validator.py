@@ -97,42 +97,52 @@ def test_validate_cp_too_many():
 
 
 # ── paper ──────────────────────────────────────────────────────────────
+# papers_json 是不透明业务数据(前端真实载荷为嵌套对象,统计侧不读原始表),
+# 只验「合法 JSON + UTF-8 ≤ 256KB」。旧的"非空列表+整数id"校验是按想象格式写的,
+# 会拒掉真实前端载荷,已按 spec 2026-06-07 移除。
 
-def test_validate_paper_ok():
-    papers = json.dumps([{"id": 1, "answer": [2]}, {"id": 2, "answer_str": "男"}])
-    data = PaperSubmitRest(papers_json=papers, meta=META)
+
+def test_validate_paper_accepts_real_frontend_payload():
+    # 前端 Questionnaire.vue 实际提交的嵌套结构(精简版)
+    payload = json.dumps({
+        "mainQuestionnaire": {
+            "requiredQuestionnaire": {
+                "id": 11,
+                "answers": [{"id": 11011, "options": [1, 2], "input": ""}],
+            },
+            "optionalQuestionnaire1": {"id": 12, "answers": []},
+        },
+        "extraQuestionnaire": {"exQuestionnaire1": {"id": 21, "answers": []}},
+    })
+    data = PaperSubmitRest(papers_json=payload, meta=META)
     assert v.validate_paper(data) is data
 
 
+def test_validate_paper_accepts_any_valid_json_shape():
+    # 列表、对象、甚至标量都放行——结构不归后端管
+    for payload in ['[{"id": 1}]', "{}", '"just a string"']:
+        data = PaperSubmitRest(papers_json=payload, meta=META)
+        assert v.validate_paper(data) is data
+
+
 def test_validate_paper_invalid_json():
-    with pytest.raises(ValueError, match="合法 JSON"):
+    with pytest.raises(ValueError, match="不是合法 JSON"):
         v.validate_paper(PaperSubmitRest(papers_json="{not json", meta=META))
 
 
-def test_validate_paper_empty_list():
-    with pytest.raises(ValueError, match="非空列表"):
-        v.validate_paper(PaperSubmitRest(papers_json="[]", meta=META))
+def test_validate_paper_oversize_rejected():
+    big = json.dumps({"x": "a" * (256 * 1024)})  # 编码后必然 > 256KB
+    with pytest.raises(ValueError, match="问卷数据过大"):
+        v.validate_paper(PaperSubmitRest(papers_json=big, meta=META))
 
 
-def test_validate_paper_missing_id():
-    with pytest.raises(ValueError, match="整数 id"):
-        v.validate_paper(PaperSubmitRest(
-            papers_json=json.dumps([{"question": 1}]), meta=META
-        ))
-
-
-def test_validate_paper_string_id_rejected():
-    with pytest.raises(ValueError, match="整数 id"):
-        v.validate_paper(PaperSubmitRest(
-            papers_json=json.dumps([{"id": "not-int"}]), meta=META
-        ))
-
-
-def test_validate_paper_answer_str_too_long():
-    with pytest.raises(ValueError, match="answer_str 过长"):
-        v.validate_paper(PaperSubmitRest(
-            papers_json=json.dumps([{"id": 1, "answer_str": "x" * 4097}]), meta=META
-        ))
+def test_validate_paper_exactly_at_limit_accepted():
+    # 上限是严格大于(>):正好 256KB 必须通过,防住未来 > 改 >= 的 off-by-one
+    overhead = len(json.dumps({"x": ""}).encode("utf-8"))
+    payload = json.dumps({"x": "a" * (256 * 1024 - overhead)})
+    assert len(payload.encode("utf-8")) == 256 * 1024
+    data = PaperSubmitRest(papers_json=payload, meta=META)
+    assert v.validate_paper(data) is data
 
 
 # ── dojin ──────────────────────────────────────────────────────────────
