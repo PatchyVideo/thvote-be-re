@@ -114,3 +114,46 @@ class ActivityLogItem(BaseModel):
 class ActivityLogResponse(BaseModel):
     items: list[ActivityLogItem]
     total: int
+
+
+# ── Sync schemas ──────────────────────────────────────────────────────────────
+
+class SyncStartRequest(BaseModel):
+    collections: list[str] = []  # empty = all collections
+    batch_size: int = 500
+
+
+class SyncStartResponse(BaseModel):
+    ok: bool = True
+    run_id: str
+    message: str
+
+
+class SyncStatusResponse(BaseModel):
+    run_id: Optional[str] = None
+    status: str  # running / idle / no_run
+    current_collection: Optional[str] = None
+    processed: int = 0
+    total: int = 0
+    inserted: int = 0
+    skipped: int = 0
+    errors: int = 0
+
+
+class SyncHistoryItem(BaseModel):
+    id: int
+    run_id: str
+    started_at: str
+    completed_at: Optional[str] = None
+    status: str
+    collections: list[str]
+    total_docs: int
+    inserted: int
+    skipped: int
+    errors: int
+    initiated_by: str
+
+
+class SyncHistoryResponse(BaseModel):
+    items: list[SyncHistoryItem]
+    total: int

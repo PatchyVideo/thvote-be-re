@@ -273,3 +273,160 @@ async def export_votes(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ── Sync endpoints ────────────────────────────────────────────────────────────
+
+import logging as _logging
+
+from fastapi import BackgroundTasks
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from src.apps.admin.schemas import (
+    SyncStartRequest, SyncStartResponse, SyncStatusResponse, SyncHistoryResponse,
+)
+from src.apps.admin.service import SyncService
+from src.apps.admin.sync.progress import set_current_run
+from src.common.database import get_session_maker
+
+_logger = _logging.getLogger(__name__)
+
+
+async def get_sync_service(
+    session: AsyncSession = Depends(get_db_session),
+    redis: aioredis.Redis = Depends(get_redis),
+    settings: Settings = Depends(get_settings),
+    session_maker: async_sessionmaker = Depends(get_session_maker),
+) -> SyncService:
+    return SyncService(session, session_maker, redis, settings)
+
+
+async def _run_all_collections_bg(
+    run_id: str,
+    request: SyncStartRequest,
+    settings,
+    redis,
+    session_maker: async_sessionmaker,
+) -> None:
+    import pymongo
+    from src.apps.admin.sync.runner import COLLECTION_CONFIG, run_collection
+
+    uri = settings.mongodb_uri
+    client = pymongo.MongoClient(uri)
+    total_inserted = total_skipped = total_errors = 0
+    collections_to_run = request.collections or [cfg[1] for cfg in COLLECTION_CONFIG]
+    status = "completed"
+
+    try:
+        for db_attr, coll_name, pg_table, mapper, _ in COLLECTION_CONFIG:
+            if coll_name not in collections_to_run:
+                continue
+            db_name = getattr(settings, db_attr)
+            ins, skp, err = await run_collection(
+                mongo_db=client[db_name],
+                collection_name=coll_name,
+                pg_table=pg_table,
+                mapper=mapper,
+                run_id=run_id,
+                batch_size=request.batch_size,
+                redis=redis,
+                session_maker=session_maker,
+                error_path=f"migrate_errors_{run_id[:8]}.jsonl",
+            )
+            total_inserted += ins
+            total_skipped += skp
+            total_errors += err
+    except Exception as exc:
+        _logger.error("Sync run %s failed: %s", run_id, exc)
+        status = "failed"
+    finally:
+        client.close()
+        async with session_maker() as session:
+            svc = SyncService(session, session_maker, redis, settings)
+            await svc.complete_run(run_id, total_inserted, total_skipped, total_errors, status)
+
+
+@router.post("/sync/start", response_model=SyncStartResponse, status_code=202)
+async def start_sync(
+    body: SyncStartRequest,
+    background_tasks: BackgroundTasks,
+    x_admin_secret: Optional[str] = Header(None),
+    service: SyncService = Depends(get_sync_service),
+    settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
+    session_maker: async_sessionmaker = Depends(get_session_maker),
+) -> SyncStartResponse:
+    _check_admin_secret(settings, x_admin_secret)
+    if not settings.mongodb_uri:
+        raise HTTPException(status_code=503, detail="MONGODB_NOT_CONFIGURED")
+    run_id = await service.start_sync(body)
+    background_tasks.add_task(_run_all_collections_bg, run_id, body, settings, redis, session_maker)
+    return SyncStartResponse(run_id=run_id, message="Sync started")
+
+
+@router.get("/sync/status", response_model=SyncStatusResponse)
+async def get_sync_status(
+    x_admin_secret: Optional[str] = Header(None),
+    service: SyncService = Depends(get_sync_service),
+    settings: Settings = Depends(get_settings),
+) -> SyncStatusResponse:
+    _check_admin_secret(settings, x_admin_secret)
+    data = await service.get_status()
+    return SyncStatusResponse(**data)
+
+
+@router.get("/sync/history", response_model=SyncHistoryResponse)
+async def get_sync_history(
+    page: int = 1,
+    page_size: int = 20,
+    x_admin_secret: Optional[str] = Header(None),
+    service: SyncService = Depends(get_sync_service),
+    settings: Settings = Depends(get_settings),
+) -> SyncHistoryResponse:
+    _check_admin_secret(settings, x_admin_secret)
+    data = await service.get_history(page, page_size)
+    items = [
+        {
+            "id": r.id, "run_id": r.run_id,
+            "started_at": r.started_at.isoformat(),
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+            "status": r.status,
+            "collections": r.collections or [],
+            "total_docs": r.total_docs,
+            "inserted": r.inserted,
+            "skipped": r.skipped,
+            "errors": r.errors,
+            "initiated_by": r.initiated_by,
+        }
+        for r in data["items"]
+    ]
+    return SyncHistoryResponse(items=items, total=data["total"])
+
+
+@router.post("/sync/cancel")
+async def cancel_sync(
+    x_admin_secret: Optional[str] = Header(None),
+    service: SyncService = Depends(get_sync_service),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    _check_admin_secret(settings, x_admin_secret)
+    await service.cancel()
+    return {"ok": True}
+
+
+@router.post("/sync/retry/{run_id}", response_model=SyncStartResponse, status_code=202)
+async def retry_sync(
+    run_id: str,
+    background_tasks: BackgroundTasks,
+    x_admin_secret: Optional[str] = Header(None),
+    service: SyncService = Depends(get_sync_service),
+    settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
+    session_maker: async_sessionmaker = Depends(get_session_maker),
+) -> SyncStartResponse:
+    _check_admin_secret(settings, x_admin_secret)
+    if not settings.mongodb_uri:
+        raise HTTPException(status_code=503, detail="MONGODB_NOT_CONFIGURED")
+    await set_current_run(redis, run_id)
+    body = SyncStartRequest()
+    background_tasks.add_task(_run_all_collections_bg, run_id, body, settings, redis, session_maker)
+    return SyncStartResponse(run_id=run_id, message="Retry started from checkpoint")

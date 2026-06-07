@@ -226,3 +226,98 @@ class AdminService:
                 "dojin": await _count_distinct_voters(RawDojinSubmit),
             },
         }
+
+
+# ── SyncService ───────────────────────────────────────────────────────────────
+
+import uuid as _uuid
+from sqlalchemy import select as _select, desc as _desc, func as _func
+from sqlalchemy.ext.asyncio import AsyncSession as _AsyncSession, async_sessionmaker as _async_sessionmaker
+import redis.asyncio as _aioredis
+
+from src.apps.admin.sync.progress import (
+    set_current_run, get_current_run, get_progress,
+    set_cancel_signal, clear_current_run,
+)
+from src.apps.admin.sync.runner import COLLECTION_CONFIG
+from src.db_model.sync_run_log import SyncRunLog
+
+
+class SyncService:
+    def __init__(
+        self,
+        session: _AsyncSession,
+        session_maker: _async_sessionmaker,
+        redis: _aioredis.Redis,
+        settings,
+    ) -> None:
+        self._session = session
+        self._session_maker = session_maker
+        self._redis = redis
+        self._settings = settings
+
+    async def start_sync(self, request, initiated_by: str = "api") -> str:
+        run_id = str(_uuid.uuid4())
+        collections_to_run = request.collections or [cfg[1] for cfg in COLLECTION_CONFIG]
+        log = SyncRunLog(
+            run_id=run_id,
+            status="running",
+            collections=collections_to_run,
+            initiated_by=initiated_by,
+        )
+        self._session.add(log)
+        await self._session.commit()
+        await set_current_run(self._redis, run_id)
+        return run_id
+
+    async def get_status(self) -> dict:
+        run_id = await get_current_run(self._redis)
+        if not run_id:
+            return {"run_id": None, "status": "idle"}
+        progress = await get_progress(self._redis, run_id)
+        if not progress:
+            return {"run_id": run_id, "status": "idle"}
+        return {
+            "run_id": run_id,
+            "status": progress.get("status", "running"),
+            "current_collection": progress.get("current_collection"),
+            "processed": int(progress.get("processed", 0)),
+            "total": int(progress.get("total", 0)),
+            "inserted": int(progress.get("inserted", 0)),
+            "skipped": int(progress.get("skipped", 0)),
+            "errors": int(progress.get("errors", 0)),
+        }
+
+    async def get_history(self, page: int = 1, page_size: int = 20) -> dict:
+        total = (await self._session.execute(
+            _select(_func.count()).select_from(SyncRunLog)
+        )).scalar_one()
+        rows = (await self._session.execute(
+            _select(SyncRunLog)
+            .order_by(_desc(SyncRunLog.started_at))
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )).scalars().all()
+        return {"items": rows, "total": total}
+
+    async def cancel(self) -> None:
+        run_id = await get_current_run(self._redis)
+        if run_id:
+            await set_cancel_signal(self._redis, run_id)
+
+    async def complete_run(
+        self, run_id: str, inserted: int, skipped: int, errors: int, status: str = "completed"
+    ) -> None:
+        from datetime import datetime, timezone
+        result = await self._session.execute(
+            _select(SyncRunLog).where(SyncRunLog.run_id == run_id)
+        )
+        log = result.scalar_one_or_none()
+        if log:
+            log.status = status
+            log.completed_at = datetime.now(timezone.utc)
+            log.inserted = inserted
+            log.skipped = skipped
+            log.errors = errors
+            await self._session.commit()
+        await clear_current_run(self._redis)
