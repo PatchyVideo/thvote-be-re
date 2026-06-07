@@ -6,9 +6,11 @@ from typing import Optional
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.admin.schemas import (
+    ActivityLogResponse,
     BanResponse,
     CandidateListResponse,
     ComputeResultsResponse,
@@ -230,3 +232,44 @@ async def delete_candidate(
     if not deleted:
         raise HTTPException(status_code=404, detail="CANDIDATE_NOT_FOUND")
     return {"ok": True}
+
+
+@router.get("/activity-logs", response_model=ActivityLogResponse)
+async def list_activity_logs(
+    user_id: Optional[str] = None,
+    action: Optional[str] = None,
+    since: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 50,
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> ActivityLogResponse:
+    _check_admin_secret(settings, x_admin_secret)
+    data = await service.list_activity_logs(user_id, action, since, page, page_size)
+    items = [
+        {
+            "id": r.id, "event_type": r.event_type,
+            "user_id": r.user_id, "requester_ip": r.requester_ip,
+            "created_at": r.created_at.isoformat(),
+        }
+        for r in data["items"]
+    ]
+    return ActivityLogResponse(items=items, total=data["total"])
+
+
+@router.get("/export/votes")
+async def export_votes(
+    vote_year: int,
+    category: str,
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> StreamingResponse:
+    _check_admin_secret(settings, x_admin_secret)
+    filename = f"votes_{vote_year}_{category}.csv"
+    return StreamingResponse(
+        service.export_votes_csv(vote_year, category),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

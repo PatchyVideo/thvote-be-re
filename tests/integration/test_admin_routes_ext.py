@@ -155,3 +155,26 @@ async def test_list_candidates_empty(app, admin_secret):
     data = resp.json()
     assert data["items"] == []
     assert data["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_activity_logs_empty(app, admin_secret):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        resp = await ac.get(
+            "/api/v1/admin/activity-logs",
+            headers={"X-Admin-Secret": admin_secret},
+        )
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_export_votes_csv(app, admin_secret):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        resp = await ac.get(
+            "/api/v1/admin/export/votes?vote_year=2024&category=character",
+            headers={"X-Admin-Secret": admin_secret},
+        )
+    assert resp.status_code == 200
+    assert "text/csv" in resp.headers["content-type"]
+    assert resp.text.startswith("vote_id,attempt,")

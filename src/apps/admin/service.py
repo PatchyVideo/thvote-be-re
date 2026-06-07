@@ -115,6 +115,71 @@ class AdminService:
     async def delete_candidate(self, candidate_id: int, category: str) -> bool:
         return await self.compute_dao.delete_candidate(candidate_id, category)
 
+    async def list_activity_logs(
+        self,
+        user_id: str | None,
+        action: str | None,
+        since: str | None,
+        page: int,
+        page_size: int,
+    ) -> dict:
+        from datetime import datetime
+        from sqlalchemy import desc
+        from src.db_model.activity_log import ActivityLog
+
+        query = select(ActivityLog)
+        if user_id:
+            query = query.where(ActivityLog.user_id == user_id)
+        if action:
+            query = query.where(ActivityLog.event_type == action)
+        if since:
+            dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+            query = query.where(ActivityLog.created_at >= dt)
+
+        total = (await self._session.execute(
+            select(sqlfunc.count()).select_from(query.subquery())
+        )).scalar_one()
+        rows = (await self._session.execute(
+            query.order_by(desc(ActivityLog.created_at))
+            .offset((page - 1) * page_size).limit(page_size)
+        )).scalars().all()
+        return {"items": rows, "total": total}
+
+    async def export_votes_csv(self, vote_year: int, category: str):
+        """Async generator yielding CSV rows (header first, then data)."""
+        import json as _json
+        from src.db_model.raw_submit import (
+            RawCharacterSubmit, RawMusicSubmit, RawCPSubmit,
+            RawPaperSubmit, RawDojinSubmit,
+        )
+        _models = {
+            "character": RawCharacterSubmit,
+            "music": RawMusicSubmit,
+            "cp": RawCPSubmit,
+            "paper": RawPaperSubmit,
+            "dojin": RawDojinSubmit,
+        }
+        model = _models.get(category)
+        if model is None:
+            return
+
+        yield "vote_id,attempt,created_at,user_ip,payload\n"
+
+        offset = 0
+        batch_size = 500
+        while True:
+            rows = (await self._session.execute(
+                select(model).order_by(model.id).offset(offset).limit(batch_size)
+            )).scalars().all()
+            if not rows:
+                break
+            for r in rows:
+                payload = getattr(r, "payload", None) or getattr(r, "papers_json", "")
+                payload_str = _json.dumps(payload, ensure_ascii=False).replace('"', '""')
+                created = r.created_at.isoformat() if r.created_at else ""
+                yield f'"{r.vote_id}",{r.attempt or ""},"{created}","{r.user_ip}","{payload_str}"\n'
+            offset += batch_size
+
     async def get_stats(self, vote_year: int | None = None) -> dict:
         from datetime import datetime, timezone
         from src.db_model.user import User

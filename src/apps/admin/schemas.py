@@ -99,3 +99,18 @@ class CandidateAdminItem(BaseModel):
 class CandidateListResponse(BaseModel):
     items: list[CandidateAdminItem]
     total: int
+
+
+# ── Activity log + export schemas ─────────────────────────────────────────────
+
+class ActivityLogItem(BaseModel):
+    id: int
+    event_type: str
+    user_id: Optional[str] = None
+    requester_ip: Optional[str] = None
+    created_at: str
+
+
+class ActivityLogResponse(BaseModel):
+    items: list[ActivityLogItem]
+    total: int
