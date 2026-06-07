@@ -130,3 +130,28 @@ async def test_get_user_detail(app, db_session, admin_secret):
     data = resp.json()
     assert data["user"]["id"] == "ccc"
     assert "vote_submitted" in data
+
+
+@pytest.mark.asyncio
+async def test_stats_shape(app, admin_secret):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        resp = await ac.get("/api/v1/admin/stats", headers={"X-Admin-Secret": admin_secret})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "total_users" in data
+    assert "submissions" in data
+    assert "character" in data["submissions"]
+    assert data["vote_window"]["status"] in ("open", "closed", "upcoming")
+
+
+@pytest.mark.asyncio
+async def test_list_candidates_empty(app, admin_secret):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        resp = await ac.get(
+            "/api/v1/admin/candidates?category=character&vote_year=2024",
+            headers={"X-Admin-Secret": admin_secret},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["items"] == []
+    assert data["total"] == 0

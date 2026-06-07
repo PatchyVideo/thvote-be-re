@@ -189,3 +189,38 @@ class ComputeDAO:
             count += 1
         await self.session.commit()
         return count
+
+    async def list_candidates(
+        self,
+        category: str,
+        vote_year: int,
+        q: str | None = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> tuple[list, int]:
+        from sqlalchemy import func as sqlfunc
+        from src.db_model.candidate import CandidateCharacter, CandidateMusic
+
+        model = CandidateCharacter if category == "character" else CandidateMusic
+        query = select(model).where(model.vote_year == vote_year)
+        if q:
+            query = query.where(model.name.ilike(f"%{q}%"))
+
+        total = (await self.session.execute(
+            select(sqlfunc.count()).select_from(query.subquery())
+        )).scalar_one()
+        rows = (await self.session.execute(
+            query.order_by(model.name).offset((page - 1) * page_size).limit(page_size)
+        )).scalars().all()
+        return rows, total
+
+    async def delete_candidate(self, candidate_id: int, category: str) -> bool:
+        from sqlalchemy import delete
+        from src.db_model.candidate import CandidateCharacter, CandidateMusic
+
+        model = CandidateCharacter if category == "character" else CandidateMusic
+        result = await self.session.execute(
+            delete(model).where(model.id == candidate_id)
+        )
+        await self.session.commit()
+        return result.rowcount > 0

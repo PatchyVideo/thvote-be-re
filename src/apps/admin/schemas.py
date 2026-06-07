@@ -66,3 +66,36 @@ class UserDetailResponse(BaseModel):
 class BanResponse(BaseModel):
     ok: bool = True
     removed: bool
+
+
+# ── Stats schemas ──────────────────────────────────────────────────────────────
+
+class VoteWindowStatus(BaseModel):
+    status: str  # open / closed / upcoming
+    start: str
+    end: str
+
+
+class StatsResponse(BaseModel):
+    vote_year: int
+    total_users: int
+    vote_window: VoteWindowStatus
+    submissions: dict[str, int]
+
+
+# ── Candidate admin schemas ────────────────────────────────────────────────────
+
+class CandidateAdminItem(BaseModel):
+    id: int
+    vote_year: int
+    name: str
+    name_jp: str = ""
+    type: str = ""
+    origin: Optional[str] = None
+    first_appearance: Optional[str] = None
+    album: Optional[str] = None
+
+
+class CandidateListResponse(BaseModel):
+    items: list[CandidateAdminItem]
+    total: int

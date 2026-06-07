@@ -89,3 +89,75 @@ class AdminService:
 
     async def unban_user(self, user_id: str):
         return await UserDAO(self._session).set_removed(user_id, removed=False)
+
+    async def get_ranking_preview(
+        self, vote_year: int | None, category: str, limit: int
+    ) -> list[dict]:
+        year = vote_year or self.compute_service.settings.vote_year
+        cat_key = {"character": "chars", "music": "musics", "cp": "cps"}.get(category)
+        if not cat_key:
+            return []
+        key = f"result:{year}:{cat_key}:ranking"
+        raw = await self.compute_service.redis.get(key)
+        if not raw:
+            return []
+        entries = json.loads(raw)
+        return entries[:limit]
+
+    async def list_candidates(
+        self, category: str, vote_year: int, q: str | None, page: int, page_size: int
+    ) -> dict:
+        rows, total = await self.compute_dao.list_candidates(
+            category, vote_year, q, page, page_size
+        )
+        return {"items": rows, "total": total}
+
+    async def delete_candidate(self, candidate_id: int, category: str) -> bool:
+        return await self.compute_dao.delete_candidate(candidate_id, category)
+
+    async def get_stats(self, vote_year: int | None = None) -> dict:
+        from datetime import datetime, timezone
+        from src.db_model.user import User
+        from src.db_model.raw_submit import (
+            RawCharacterSubmit, RawMusicSubmit, RawCPSubmit,
+            RawPaperSubmit, RawDojinSubmit,
+        )
+
+        year = vote_year or self.compute_service.settings.vote_year
+        settings = self.compute_service.settings
+
+        now = datetime.now(timezone.utc)
+        start = datetime.fromisoformat(settings.vote_start_iso.replace("Z", "+00:00"))
+        end = datetime.fromisoformat(settings.vote_end_iso.replace("Z", "+00:00"))
+        if now < start:
+            window_status = "upcoming"
+        elif now > end:
+            window_status = "closed"
+        else:
+            window_status = "open"
+
+        total_users = (await self._session.execute(
+            select(sqlfunc.count()).select_from(User).where(User.removed.is_(False))
+        )).scalar_one()
+
+        async def _count_distinct_voters(model):
+            return (await self._session.execute(
+                select(sqlfunc.count(sqlfunc.distinct(model.vote_id))).select_from(model)
+            )).scalar_one()
+
+        return {
+            "vote_year": year,
+            "total_users": total_users,
+            "vote_window": {
+                "status": window_status,
+                "start": settings.vote_start_iso,
+                "end": settings.vote_end_iso,
+            },
+            "submissions": {
+                "character": await _count_distinct_voters(RawCharacterSubmit),
+                "music": await _count_distinct_voters(RawMusicSubmit),
+                "cp": await _count_distinct_voters(RawCPSubmit),
+                "paper": await _count_distinct_voters(RawPaperSubmit),
+                "dojin": await _count_distinct_voters(RawDojinSubmit),
+            },
+        }

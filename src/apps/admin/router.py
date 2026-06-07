@@ -10,10 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.admin.schemas import (
     BanResponse,
+    CandidateListResponse,
     ComputeResultsResponse,
     FinalizeRankingResponse,
     ImportCandidatesRequest,
     ImportCandidatesResponse,
+    StatsResponse,
     UserDetailResponse,
     UserListResponse,
 )
@@ -159,3 +161,72 @@ async def unban_user(
     if user is None:
         raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
     return BanResponse(removed=user.removed)
+
+
+@router.get("/stats", response_model=StatsResponse)
+async def get_stats(
+    vote_year: Optional[int] = None,
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> StatsResponse:
+    _check_admin_secret(settings, x_admin_secret)
+    data = await service.get_stats(vote_year)
+    return StatsResponse(**data)
+
+
+@router.get("/ranking/preview")
+async def preview_ranking(
+    category: str = "character",
+    vote_year: Optional[int] = None,
+    limit: int = 50,
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    _check_admin_secret(settings, x_admin_secret)
+    entries = await service.get_ranking_preview(vote_year, category, limit)
+    return {"category": category, "entries": entries}
+
+
+@router.get("/candidates", response_model=CandidateListResponse)
+async def list_candidates(
+    category: str = "character",
+    vote_year: Optional[int] = None,
+    q: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 50,
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> CandidateListResponse:
+    _check_admin_secret(settings, x_admin_secret)
+    year = vote_year or settings.vote_year
+    data = await service.list_candidates(category, year, q, page, page_size)
+    items = [
+        {
+            "id": r.id, "vote_year": r.vote_year, "name": r.name,
+            "name_jp": r.name_jp or "",
+            "type": r.type or "",
+            "origin": getattr(r, "origin", None),
+            "first_appearance": r.first_appearance,
+            "album": getattr(r, "album", None),
+        }
+        for r in data["items"]
+    ]
+    return CandidateListResponse(items=items, total=data["total"])
+
+
+@router.delete("/candidates/{candidate_id}")
+async def delete_candidate(
+    candidate_id: int,
+    category: str = "character",
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    _check_admin_secret(settings, x_admin_secret)
+    deleted = await service.delete_candidate(candidate_id, category)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="CANDIDATE_NOT_FOUND")
+    return {"ok": True}
