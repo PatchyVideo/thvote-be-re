@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.db_model.activity_log import ActivityLog
@@ -76,15 +76,14 @@ class UserDAO:
         phone: str | None = None,
         page: int = 1,
         page_size: int = 20,
-    ) -> tuple[list, int]:
-        from sqlalchemy import func as sqlfunc
+    ) -> tuple[list[User], int]:
         query = select(User)
         if email:
             query = query.where(User.email.ilike(f"%{email}%"))
         if phone:
             query = query.where(User.phone_number.ilike(f"%{phone}%"))
         count_result = await self.session.execute(
-            select(sqlfunc.count()).select_from(query.subquery())
+            select(func.count()).select_from(query.subquery())
         )
         total = count_result.scalar_one()
         result = await self.session.execute(

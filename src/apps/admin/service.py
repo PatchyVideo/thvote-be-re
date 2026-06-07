@@ -4,14 +4,20 @@ from __future__ import annotations
 
 import json
 
+from sqlalchemy import func as sqlfunc, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.apps.admin.schemas import ImportCandidatesRequest
 from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeService
 from src.apps.result.dao import ResultNotComputedError
+from src.apps.user.dao import UserDAO
+from src.apps.vote_data.dao import VoteDataDAO
+from src.db_model.raw_submit import RawDojinSubmit
 
 
 class AdminService:
-    def __init__(self, compute_service: ComputeService, compute_dao: ComputeDAO, session=None):
+    def __init__(self, compute_service: ComputeService, compute_dao: ComputeDAO, session: AsyncSession | None = None):
         self.compute_service = compute_service
         self.compute_dao = compute_dao
         self._session = session
@@ -48,16 +54,13 @@ class AdminService:
         return total
 
     async def list_users(
-        self, email, phone, page, page_size
+        self, email: str | None, phone: str | None, page: int, page_size: int
     ) -> dict:
-        from src.apps.user.dao import UserDAO
         user_dao = UserDAO(self._session)
         users, total = await user_dao.search_users(email, phone, page, page_size)
         return {"items": users, "total": total}
 
     async def get_user_detail(self, user_id: str) -> dict | None:
-        from src.apps.user.dao import UserDAO
-        from src.apps.vote_data.dao import VoteDataDAO
         user_dao = UserDAO(self._session)
         user = await user_dao.get_by_id_any(user_id)
         if user is None:
@@ -67,6 +70,9 @@ class AdminService:
         music = await vote_dao.get_music_by_id(user_id)
         cp = await vote_dao.get_cp_by_id(user_id)
         questionnaire = await vote_dao.get_questionnaire_by_id(user_id)
+        dojin_count = (await self._session.execute(
+            select(sqlfunc.count()).select_from(RawDojinSubmit).where(RawDojinSubmit.vote_id == user_id)
+        )).scalar_one()
         return {
             "user": user,
             "vote_submitted": {
@@ -74,14 +80,12 @@ class AdminService:
                 "music": music is not None,
                 "cp": cp is not None,
                 "paper": questionnaire is not None,
-                "dojin": False,
+                "dojin": dojin_count > 0,
             },
         }
 
     async def ban_user(self, user_id: str):
-        from src.apps.user.dao import UserDAO
         return await UserDAO(self._session).set_removed(user_id, removed=True)
 
     async def unban_user(self, user_id: str):
-        from src.apps.user.dao import UserDAO
         return await UserDAO(self._session).set_removed(user_id, removed=False)

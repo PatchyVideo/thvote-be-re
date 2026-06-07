@@ -87,6 +87,19 @@ async def finalize_ranking(
     return FinalizeRankingResponse(vote_year=year, saved=saved)
 
 
+def _user_to_item(u) -> dict:
+    return {
+        "id": u.id,
+        "nickname": u.nickname,
+        "email": u.email,
+        "phone": u.phone_number,
+        "email_verified": u.email_verified,
+        "phone_verified": u.phone_verified,
+        "register_date": u.register_date.isoformat() if u.register_date else None,
+        "removed": u.removed,
+    }
+
+
 @router.get("/users", response_model=UserListResponse)
 async def list_users(
     email: Optional[str] = None,
@@ -99,19 +112,7 @@ async def list_users(
 ) -> UserListResponse:
     _check_admin_secret(settings, x_admin_secret)
     data = await service.list_users(email, phone, page, page_size)
-    items = [
-        {
-            "id": u.id,
-            "nickname": u.nickname,
-            "email": u.email,
-            "phone": u.phone_number,
-            "email_verified": u.email_verified,
-            "phone_verified": u.phone_verified,
-            "register_date": u.register_date.isoformat() if u.register_date else None,
-            "removed": u.removed,
-        }
-        for u in data["items"]
-    ]
+    items = [_user_to_item(u) for u in data["items"]]
     return UserListResponse(items=items, total=data["total"])
 
 
@@ -126,18 +127,8 @@ async def get_user_detail(
     result = await service.get_user_detail(user_id)
     if result is None:
         raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
-    u = result["user"]
     return UserDetailResponse(
-        user={
-            "id": u.id,
-            "nickname": u.nickname,
-            "email": u.email,
-            "phone": u.phone_number,
-            "email_verified": u.email_verified,
-            "phone_verified": u.phone_verified,
-            "register_date": u.register_date.isoformat() if u.register_date else None,
-            "removed": u.removed,
-        },
+        user=_user_to_item(result["user"]),
         vote_submitted=result["vote_submitted"],
     )
 
