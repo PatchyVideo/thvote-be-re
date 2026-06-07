@@ -194,6 +194,13 @@ class Settings(BaseSettings):
     gender_female_value: str = Field("female")
     admin_secret: Optional[str] = Field(None)
 
+    # MongoDB 历史数据同步（可选，未配置时同步端点返回 503）
+    mongodb_uri: Optional[str] = Field(None, validation_alias="MONGODB_URI")
+    mongodb_db_users: str = Field("thvote_users", validation_alias="MONGODB_DB_USERS")
+    mongodb_db_submits: str = Field("submits_v1", validation_alias="MONGODB_DB_SUBMITS")
+    mongodb_db_results: str = Field("submits_v1_final", validation_alias="MONGODB_DB_RESULTS")
+    mongodb_batch_size: int = Field(500, validation_alias="MONGO_BATCH_SIZE")
+
     # 爬虫配置
     youtube_api_key: Optional[str] = Field(None)
 

@@ -40,6 +40,9 @@ test = [
     "fakeredis>=2.20.0",
     "pytest-cov>=5.0.0",
 ]
+scripts = [
+    "pymongo>=4.0",
+]
 
 [tool.isort]
 profile = "black"
