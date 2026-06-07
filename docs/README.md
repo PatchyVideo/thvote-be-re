@@ -1,7 +1,7 @@
 # `docs/` 索引
 
 > 创建日期：2026-04-27
-> 最后更新：2026-06-07（新增 mongodb-sync-design 和 admin-panel-design 两份设计稿）
+> 最后更新：2026-06-08（新增 candidate-management 及 Block 1-3 跨前后端 design+plan：B-037 安全 / B-038 作品投票 / B-039 问卷结构化 / B-040 投票对象迁后端）
 
 按用途分类。每份文档头部都有 `创建日期 / 最后更新` 元信息；本表只列入口和职责。
 
@@ -48,6 +48,20 @@
 | [`superpowers/specs/2026-04-27-user-auth-open-issues.md`](./superpowers/specs/2026-04-27-user-auth-open-issues.md) | 用户与认证模块**已知问题清单**（U-1..U-19 + 祖传 L-1..L-3），按 PR 前已修 / PR 前待修 / PR 后再做 / 祖传 分组 |
 | [`superpowers/specs/2026-06-07-mongodb-sync-design.md`](./superpowers/specs/2026-06-07-mongodb-sync-design.md) | MongoDB 全量历史数据同步**设计稿**（4 类数据 A/B/C/D、断点重试、migration 0006、CLI+API 双入口） |
 | [`superpowers/specs/2026-06-07-admin-panel-design.md`](./superpowers/specs/2026-06-07-admin-panel-design.md) | 管理端**设计稿**（REST API 扩展 + 单文件 Web UI，覆盖用户管理、同步触发、候选项、审计日志、导出） |
+| [`superpowers/specs/2026-06-08-candidate-management-design.md`](./superpowers/specs/2026-06-08-candidate-management-design.md) | 候选项管理增强**设计稿**（B-036，CSV/JSON 导入 dry-run 预览 + 单条编辑 + 白色主题） |
+
+### 跨前后端功能设计（Block 1-3，2026-06-08）
+
+> 每块拆 **后端(含管理端) / 前端(thvote-fe)** 两份 design + 两份 plan。前端仓库 `D:\personal\thvote-fe`。
+
+| Block | 后端设计 | 前端设计 |
+|---|---|---|
+| **B-037 安全** | [security-backend-design](./superpowers/specs/2026-06-08-security-backend-design.md) | [security-frontend-design](./superpowers/specs/2026-06-08-security-frontend-design.md) |
+| **B-038 作品投票** | [works-voting-backend-design](./superpowers/specs/2026-06-08-works-voting-backend-design.md) | [works-voting-frontend-design](./superpowers/specs/2026-06-08-works-voting-frontend-design.md) |
+| **B-039 问卷结构化(3A)** | [questionnaire-backend-design](./superpowers/specs/2026-06-08-questionnaire-backend-design.md) | [questionnaire-frontend-design](./superpowers/specs/2026-06-08-questionnaire-frontend-design.md) |
+| **B-040 投票对象迁后端(3B)** | [vote-objects-backend-design](./superpowers/specs/2026-06-08-vote-objects-backend-design.md) | [vote-objects-frontend-design](./superpowers/specs/2026-06-08-vote-objects-frontend-design.md) |
+
+> 对应实施计划在 `superpowers/plans/2026-06-08-<topic>-{backend,frontend}.md`（每块 4 份文档：design×2 + plan×2）。实施顺序建议 B-037 → B-038 → B-039/B-040。
 
 ---
 
