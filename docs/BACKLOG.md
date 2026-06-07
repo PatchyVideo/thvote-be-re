@@ -46,6 +46,7 @@
 | **B-031** | `src/common/nacos.py` 的 `_parse_config_content` 自带 JS 风格 JSON 容错解析（正则提取），属于隐式技术债——上游 Nacos 配置应该写标准 JSON，让解析器走 `json.loads`。如果是为了兼容某个老 dataId，需文档化该 dataId 的写法约束 | 低 | 🟢 可立即做 | `src/common/nacos.py:29-97` |
 | **B-034** | ~~MongoDB 全量历史数据同步（A/B/C/D 四类 + migration 0006 + CLI+API 双入口）~~ | ✅ 已完成 (2026-06-07) | — | 11 collections, batch runner, checkpoint/resume, CLI + API |
 | **B-035** | ~~管理端扩展（用户管理 + 统计 + 候选项 + 审计日志 + 导出 + Web UI）~~ | ✅ 已完成 (2026-06-07, afdc091) | — | 12 个新端点 + 单文件 Web UI + StaticFiles 挂载 |
+| **B-036** | 候选项管理增强：CSV/JSON 导入(dry-run 预览) + 单条编辑 + 列表/详情完善 + 管理端改白色主题 | 中（**设计稿已写,实现未做**） | 🟢 可立即做 | [candidate-management-design](./superpowers/specs/2026-06-08-candidate-management-design.md) |
 | **B-032** ⚡ | 删除（或收紧）`alembic/env.py` 的 `_maybe_baseline_existing_schema`。它只按"表是否存在"自动 stamp、**不校验列是否匹配**，会**掩盖 schema 漂移**——2026-05-31 测试库 `user` 表缺 `phone_verified` 等列、登录全挂就是它造成的（残缺旧表被 stamp 成 0001，0001 的正确建表从未执行）。B-025 已移除 init_db 后门,该 shim 已无存在必要。**首选直接删除**(让 `alembic upgrade head` 老实从 0001 跑)+ 空库重建一次清除残留漂移;次选 stamp 前校验列匹配、不匹配则报错而非闷头 stamp。归属 B-025/B-026 DB 治理。 | 中 | 🟢 可立即做（B-025 已完成,前置解除） | `alembic/env.py:48-94` |
 
 ---
