@@ -44,6 +44,8 @@
 | **B-029** | ~~deploy 步骤里 `docker-compose up -d redis` / `docker exec thvote-postgres` 依赖部署机上**仓库外**维护的 `docker-compose.yml`（`docker/` 目录已从仓库删除）。这层耦合需要文档化~~ | ✅ 已完成 (2026-05-16, `0e340e9`) | — | `docs/operations/deploy-server-setup.md` |
 | **B-030** | ~~Nacos 接入有一个**模块加载期阻塞调用**：`src/common/config.py` 顶层执行 `_load_nacos_sync()`，import config 即触发同步网络调用——Nacos 不可达时 import 全挂~~ | ✅ 已完成 (2026-05-17, `fce832a`) | — | 改为首次 `get_settings()` 时 lazy load |
 | **B-031** | `src/common/nacos.py` 的 `_parse_config_content` 自带 JS 风格 JSON 容错解析（正则提取），属于隐式技术债——上游 Nacos 配置应该写标准 JSON，让解析器走 `json.loads`。如果是为了兼容某个老 dataId，需文档化该 dataId 的写法约束 | 低 | 🟢 可立即做 | `src/common/nacos.py:29-97` |
+| **B-034** | MongoDB 全量历史数据同步（A/B/C/D 四类 + migration 0006 + CLI+API 双入口） | 高（设计稿已写，实现未做） | 🟢 可立即做 | [mongodb-sync-design](./superpowers/specs/2026-06-07-mongodb-sync-design.md) |
+| **B-035** | 管理端扩展（用户管理 + 统计 + 候选项 + 审计日志 + 导出 + Web UI） | 中（设计稿已写，实现未做） | 🟢 可立即做（可与 B-034 并行） | [admin-panel-design](./superpowers/specs/2026-06-07-admin-panel-design.md) |
 | **B-032** ⚡ | 删除（或收紧）`alembic/env.py` 的 `_maybe_baseline_existing_schema`。它只按"表是否存在"自动 stamp、**不校验列是否匹配**，会**掩盖 schema 漂移**——2026-05-31 测试库 `user` 表缺 `phone_verified` 等列、登录全挂就是它造成的（残缺旧表被 stamp 成 0001，0001 的正确建表从未执行）。B-025 已移除 init_db 后门,该 shim 已无存在必要。**首选直接删除**(让 `alembic upgrade head` 老实从 0001 跑)+ 空库重建一次清除残留漂移;次选 stamp 前校验列匹配、不匹配则报错而非闷头 stamp。归属 B-025/B-026 DB 治理。 | 中 | 🟢 可立即做（B-025 已完成,前置解除） | `alembic/env.py:48-94` |
 
 ---
@@ -75,6 +77,8 @@
 - **B-013** 邮件/短信发送幂等性（低优先级，发送链路已稳定后做）
 - **B-019** 错误响应 `{"detail"}` → 与 Rust `{"error","service"}` 统一（等前端反馈是否需要）
 - **B-024** `UserDAO.save()` 加 `session.merge()` 防 detached instance（防御性加固）
+- **B-034** MongoDB 全量历史数据同步实现（A/B/C/D 四类；断点重试；migration 0006；CLI+API 双入口）。**设计稿已写，实现未做**。见 [mongodb-sync-design](./superpowers/specs/2026-06-07-mongodb-sync-design.md)
+- **B-035** 管理端扩展：用户管理 + 统计 + 候选项 + 审计日志 + 导出 + 简单 Web UI。**设计稿已写，实现未做**。见 [admin-panel-design](./superpowers/specs/2026-06-07-admin-panel-design.md)
 - **B-033** 删除 legacy-compat 路由层 `src/api/rest/legacy/`（2026-05-31 新增，保留旧 Rust gateway 扁平契约 `/user-token-status`，供与 Rust 部署共享的前端无改动对接 Python 后端，修复登录后 bounce 回登录页）。**移除条件**：① Rust gateway 下线（无部署再依赖扁平契约）且 ② 前端 REST 调用迁移到原生 `/api/v1/...` + 新响应 shape。与 B-019（错误响应 shape 统一）、`/server-time` 缺口同属 Rust→Python REST 契约收敛，宜一并处理。详见 `docs/migration/legacy-rest-compat.md`。
 
 ## 🟢 模块功能缺口（不在 B 编号体系内）

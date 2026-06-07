@@ -1,7 +1,7 @@
 # `docs/` 索引
 
 > 创建日期：2026-04-27
-> 最后更新：2026-05-12（zfq_dev 基础设施合入：Apollo→Nacos、移除 docker/、workflow 重构 — 详见 CHANGELOG）
+> 最后更新：2026-06-07（新增 mongodb-sync-design 和 admin-panel-design 两份设计稿）
 
 按用途分类。每份文档头部都有 `创建日期 / 最后更新` 元信息；本表只列入口和职责。
 
@@ -46,6 +46,8 @@
 | [`superpowers/specs/2026-04-27-user-auth-design.md`](./superpowers/specs/2026-04-27-user-auth-design.md) | 用户表与认证模块**设计稿**（路由、数据模型、流程、错误处理、测试策略；§九 是 follow-up F1-F9） |
 | [`superpowers/specs/2026-04-27-user-auth-implementation-report.md`](./superpowers/specs/2026-04-27-user-auth-implementation-report.md) | 实施过程**事后记录**：交付清单、与设计稿的偏离、实施期发现的问题（F-impl-1..10） |
 | [`superpowers/specs/2026-04-27-user-auth-open-issues.md`](./superpowers/specs/2026-04-27-user-auth-open-issues.md) | 用户与认证模块**已知问题清单**（U-1..U-19 + 祖传 L-1..L-3），按 PR 前已修 / PR 前待修 / PR 后再做 / 祖传 分组 |
+| [`superpowers/specs/2026-06-07-mongodb-sync-design.md`](./superpowers/specs/2026-06-07-mongodb-sync-design.md) | MongoDB 全量历史数据同步**设计稿**（4 类数据 A/B/C/D、断点重试、migration 0006、CLI+API 双入口） |
+| [`superpowers/specs/2026-06-07-admin-panel-design.md`](./superpowers/specs/2026-06-07-admin-panel-design.md) | 管理端**设计稿**（REST API 扩展 + 单文件 Web UI，覆盖用户管理、同步触发、候选项、审计日志、导出） |
 
 ---
 
