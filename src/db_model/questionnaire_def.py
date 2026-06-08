@@ -10,6 +10,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     Integer,
     String,
@@ -25,41 +26,33 @@ from .base import Base
 class QuestionnaireDef(Base):
     __tablename__ = "questionnaire_def"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    vote_year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    # slot: required / optional1 / optional2 / ex1..ex5
-    slot: Mapped[str] = mapped_column(String(32), nullable=False)
-    # category: main / extra
-    category: Mapped[str] = mapped_column(String(8), nullable=False)
-    name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     introduction: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    category: Mapped[str] = mapped_column(String(8), nullable=False, default="main")
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-
-    __table_args__ = (
-        UniqueConstraint("vote_year", "id", name="uq_questionnaire_def_year_id"),
-    )
 
 
 class QuestionGroupDef(Base):
     __tablename__ = "question_group_def"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     questionnaire_id: Mapped[int] = mapped_column(
         Integer, nullable=False, index=True
     )
     order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    # 末位 0 表示该问题组默认隐藏(对齐前端 initialQuestionId 约定)
-    initial_question_id: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
+    hidden_by_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
     )
 
 
 class QuestionDef(Base):
     __tablename__ = "question_def"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     group_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    # type: Single / Multiple / Input
     type: Mapped[str] = mapped_column(String(8), nullable=False, default="Single")
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     introduction: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -72,7 +65,7 @@ class QuestionDef(Base):
 class OptionDef(Base):
     __tablename__ = "option_def"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     question_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     related_question_ids: Mapped[list] = mapped_column(
