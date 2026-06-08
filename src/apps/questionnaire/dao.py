@@ -1,6 +1,8 @@
 """Questionnaire domain DAO — structure tables + paper_answer."""
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +16,14 @@ from src.db_model.questionnaire_def import (
 
 
 def _row_to_dict(obj) -> dict:
-    return {c.key: getattr(obj, c.key) for c in obj.__table__.columns}
+    """ORM row → plain dict with datetime → ISO string conversion."""
+    out = {}
+    for c in obj.__table__.columns:
+        v = getattr(obj, c.key)
+        if isinstance(v, datetime):
+            v = v.isoformat()
+        out[c.key] = v
+    return out
 
 
 class QuestionnaireDAO:
