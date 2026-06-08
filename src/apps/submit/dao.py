@@ -215,3 +215,95 @@ class SubmitDAO:
             "num_music": music,
             "num_dojin": dojin,
         }
+
+    # ── nomination (dojin review) + questionnaire gate ──────────────────────
+
+    async def has_paper(self, vote_id: str) -> bool:
+        """True if the user submitted any questionnaire (weak gate)."""
+        stmt = (
+            select(RawPaperSubmit.id)
+            .where(RawPaperSubmit.vote_id == vote_id)
+            .limit(1)
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none() is not None
+
+    async def nomination_exists(self, vote_id: str, udid: str) -> bool:
+        from src.db_model.dojin_nomination import DojinNomination
+
+        stmt = select(DojinNomination.id).where(
+            DojinNomination.vote_id == vote_id,
+            DojinNomination.udid == udid,
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none() is not None
+
+    async def create_nomination(self, row: dict) -> int:
+        from src.db_model.dojin_nomination import DojinNomination
+
+        obj = DojinNomination(**row)
+        self.session.add(obj)
+        await self.session.commit()
+        await self.session.refresh(obj)
+        return obj.id
+
+    async def list_nominations(
+        self, status: str | None, page: int, page_size: int
+    ) -> tuple[list, int]:
+        from src.db_model.dojin_nomination import DojinNomination
+
+        q = select(DojinNomination)
+        if status and status != "all":
+            q = q.where(DojinNomination.status == status)
+        total = (await self.session.execute(
+            select(func.count()).select_from(q.subquery())
+        )).scalar_one()
+        rows = (await self.session.execute(
+            q.order_by(desc(DojinNomination.created_at))
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )).scalars().all()
+        return rows, total
+
+    async def set_nomination_status(
+        self,
+        nom_id: int,
+        status: str,
+        reviewed_by: str,
+        reject_reason: str | None,
+    ) -> bool:
+        from datetime import datetime, timezone
+
+        from src.db_model.dojin_nomination import DojinNomination
+
+        row = (await self.session.execute(
+            select(DojinNomination).where(DojinNomination.id == nom_id)
+        )).scalar_one_or_none()
+        if row is None:
+            return False
+        row.status = status
+        row.reviewed_by = reviewed_by
+        row.reject_reason = reject_reason
+        row.reviewed_at = datetime.now(timezone.utc)
+        await self.session.commit()
+        return True
+
+    async def list_approved_nominations(
+        self, page: int, page_size: int
+    ) -> list:
+        """Approved nominations deduped by udid with nomination_count."""
+        from src.db_model.dojin_nomination import DojinNomination
+
+        base = (
+            select(
+                DojinNomination.udid,
+                func.min(DojinNomination.title).label("title"),
+                func.min(DojinNomination.url).label("url"),
+                func.min(DojinNomination.author).label("author"),
+                func.count(func.distinct(DojinNomination.vote_id)).label("cnt"),
+            )
+            .where(DojinNomination.status == "approved")
+            .group_by(DojinNomination.udid)
+        )
+        rows = (await self.session.execute(
+            base.offset((page - 1) * page_size).limit(page_size)
+        )).all()
+        return rows
