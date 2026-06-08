@@ -12,6 +12,13 @@ from .cp import Cp
 from .dojin_nomination import DojinNomination
 from .music import Music
 from .questionnaire import Questionnaire
+from .questionnaire_def import (
+    OptionDef,
+    PaperAnswer,
+    QuestionDef,
+    QuestionGroupDef,
+    QuestionnaireDef,
+)
 from .raw_submit import (
     RawCharacterSubmit,
     RawCPSubmit,
@@ -35,7 +42,12 @@ __all__ = [
     "Cp",
     "DojinNomination",
     "Music",
+    "OptionDef",
+    "PaperAnswer",
     "Questionnaire",
+    "QuestionDef",
+    "QuestionGroupDef",
+    "QuestionnaireDef",
     "RawCharacterSubmit",
     "RawCPSubmit",
     "RawDojinSubmit",
