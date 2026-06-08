@@ -27,7 +27,9 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", normalize_async_database_url(settings.database_url))
+config.set_main_option(
+    "sqlalchemy.url", normalize_async_database_url(settings.database_url)
+)
 
 target_metadata = Base.metadata
 
@@ -96,6 +98,15 @@ def _maybe_baseline_existing_schema(connection: Connection) -> None:
 
 def do_run_migrations(connection: Connection) -> None:
     _maybe_baseline_existing_schema(connection)
+    # The shim above runs inspect()/SELECTs which, in SQLAlchemy 2.0
+    # "commit-as-you-go" mode, leave an open (read-only) transaction on the
+    # connection when alembic_version already exists (early return). If left
+    # open, alembic's begin_transaction() sees an in-progress transaction it
+    # does not own and therefore does NOT commit on exit — so the whole upgrade
+    # rolls back on connection close (migrations run, exit 0, but never persist).
+    # Clear it so begin_transaction() owns and commits its own transaction.
+    if connection.in_transaction():
+        connection.rollback()
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()
