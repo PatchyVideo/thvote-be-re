@@ -1,19 +1,39 @@
 """Submit service layer."""
 
 import json
+from datetime import datetime, timezone
 
 from src.apps.submit.dao import SubmitDAO
+from src.apps.submit.nomination_service import (
+    domain_allowed,
+    publish_date_eligible,
+    within_window,
+)
 from src.apps.submit.schemas import (
     CharacterSubmitRest,
     CPSubmitRest,
     DojinSubmitRest,
     MusicSubmitRest,
+    NominationItemResult,
+    NominationSubmitResult,
     PaperSubmitRest,
     SubmitMetadata,
     VotingStatistics,
     VotingStatus,
     scrub_metadata,
 )
+
+
+class QuestionnaireNotCompletedError(Exception):
+    """Raised when a user tries to vote before completing the questionnaire."""
+
+
+class NominationClosedError(Exception):
+    """Raised when nomination is attempted outside the nomination window."""
+
+
+class NominationNotConfiguredError(Exception):
+    """Raised when the nomination window is not configured."""
 
 
 class SubmitValidator:
@@ -112,8 +132,17 @@ class SubmitService:
         self.submit_dao = submit_dao
         self.validator = SubmitValidator()
 
+    async def _require_questionnaire(self, vote_id: str) -> None:
+        """Weak gate: a user must have submitted a questionnaire before voting.
+
+        Block 3 upgrades this to "all required questions answered".
+        """
+        if not await self.submit_dao.has_paper(vote_id):
+            raise QuestionnaireNotCompletedError(vote_id)
+
     async def submit_character(self, data: CharacterSubmitRest) -> int:
         """Submit character votes."""
+        await self._require_questionnaire(data.meta.vote_id)
         validated = self.validator.validate_character(data)
         row_data = {
             "vote_id": validated.meta.vote_id,
@@ -145,6 +174,7 @@ class SubmitService:
 
     async def submit_music(self, data: MusicSubmitRest) -> int:
         """Submit music votes."""
+        await self._require_questionnaire(data.meta.vote_id)
         validated = self.validator.validate_music(data)
         row_data = {
             "vote_id": validated.meta.vote_id,
@@ -176,6 +206,7 @@ class SubmitService:
 
     async def submit_cp(self, data: CPSubmitRest) -> int:
         """Submit CP votes."""
+        await self._require_questionnaire(data.meta.vote_id)
         validated = self.validator.validate_cp(data)
         row_data = {
             "vote_id": validated.meta.vote_id,
@@ -237,7 +268,7 @@ class SubmitService:
         )
 
     async def submit_dojin(self, data: DojinSubmitRest) -> int:
-        """Submit dojin votes."""
+        """Submit dojin votes (raw archival store, no review)."""
         validated = self.validator.validate_dojin(data)
         row_data = {
             "vote_id": validated.meta.vote_id,
@@ -248,6 +279,108 @@ class SubmitService:
             "payload": [x.model_dump() for x in validated.dojins],
         }
         return await self.submit_dao.create_dojin_submit(row_data)
+
+    async def submit_dojin_nominations(
+        self,
+        data: DojinSubmitRest,
+        settings,
+        scraper,
+        now: datetime | None = None,
+    ) -> NominationSubmitResult:
+        """Validate + store dojin nominations for review.
+
+        Per-item flow: domain allowlist → scraper (udid + publish date) →
+        publish-time eligibility → dedup by (vote_id, udid) → store pending.
+        Also writes a raw_dojin archival record (existing behaviour).
+        """
+        now = now or datetime.now(timezone.utc)
+
+        if not settings.nomination_start_iso and not settings.nomination_end_iso:
+            raise NominationNotConfiguredError()
+        if not within_window(
+            now, settings.nomination_start_iso, settings.nomination_end_iso
+        ):
+            raise NominationClosedError()
+
+        # archival raw store (best-effort, mirrors old behaviour)
+        await self.submit_dao.create_dojin_submit({
+            "vote_id": data.meta.vote_id,
+            "attempt": data.meta.attempt,
+            "created_at": data.meta.created_at,
+            "user_ip": data.meta.user_ip,
+            "additional_fingreprint": data.meta.additional_fingreprint,
+            "payload": [x.model_dump() for x in data.dojins],
+        })
+
+        result = NominationSubmitResult()
+        allow = settings.dojin_domain_allowlist
+        for idx, item in enumerate(data.dojins):
+            if not domain_allowed(item.url, allow):
+                result.rejected.append(
+                    NominationItemResult(index=idx, reason="域名不允许")
+                )
+                continue
+
+            udid, publish_date = await self._scrape_meta(scraper, item.url)
+
+            if not publish_date_eligible(
+                publish_date,
+                settings.work_eligible_start_iso,
+                settings.work_eligible_end_iso,
+            ):
+                result.rejected.append(
+                    NominationItemResult(index=idx, reason="作品发布时间不符")
+                )
+                continue
+
+            if udid and await self.submit_dao.nomination_exists(
+                data.meta.vote_id, udid
+            ):
+                result.skipped.append(
+                    NominationItemResult(index=idx, reason="重复提名")
+                )
+                continue
+
+            await self.submit_dao.create_nomination({
+                "vote_id": data.meta.vote_id,
+                "udid": udid,
+                "url": item.url,
+                "title": item.title,
+                "author": item.author,
+                "dojin_type": item.dojin_type,
+                "image_url": item.image_url,
+                "reason": item.reason,
+                "publish_date": publish_date,
+                "status": "pending",
+            })
+            result.accepted += 1
+        return result
+
+    @staticmethod
+    async def _scrape_meta(scraper, url: str):
+        """Return (udid, publish_date) from scraper; (None, None) on failure."""
+        import asyncio
+
+        try:
+            resp = await asyncio.wait_for(scraper.scrape_url(url), timeout=5)
+        except Exception:
+            return None, None
+        data = getattr(resp, "data", None)
+        if data is None:
+            return None, None
+        udid = getattr(data, "udid", None)
+        ptime = getattr(data, "ptime", None)
+        publish_date = None
+        if ptime:
+            try:
+                publish_date = datetime.fromisoformat(
+                    str(ptime).replace("Z", "+00:00")
+                )
+                if publish_date.tzinfo is None:
+                    publish_date = publish_date.replace(tzinfo=timezone.utc)
+            except ValueError:
+                publish_date = None
+        return udid, publish_date
 
     async def get_dojin_submit(self, vote_id: str) -> DojinSubmitRest:
         """Get dojin submit for a vote ID."""

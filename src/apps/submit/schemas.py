@@ -100,6 +100,17 @@ class EmptyJSON(BaseModel):
     ok: bool = True
 
 
+class NominationItemResult(BaseModel):
+    index: int
+    reason: str
+
+
+class NominationSubmitResult(BaseModel):
+    accepted: int = 0
+    rejected: list[NominationItemResult] = Field(default_factory=list)
+    skipped: list[NominationItemResult] = Field(default_factory=list)
+
+
 def scrub_metadata(meta: SubmitMetadata) -> SubmitMetadata:
     data: dict[str, Any] = meta.model_dump()
     data["additional_fingreprint"] = None

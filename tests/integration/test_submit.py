@@ -81,6 +81,11 @@ async def test_submit_character_invalid_token(client):
 @pytest.mark.asyncio
 async def test_submit_character_ok(client):
     token = _make_vote_token()
+    # vote gate: must complete questionnaire first
+    await client.post("/api/v1/paper/", json={
+        "papers_json": "{}",
+        "meta": {"vote_token": token}
+    })
     resp = await client.post("/api/v1/character/", json={
         "characters": [{"id": "博丽灵梦", "first": True, "reason": "最喜欢"}],
         "meta": {"vote_token": token}
@@ -114,6 +119,11 @@ async def test_submit_paper_invalid_json(client):
 async def test_voting_status_after_submit(client):
     token = _make_vote_token("user-status-001")
     vote_id = "thvote-2026-test-status-001"
+    # vote gate: complete questionnaire first
+    await client.post("/api/v1/paper/", json={
+        "papers_json": "{}",
+        "meta": {"vote_token": token, "vote_id": vote_id}
+    })
     # Submit character
     await client.post("/api/v1/character/", json={
         "characters": [{"id": "博丽灵梦"}],
