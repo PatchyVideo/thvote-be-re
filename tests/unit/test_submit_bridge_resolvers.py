@@ -84,6 +84,15 @@ class _FakeService:
         self.bodies.append(body)
         return 1
 
+    async def submit_dojin_nominations(self, body, settings, scraper, now=None):
+        from src.apps.submit.schemas import NominationSubmitResult
+        self.bodies.append(body)
+        return NominationSubmitResult(
+            accepted=len(body.dojins),
+            rejected=[],
+            skipped=[],
+        )
+
     async def get_character_submit(self, vote_id):
         from src.apps.submit.schemas import CharacterSubmitRest, SubmitMetadata
         self.get_calls = getattr(self, "get_calls", [])
@@ -233,7 +242,7 @@ async def test_submit_dojin_stores_enum_name(fake_env):
             ],
         ),
     )
-    assert out is True
+    assert out.accepted == 1  # 提名逐条结果
     assert fake_env["service"].bodies[0].dojins[0].dojin_type == "MUSIC"  # 存枚举名
 
 
@@ -286,7 +295,8 @@ async def test_get_query_bad_token_maps_to_invalid_token(fake_env):
     assert ei.value.extensions["error_kind"] == "INVALID_TOKEN"
 
 
-# ── 参数化 ValueError 错误路径(覆盖其余 4 个 mutation) ────────────────
+# ── 参数化 ValueError 错误路径(覆盖其余 mutation;dojin 改为提名结果语义,
+# 其错误走 NOMINATION_CLOSED/NOMINATION_NOT_CONFIGURED,见集成测试) ──────
 
 
 @pytest.mark.asyncio
@@ -299,8 +309,6 @@ async def test_get_query_bad_token_maps_to_invalid_token(fake_env):
             vote_token=token, cps=[]))),
         lambda token: ("submit_paper_vote", dict(content=bridge.PaperSubmitGQL(
             vote_token=token, paper_json="{}"))),
-        lambda token: ("submit_dojin", dict(content=bridge.DojinSubmitGQL(
-            vote_token=token, dojins=[]))),
     ],
 )
 async def test_all_mutations_map_value_error(fake_env, call):

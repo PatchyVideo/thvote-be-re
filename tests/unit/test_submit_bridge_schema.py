@@ -16,7 +16,7 @@ EXPECTED_SIGNATURES = [
     "submitMusicVote(content: MusicSubmitGQL!): Boolean!",
     "submitCPVote(content: CPSubmitGQL!): Boolean!",
     "submitPaperVote(content: PaperSubmitGQL!): Boolean!",
-    "submitDojin(content: DojinSubmitGQL!): Boolean!",
+    "submitDojin(content: DojinSubmitGQL!): DojinNominationResult!",
     # queries
     "getSubmitCharacterVote(voteToken: String!): CharacterSubmitRestQuery!",
     "getSubmitMusicVote(voteToken: String!): MusicSubmitRestQuery!",
@@ -60,6 +60,14 @@ EXPECTED_SIGNATURES = [
     "type CharacterSubmitRestQuery {\n  characters: [CharacterSubmit!]!\n}",
     "type CPSubmitRestQuery {\n  cps: [CPSubmit!]!\n}",
     "type DojinSubmitRestQuery {\n  dojins: [DojinSubmit!]!\n}",
+    # 二创提名逐条结果(B-037)
+    (
+        "type DojinNominationResult {\n"
+        "  accepted: Int!\n"
+        "  rejected: [NominationItemResultGQL!]!\n"
+        "  skipped: [NominationItemResultGQL!]!\n"
+        "}"
+    ),
 ]
 
 DOJIN_ENUM_VALUES = [

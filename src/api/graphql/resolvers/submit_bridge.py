@@ -43,9 +43,21 @@ from src.apps.submit.schemas import (
     PaperSubmitRest,
     SubmitMetadata,
 )
-from src.apps.submit.service import SubmitService
+from src.apps.submit.service import (
+    NominationClosedError,
+    NominationNotConfiguredError,
+    QuestionnaireNotCompletedError,
+    SubmitService,
+)
+from src.apps.scraper.service import ScraperService
+from src.common.config import get_settings
 from src.common.database import get_db_session
-from src.common.exceptions import RateLimitError, UnauthorizedError, ValidationError
+from src.common.exceptions import (
+    RateLimitError,
+    ServiceUnavailableError,
+    UnauthorizedError,
+    ValidationError,
+)
 from src.common.middleware.rate_limit import get_redis_client, rate_limit
 from src.common.security import JWTValidationError, decode_vote_token
 
@@ -131,6 +143,19 @@ class PaperSubmitRestQuery:
     papers_json: str
 
 
+@strawberry.type(name="NominationItemResultGQL")
+class NominationItemResultGQL:
+    index: int
+    reason: str
+
+
+@strawberry.type(name="DojinNominationResult")
+class DojinSubmitResultGQL:
+    accepted: int
+    rejected: list[NominationItemResultGQL]
+    skipped: list[NominationItemResultGQL]
+
+
 # ── 共享 helpers ──────────────────────────────────────────────────────
 
 
@@ -177,16 +202,51 @@ async def _submit_lock(user_id: str) -> AsyncIterator[None]:
 
 
 async def _run_submit(body, service_method_name: str) -> bool:
-    """统一的 service 调用:ValueError → INVALID_CONTENT(中文原文透传)。"""
+    """统一的 service 调用:ValueError → INVALID_CONTENT(中文原文透传);
+    问卷门禁未过 → QUESTIONNAIRE_NOT_COMPLETED。"""
     async for db in get_db_session():
         service = SubmitService(SubmitDAO(db))
         try:
             await getattr(service, service_method_name)(body)
+        except QuestionnaireNotCompletedError as exc:
+            raise ValidationError(
+                "QUESTIONNAIRE_NOT_COMPLETED", details=422
+            ) from exc
         except ValueError as exc:
             raise ValidationError(
                 "INVALID_CONTENT", details=422, human_readable_message=str(exc)
             ) from exc
         return True
+    raise RuntimeError("unreachable")  # pragma: no cover
+
+
+async def _run_dojin_nominations(body) -> "DojinSubmitResultGQL":
+    """二创提名:校验+审核队列。
+    NominationClosed → NOMINATION_CLOSED(422);未配置 → NOMINATION_NOT_CONFIGURED(503)。
+    """
+    settings = get_settings()
+    scraper = ScraperService()
+    async for db in get_db_session():
+        service = SubmitService(SubmitDAO(db))
+        try:
+            result = await service.submit_dojin_nominations(body, settings, scraper)
+        except NominationNotConfiguredError as exc:
+            raise ServiceUnavailableError(
+                "NOMINATION_NOT_CONFIGURED", details=503
+            ) from exc
+        except NominationClosedError as exc:
+            raise ValidationError("NOMINATION_CLOSED", details=422) from exc
+        return DojinSubmitResultGQL(
+            accepted=result.accepted,
+            rejected=[
+                NominationItemResultGQL(index=r.index, reason=r.reason)
+                for r in result.rejected
+            ],
+            skipped=[
+                NominationItemResultGQL(index=s.index, reason=s.reason)
+                for s in result.skipped
+            ],
+        )
     raise RuntimeError("unreachable")  # pragma: no cover
 
 
@@ -270,7 +330,7 @@ class SubmitBridgeMutation:
     @strawberry.mutation
     async def submit_dojin(
         self, info: strawberry.Info, content: DojinSubmitGQL
-    ) -> bool:
+    ) -> DojinSubmitResultGQL:
         async with map_app_errors(service=_SERVICE):
             user_id = _vote_user_id(content.vote_token)
             await rate_limit(user_id, await get_redis_client())
@@ -286,7 +346,7 @@ class SubmitBridgeMutation:
                     ],
                     meta=_server_meta(user_id, info),
                 )
-                return await _run_submit(body, "submit_dojin")
+                return await _run_dojin_nominations(body)
         raise RuntimeError("unreachable")  # pragma: no cover
 
 
