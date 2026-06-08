@@ -193,3 +193,28 @@ class CandidateImportResponse(BaseModel):
 class CandidateUpdateRequest(BaseModel):
     category: Literal["character", "music"]
     fields: dict
+
+
+# ── Nomination review schemas ──────────────────────────────────────────────────
+
+class NominationItem(BaseModel):
+    id: int
+    vote_id: str
+    udid: Optional[str] = None
+    url: str
+    title: str = ""
+    author: str = ""
+    dojin_type: str = ""
+    publish_date: Optional[str] = None
+    status: str
+    reject_reason: Optional[str] = None
+    created_at: str
+
+
+class NominationListResponse(BaseModel):
+    items: list[NominationItem]
+    total: int
+
+
+class NominationRejectRequest(BaseModel):
+    reason: str = ""

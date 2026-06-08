@@ -207,3 +207,24 @@ async def get_voting_statistics_v1(
     service: SubmitService = Depends(get_submit_service),
 ) -> VotingStatistics:
     return await service.get_voting_statistics()
+
+
+@router.get("/nominations/approved")
+async def list_approved_nominations_v1(
+    page: int = 1,
+    page_size: int = 50,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """Public: approved dojin nominations, deduped by udid with count."""
+    rows = await SubmitDAO(session).list_approved_nominations(page, page_size)
+    items = [
+        {
+            "udid": r.udid,
+            "title": r.title,
+            "url": r.url,
+            "author": r.author,
+            "nomination_count": r.cnt,
+        }
+        for r in rows
+    ]
+    return {"items": items, "page": page}

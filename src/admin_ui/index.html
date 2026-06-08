@@ -85,6 +85,7 @@
   <button onclick="showTab('users')" id="tab-users">用户管理</button>
   <button onclick="showTab('sync')" id="tab-sync">数据同步</button>
   <button onclick="showTab('candidates')" id="tab-candidates">候选项</button>
+  <button onclick="showTab('nominations')" id="tab-nominations">提名审核</button>
   <button onclick="showTab('logs')" id="tab-logs">审计日志</button>
   <button onclick="showTab('export')" id="tab-export">导出</button>
   <button onclick="doLogout()" style="margin-left:auto;color:#f88">退出</button>
@@ -154,7 +155,7 @@ function closeModal() {
 
 // ── tabs ──────────────────────────────────────────────────────────────────────
 
-const TABS = { dashboard, users, sync, candidates, logs, export: exportTab };
+const TABS = { dashboard, users, sync, candidates, nominations, logs, export: exportTab };
 
 function showTab(name) {
   document.querySelectorAll('nav button[id^=tab-]').forEach(b => b.classList.remove('active'));
@@ -499,6 +500,64 @@ async function deleteFromEdit(id, cat) {
   toast('已删除');
   closeModal();
   searchCandidates(1);
+}
+
+// ── nominations (二创提名审核) ──────────────────────────────────────────────────
+
+async function nominations() {
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      <div class="search-row">
+        <select id="nom-status">
+          <option value="pending">待审核</option>
+          <option value="approved">已通过</option>
+          <option value="rejected">已驳回</option>
+          <option value="all">全部</option>
+        </select>
+        <button class="btn" onclick="searchNominations(1)">查询</button>
+      </div>
+      <div id="nominations-table"></div>
+    </div>`;
+  searchNominations(1);
+}
+
+async function searchNominations(page) {
+  const status = document.getElementById('nom-status').value;
+  const r = await api('/admin/nominations?status=' + status + '&page=' + page + '&page_size=50');
+  const d = await r.json();
+  const rows = d.items.map(i => `<tr>
+    <td>${i.title || '-'}</td>
+    <td>${i.author || '-'}</td>
+    <td><a href="${i.url}" target="_blank" style="color:#2563eb">链接</a></td>
+    <td style="font-family:monospace;font-size:.8rem">${i.udid || '-'}</td>
+    <td>${(i.publish_date || '').slice(0,10)}</td>
+    <td><span class="badge ${i.status==='approved'?'open':i.status==='rejected'?'closed':'upcoming'}">${i.status}</span></td>
+    <td>
+      ${i.status === 'pending' ? `
+        <button class="btn sm" onclick="reviewNomination(${i.id}, true)">通过</button>
+        <button class="btn sm danger" onclick="reviewNomination(${i.id}, false)">驳回</button>
+      ` : (i.reject_reason ? `<span style="color:#888">${i.reject_reason}</span>` : '-')}
+    </td>
+  </tr>`).join('');
+  document.getElementById('nominations-table').innerHTML = `
+    <table><thead><tr><th>标题</th><th>作者</th><th>链接</th><th>UDID</th><th>发布</th><th>状态</th><th>操作</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="7" style="color:#888;text-align:center">无结果</td></tr>'}</tbody></table>
+    <div style="margin-top:.8rem;color:#888">共 ${d.total} 条</div>`;
+}
+
+async function reviewNomination(id, approve) {
+  if (approve) {
+    await api('/admin/nominations/' + id + '/approve', { method: 'PATCH' });
+    toast('已通过');
+  } else {
+    const reason = prompt('驳回原因：', '');
+    if (reason === null) return;
+    await api('/admin/nominations/' + id + '/reject', {
+      method: 'PATCH', body: JSON.stringify({ reason }),
+    });
+    toast('已驳回');
+  }
+  searchNominations(1);
 }
 
 // ── logs ──────────────────────────────────────────────────────────────────────

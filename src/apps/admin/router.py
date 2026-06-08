@@ -22,6 +22,8 @@ from src.apps.admin.schemas import (
     FinalizeRankingResponse,
     ImportCandidatesRequest,
     ImportCandidatesResponse,
+    NominationListResponse,
+    NominationRejectRequest,
     StatsResponse,
     SyncHistoryResponse,
     SyncStartRequest,
@@ -289,6 +291,68 @@ async def delete_candidate(
     deleted = await service.delete_candidate(candidate_id, category)
     if not deleted:
         raise HTTPException(status_code=404, detail="CANDIDATE_NOT_FOUND")
+    return {"ok": True}
+
+
+def _nomination_to_item(n) -> dict:
+    return {
+        "id": n.id,
+        "vote_id": n.vote_id,
+        "udid": n.udid,
+        "url": n.url,
+        "title": n.title,
+        "author": n.author,
+        "dojin_type": n.dojin_type,
+        "publish_date": n.publish_date.isoformat() if n.publish_date else None,
+        "status": n.status,
+        "reject_reason": n.reject_reason,
+        "created_at": n.created_at.isoformat(),
+    }
+
+
+@router.get("/nominations", response_model=NominationListResponse)
+async def list_nominations(
+    status: str = "pending",
+    page: int = 1,
+    page_size: int = 50,
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> NominationListResponse:
+    _check_admin_secret(settings, x_admin_secret)
+    data = await service.list_nominations(status, page, page_size)
+    items = [_nomination_to_item(n) for n in data["items"]]
+    return NominationListResponse(items=items, total=data["total"])
+
+
+@router.patch("/nominations/{nomination_id}/approve")
+async def approve_nomination(
+    nomination_id: int,
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    _check_admin_secret(settings, x_admin_secret)
+    ok = await service.review_nomination(nomination_id, approve=True, reason="")
+    if not ok:
+        raise HTTPException(status_code=404, detail="NOMINATION_NOT_FOUND")
+    return {"ok": True}
+
+
+@router.patch("/nominations/{nomination_id}/reject")
+async def reject_nomination(
+    nomination_id: int,
+    body: NominationRejectRequest,
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    _check_admin_secret(settings, x_admin_secret)
+    ok = await service.review_nomination(
+        nomination_id, approve=False, reason=body.reason
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="NOMINATION_NOT_FOUND")
     return {"ok": True}
 
 

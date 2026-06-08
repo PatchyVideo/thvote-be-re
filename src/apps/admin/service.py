@@ -170,6 +170,28 @@ class AdminService:
             candidate_id, category, fields
         )
 
+    # ── nomination review ───────────────────────────────────────────────────
+
+    async def list_nominations(
+        self, status: str | None, page: int, page_size: int
+    ) -> dict:
+        from src.apps.submit.dao import SubmitDAO
+
+        dao = SubmitDAO(self._session)
+        rows, total = await dao.list_nominations(status, page, page_size)
+        return {"items": rows, "total": total}
+
+    async def review_nomination(
+        self, nom_id: int, approve: bool, reason: str, reviewed_by: str = "admin"
+    ) -> bool:
+        from src.apps.submit.dao import SubmitDAO
+
+        dao = SubmitDAO(self._session)
+        status = "approved" if approve else "rejected"
+        return await dao.set_nomination_status(
+            nom_id, status, reviewed_by, None if approve else reason
+        )
+
     async def list_activity_logs(
         self,
         user_id: str | None,
