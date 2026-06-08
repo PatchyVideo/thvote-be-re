@@ -408,7 +408,6 @@ async def reject_nomination(
 
 @router.get("/questionnaire/structure")
 async def admin_questionnaire_structure(
-    vote_year: Optional[int] = None,
     x_admin_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
@@ -417,20 +416,18 @@ async def admin_questionnaire_structure(
     from src.apps.questionnaire.dao import QuestionnaireDAO
     from src.apps.questionnaire.service import QuestionnaireService
 
-    year = vote_year or settings.vote_year
     svc = QuestionnaireService(QuestionnaireDAO(session))
-    return await svc.get_structure(year)
+    return await svc.get_structure()
 
 
 @router.post("/questionnaire/import")
 async def admin_questionnaire_import(
     body: dict,
-    vote_year: Optional[int] = None,
     x_admin_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    """Replace a year's questionnaire structure from a questionnaireV2 tree.
+    """Replace the questionnaire structure from a questionnaireV2 tree.
 
     Body is the QuestionnaireDefinitionAllV2-shaped JSON.
     """
@@ -438,9 +435,8 @@ async def admin_questionnaire_import(
     from src.apps.questionnaire.dao import QuestionnaireDAO
     from src.apps.questionnaire.service import QuestionnaireService
 
-    year = vote_year or settings.vote_year
     svc = QuestionnaireService(QuestionnaireDAO(session))
-    count = await svc.import_structure(year, body)
+    count = await svc.import_structure(body)
     return {"ok": True, "imported_questionnaires": count}
 
 

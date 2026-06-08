@@ -22,11 +22,11 @@ class QuestionnaireDAO:
         self.session = session
 
     async def load_structure_rows(
-        self, vote_year: int
+        self,
     ) -> tuple[list, list, list, list]:
         """Return (questionnaires, groups, questions, options) as dict lists."""
         qns = (await self.session.execute(
-            select(QuestionnaireDef).where(QuestionnaireDef.vote_year == vote_year)
+            select(QuestionnaireDef)
         )).scalars().all()
         qn_dicts = [_row_to_dict(q) for q in qns]
         qn_ids = [q["id"] for q in qn_dicts]
@@ -84,21 +84,18 @@ class QuestionnaireDAO:
 
     async def replace_structure(
         self,
-        vote_year: int,
         questionnaires: list[dict],
         groups: list[dict],
         questions: list[dict],
         options: list[dict],
     ) -> int:
-        """Replace a year's structure: delete existing rows, insert new tree.
+        """Replace the questionnaire structure: delete existing rows, insert tree.
 
-        Deletes are scoped to the year's questionnaires and their descendants.
-        Returns the number of questionnaires written.
+        Deletes all existing questionnaires and their descendants (structure is
+        year-less). Returns the number of questionnaires written.
         """
         existing = (await self.session.execute(
-            select(QuestionnaireDef.id).where(
-                QuestionnaireDef.vote_year == vote_year
-            )
+            select(QuestionnaireDef.id)
         )).scalars().all()
         if existing:
             group_ids = (await self.session.execute(
@@ -135,7 +132,7 @@ class QuestionnaireDAO:
             )
 
         for qn in questionnaires:
-            self.session.add(QuestionnaireDef(vote_year=vote_year, **qn))
+            self.session.add(QuestionnaireDef(**qn))
         for g in groups:
             self.session.add(QuestionGroupDef(**g))
         for q in questions:
