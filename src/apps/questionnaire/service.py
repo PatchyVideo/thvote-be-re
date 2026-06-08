@@ -30,13 +30,12 @@ class QuestionnaireService:
         return is_complete(structure, answers)
 
     async def import_structure(self, tree: dict) -> int:
-        """Replace the questionnaire structure from a questionnaireV2 tree."""
-        from src.apps.questionnaire.importer import parse_structure_tree
+        """Replace the whole questionnaire structure from a questionnaireV2 tree.
 
-        qns, groups, questions, options = parse_structure_tree(tree)
-        return await self.dao.replace_structure(
-            qns, groups, questions, options
-        )
+        Inserts hierarchically so id-less trees work — autoincrement parent ids
+        are resolved (flushed) before children are wired to them.
+        """
+        return await self.dao.replace_structure_tree(tree)
 
 
 def _flatten_answer_state(answers: list[dict]) -> list[dict]:

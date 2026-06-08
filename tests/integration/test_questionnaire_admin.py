@@ -88,6 +88,34 @@ async def test_import_then_public_structure(app, admin_secret):
 
 
 @pytest.mark.asyncio
+async def test_import_idless_tree(app, admin_secret):
+    """Trees without explicit ids must work — DB assigns autoincrement ids and
+    child FKs are wired from the flushed parent (regression for the 500)."""
+    tree = {"questionnaires": [
+        {"key": "main_required", "title": "主问卷", "category": "main",
+         "required": True, "order": 1, "questionGroups": [
+            {"order": 1, "hiddenByDefault": False, "questions": [
+                {"type": "Single", "content": "性别", "order": 1,
+                 "options": [
+                     {"content": "男", "order": 0},
+                     {"content": "女", "order": 1},
+                 ]}]}]}]}
+    async with _client(app) as ac:
+        r1 = await ac.post("/api/v1/admin/questionnaire/import", json=tree,
+                           headers={"X-Admin-Secret": admin_secret})
+        assert r1.status_code == 200, r1.text
+        assert r1.json()["imported_questionnaires"] == 1
+        r2 = await ac.get("/api/v1/questionnaire/structure")
+        assert r2.status_code == 200
+        qs = r2.json()["questionnaires"]
+        assert len(qs) == 1
+        opts = qs[0]["questionGroups"][0]["questions"][0]["options"]
+        assert [o["content"] for o in opts] == ["男", "女"]
+        # ids were assigned and options point at a real question id
+        assert all(o.get("id") for o in opts)
+
+
+@pytest.mark.asyncio
 async def test_crud_flow(app, admin_secret):
     h = {"X-Admin-Secret": admin_secret}
     async with _client(app) as ac:

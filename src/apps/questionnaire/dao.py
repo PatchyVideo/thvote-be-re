@@ -82,62 +82,101 @@ class QuestionnaireDAO:
         )).scalars().all()
         return [_row_to_dict(r) for r in rows]
 
-    async def replace_structure(
-        self,
-        questionnaires: list[dict],
-        groups: list[dict],
-        questions: list[dict],
-        options: list[dict],
-    ) -> int:
-        """Replace the questionnaire structure: delete existing rows, insert tree.
-
-        Deletes all existing questionnaires and their descendants (structure is
-        year-less). Returns the number of questionnaires written.
-        """
+    async def _delete_all_structure(self) -> None:
+        """Delete all questionnaires and their descendants (year-less structure)."""
         existing = (await self.session.execute(
             select(QuestionnaireDef.id)
         )).scalars().all()
-        if existing:
-            group_ids = (await self.session.execute(
-                select(QuestionGroupDef.id).where(
-                    QuestionGroupDef.questionnaire_id.in_(existing)
-                )
-            )).scalars().all()
-            question_ids = []
-            if group_ids:
-                question_ids = (await self.session.execute(
-                    select(QuestionDef.id).where(
-                        QuestionDef.group_id.in_(group_ids)
-                    )
-                )).scalars().all()
-            if question_ids:
-                await self.session.execute(
-                    delete(OptionDef).where(
-                        OptionDef.question_id.in_(question_ids)
-                    )
-                )
-                await self.session.execute(
-                    delete(QuestionDef).where(QuestionDef.id.in_(question_ids))
-                )
-            if group_ids:
-                await self.session.execute(
-                    delete(QuestionGroupDef).where(
-                        QuestionGroupDef.id.in_(group_ids)
-                    )
-                )
-            await self.session.execute(
-                delete(QuestionnaireDef).where(
-                    QuestionnaireDef.id.in_(existing)
-                )
+        if not existing:
+            return
+        group_ids = (await self.session.execute(
+            select(QuestionGroupDef.id).where(
+                QuestionGroupDef.questionnaire_id.in_(existing)
             )
+        )).scalars().all()
+        question_ids = []
+        if group_ids:
+            question_ids = (await self.session.execute(
+                select(QuestionDef.id).where(QuestionDef.group_id.in_(group_ids))
+            )).scalars().all()
+        if question_ids:
+            await self.session.execute(
+                delete(OptionDef).where(OptionDef.question_id.in_(question_ids))
+            )
+            await self.session.execute(
+                delete(QuestionDef).where(QuestionDef.id.in_(question_ids))
+            )
+        if group_ids:
+            await self.session.execute(
+                delete(QuestionGroupDef).where(QuestionGroupDef.id.in_(group_ids))
+            )
+        await self.session.execute(
+            delete(QuestionnaireDef).where(QuestionnaireDef.id.in_(existing))
+        )
 
-        for qn in questionnaires:
-            self.session.add(QuestionnaireDef(**qn))
-        for g in groups:
-            self.session.add(QuestionGroupDef(**g))
-        for q in questions:
-            self.session.add(QuestionDef(**q))
-        for o in options:
-            self.session.add(OptionDef(**o))
+    async def replace_structure_tree(self, tree: dict) -> int:
+        """Replace the whole structure from a {"questionnaires":[...]} tree.
+
+        Inserts hierarchically: each parent is flushed to obtain its
+        autoincrement id, then children are wired to that id. Explicit ids in
+        the tree are honored (preserves related/mutex cross-references); when
+        absent, the DB assigns ids. Returns the questionnaire count.
+        """
+        await self._delete_all_structure()
+        count = 0
+        for qn in tree.get("questionnaires", []):
+            if not isinstance(qn, dict):
+                continue
+            qn_kwargs = {
+                "key": qn.get("key", ""),
+                "title": qn.get("title", ""),
+                "introduction": qn.get("introduction", ""),
+                "category": qn.get("category", "main"),
+                "required": bool(qn.get("required", False)),
+                "order": qn.get("order", 0),
+            }
+            if qn.get("id") is not None:
+                qn_kwargs["id"] = qn["id"]
+            qobj = QuestionnaireDef(**qn_kwargs)
+            self.session.add(qobj)
+            await self.session.flush()
+            count += 1
+            for g in qn.get("questionGroups", []):
+                g_kwargs = {
+                    "questionnaire_id": qobj.id,
+                    "order": g.get("order", 0),
+                    "hidden_by_default": bool(g.get("hiddenByDefault", False)),
+                }
+                if g.get("id") is not None:
+                    g_kwargs["id"] = g["id"]
+                gobj = QuestionGroupDef(**g_kwargs)
+                self.session.add(gobj)
+                await self.session.flush()
+                for q in g.get("questions", []):
+                    q_kwargs = {
+                        "group_id": gobj.id,
+                        "type": q.get("type", "Single"),
+                        "content": q.get("content", ""),
+                        "introduction": q.get("introduction", ""),
+                        "order": q.get("order", 0),
+                        "max_input_len": q.get("maxInputLen", 1000),
+                    }
+                    if q.get("id") is not None:
+                        q_kwargs["id"] = q["id"]
+                    quobj = QuestionDef(**q_kwargs)
+                    self.session.add(quobj)
+                    await self.session.flush()
+                    for o in q.get("options", []):
+                        o_kwargs = {
+                            "question_id": quobj.id,
+                            "content": o.get("content", ""),
+                            "related_question_ids": o.get("relatedQuestionIds") or [],
+                            "mutex_option_ids": o.get("mutexOptionIds") or [],
+                            "option_group": o.get("optionGroup", 0),
+                            "order": o.get("order", 0),
+                        }
+                        if o.get("id") is not None:
+                            o_kwargs["id"] = o["id"]
+                        self.session.add(OptionDef(**o_kwargs))
         await self.session.commit()
-        return len(questionnaires)
+        return count
