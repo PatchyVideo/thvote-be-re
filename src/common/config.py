@@ -188,6 +188,33 @@ class Settings(BaseSettings):
     vote_start_iso: str = Field("2026-01-01T00:00:00Z")
     vote_end_iso: str = Field("2026-12-31T23:59:59Z")
 
+    # 提名(二创)配置
+    nomination_start_iso: Optional[str] = Field(
+        None, validation_alias="NOMINATION_START_ISO"
+    )
+    nomination_end_iso: Optional[str] = Field(
+        None, validation_alias="NOMINATION_END_ISO"
+    )
+    work_eligible_start_iso: Optional[str] = Field(
+        None, validation_alias="WORK_ELIGIBLE_START_ISO"
+    )
+    work_eligible_end_iso: Optional[str] = Field(
+        None, validation_alias="WORK_ELIGIBLE_END_ISO"
+    )
+    dojin_domain_allowlist_raw: Optional[str] = Field(
+        None, validation_alias="DOJIN_DOMAIN_ALLOWLIST"
+    )
+
+    @property
+    def dojin_domain_allowlist(self) -> list[str]:
+        if not self.dojin_domain_allowlist_raw:
+            return []
+        return [
+            d.strip()
+            for d in self.dojin_domain_allowlist_raw.split(",")
+            if d.strip()
+        ]
+
     # 结果计算配置
     gender_question_id: str = Field("q11011")
     gender_male_value: str = Field("male")
