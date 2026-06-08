@@ -57,11 +57,11 @@
 | Block | 后端设计 | 前端设计 |
 |---|---|---|
 | **B-037 安全** | [security-backend-design](./superpowers/specs/2026-06-08-security-backend-design.md) | [security-frontend-design](./superpowers/specs/2026-06-08-security-frontend-design.md) |
-| **B-038 作品投票** | [works-voting-backend-design](./superpowers/specs/2026-06-08-works-voting-backend-design.md) | [works-voting-frontend-design](./superpowers/specs/2026-06-08-works-voting-frontend-design.md) |
+| **B-038 作品投票** ⛔废弃 | [works-voting-backend-design](./superpowers/specs/2026-06-08-works-voting-backend-design.md) | [works-voting-frontend-design](./superpowers/specs/2026-06-08-works-voting-frontend-design.md) |
 | **B-039 问卷结构化(3A)** | [questionnaire-backend-design](./superpowers/specs/2026-06-08-questionnaire-backend-design.md) | [questionnaire-frontend-design](./superpowers/specs/2026-06-08-questionnaire-frontend-design.md) |
 | **B-040 投票对象迁后端(3B)** | [vote-objects-backend-design](./superpowers/specs/2026-06-08-vote-objects-backend-design.md) | [vote-objects-frontend-design](./superpowers/specs/2026-06-08-vote-objects-frontend-design.md) |
 
-> 对应实施计划在 `superpowers/plans/2026-06-08-<topic>-{backend,frontend}.md`（每块 4 份文档：design×2 + plan×2）。实施顺序建议 B-037 → B-038 → B-039/B-040。
+> 对应实施计划在 `superpowers/plans/2026-06-08-<topic>-{backend,frontend}.md`（每块 4 份文档：design×2 + plan×2）。**B-038 作品投票已废弃**（官方作品本届不做）。实施顺序建议 B-037 → B-039/B-040。
 
 ---
 

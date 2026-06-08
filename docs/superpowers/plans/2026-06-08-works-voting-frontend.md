@@ -1,5 +1,7 @@
 # Block 2 作品投票 — 前端(thvote-fe)Implementation Plan
 
+> ⛔ **已废弃 (2026-06-08)**：经确认官方作品投票本届不做。本计划仅存档,不实施。B-038 关闭。
+
 > **For agentic workers:** 前端 Vue 3 monorepo,手工验收为主。代码以仓库现有 `vote-character` 模式为准镜像。
 > 仓库：`D:\personal\thvote-fe`，包：`packages/vote`、`packages/result`
 > 前置：后端 Block 2 + `/vote-objects/works` 必须**先合并**。

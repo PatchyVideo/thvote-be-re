@@ -2,14 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: subagent-driven-development / executing-plans. Steps use `- [ ]`.
 
-**Goal:** 角色/音乐投票对象迁后端管理:导入时自动去重合并 + admin 可手调 + 分类查询/详情端点(仿 Block 2 作品)。
+**Goal:** 角色/音乐投票对象迁后端管理:导入时自动去重合并 + admin 可手调 + 分类查询/详情端点。
 
 **Architecture:** candidate_character/music 加 `merged_into` 规范化字段;`detect_merges` 纯逻辑做自动合并;`/vote-objects/characters|music|{id}` 同族端点;计票过滤/归并合并映射。
 
 **Tech Stack:** FastAPI, SQLAlchemy async, Alembic
 
 **Design Spec:** `docs/superpowers/specs/2026-06-08-vote-objects-backend-design.md`
-**前置:** Block 2 的 `/vote-objects/works` 已落(同族端点样板)。
 
 ---
 
@@ -64,16 +63,15 @@
 
 ## Task 5: /vote-objects/characters|music|{id} 端点
 
-**Files:** Modify Block 2 的 vote_objects 路由(或同处)
+**Files:** Create `src/apps/vote_objects/router.py`(新建公开路由域);register 进 `src/api/rest/v1/__init__.py`
 
-- [ ] **Step 1:** Read Block 2 的 `/vote-objects/works` 实现作蓝本。
-- [ ] **Step 2:** 加:
+- [ ] **Step 1:** 新建 vote_objects 路由,加:
   - `GET /vote-objects/characters?vote_year=` → 按首登作品(origin/first_appearance)分组,只含 `merged_into IS NULL`
   - `GET /vote-objects/music?vote_year=` → 按 album 分组,只含主候选
-  - `GET /vote-objects/{category}/{id}` → 详情(character/music/work)
-  返回形状与 `/vote-objects/works` 同族。
-- [ ] **Step 3:** 集成 + contract 测试。
-- [ ] **Step 4:** `pytest tests/ -q` + flake8 `src/`;commit `feat(vote-objects): characters/music/detail listing endpoints (B-040)`
+  - `GET /vote-objects/{category}/{id}` → 详情(character/music)
+  返回形状 `{ vote_year, groups:[{group, items:[...]}] }`;分组组装抽成共用函数。
+- [ ] **Step 2:** 集成 + contract 测试。
+- [ ] **Step 3:** `pytest tests/ -q` + flake8 `src/`;commit `feat(vote-objects): characters/music/detail listing endpoints (B-040)`
 
 ---
 
@@ -90,4 +88,4 @@
 ## Self-Review 注意
 - 合并的"主候选"选取规则要稳定(最小 id),避免重复导入时来回横跳。
 - 计票归并是本块最易错处:务必加集成测试验证"被合并票计入主候选"。
-- `/vote-objects/*` 三类(character/music/work)保持同一返回形状,前端才能复用一套封装。
+- `/vote-objects/*` 两类(character/music)保持同一返回形状,前端才能复用一套封装。

@@ -119,7 +119,7 @@ POST 提名(GraphQL submitDojin / REST 对应端点)
 
 - 实现位置:`src/apps/submit/service.py` 各 submit 方法入口,或统一在 vote_token 解析后加一道 `_require_questionnaire(vote_id)`。
 - 弱校验定义:"该用户存在任意问卷提交记录"。Block 3 升级为"所有必填题已答"。
-- **作品投票(Block 2)上线后,作品投票同样套用此门禁。**
+- 门禁仅加在角色/音乐/CP 投票;paper/dojin 本身不门禁。
 
 ## 九、复用的现成资产
 

@@ -1,5 +1,7 @@
 # Block 2 作品投票 — 后端(含管理端)Implementation Plan
 
+> ⛔ **已废弃 (2026-06-08)**：经确认官方作品投票本届不做。本计划仅存档,不实施。B-038 关闭。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Steps use `- [ ]`.
 
 **Goal:** 实现后端完整作品(官方作品)投票链路,每一层镜像角色(character),并加"前端拉投票对象列表"的 `/vote-objects/works` 端点。

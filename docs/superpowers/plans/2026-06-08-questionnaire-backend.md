@@ -74,7 +74,7 @@
 **Files:** Modify `src/apps/submit/service.py`
 
 - [ ] **Step 1:** `_require_questionnaire` 改为调 `QuestionnaireCompletionService.is_complete(vote_id, vote_year)`(替换 Block 1 的"存在任意 paper"弱校验)。
-- [ ] **Step 2:** 集成测试:必答未答→门禁拦截;答全→放行。覆盖角色/音乐/CP/作品。
+- [ ] **Step 2:** 集成测试:必答未答→门禁拦截;答全→放行。覆盖角色/音乐/CP。
 - [ ] **Step 3:** `pytest tests/ -q` + flake8;commit `feat(questionnaire): upgrade vote gate to required-questions completion (B-039)`
 
 ---

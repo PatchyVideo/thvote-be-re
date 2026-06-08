@@ -122,7 +122,7 @@ Block 1 的 `_require_questionnaire(vote_id)` 从"存在任意 paper"升级为:
        其所有"必答问题"在 paper_answer 中均有合法答案
 ```
 - 实现:`QuestionnaireCompletionService.is_complete(vote_id, vote_year)` 读结构(必填问卷的必答题)+ 读 paper_answer 比对。
-- 投票门禁(角色/音乐/CP/作品)统一改调此服务。
+- 投票门禁(角色/音乐/CP)统一改调此服务。
 
 ## 七、复用 / 迁移
 

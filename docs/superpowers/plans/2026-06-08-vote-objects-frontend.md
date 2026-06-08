@@ -2,9 +2,9 @@
 
 > **For agentic workers:** 前端 Vue 3,手工验收为主。**一次性切换**,后端 `/vote-objects/characters|music` 先合并。
 > 仓库：`D:\personal\thvote-fe`，包：`packages/vote`
-> 前置：后端 3B 合并 + 候选数据导入(含自动合并);建议 Block 2 作品页先落以沉淀通用封装。
+> 前置：后端 3B 合并 + 候选数据导入(含自动合并)。
 
-**Goal:** 角色/音乐(及 CP 的角色来源)投票列表改从后端拉,复用 Block 2 作品页的数据加载模式。
+**Goal:** 角色/音乐(及 CP 的角色来源)投票列表改从后端拉,新建通用数据加载封装。
 
 ---
 
@@ -12,7 +12,7 @@
 
 | 文件 | 操作 |
 |---|---|
-| `packages/vote/src/common/lib/voteObjectsDataSource.ts` | 新建(泛化 Block 2 作品数据源) |
+| `packages/vote/src/common/lib/voteObjectsDataSource.ts` | 新建(通用投票对象数据源) |
 | `packages/vote/src/vote-character/lib/*` | 列表来源改后端 |
 | `packages/vote/src/vote-music/lib/*` | 同上 |
 | `packages/vote/src/vote-couple/lib/*` | 角色来源切后端 |
@@ -23,9 +23,9 @@
 
 **File:** Create `packages/vote/src/common/lib/voteObjectsDataSource.ts`
 
-- [ ] **Step 1:** 把 Block 2 的 `vote-work/lib/workDataSource.ts` 泛化为 `fetchVoteObjects(category: 'characters'|'music'|'works', voteYear) → groups`,调 `GET /vote-objects/{category}?vote_year=`。
+- [ ] **Step 1:** 新建 `fetchVoteObjects(category: 'characters'|'music', voteYear) → groups`,调 `GET /vote-objects/{category}?vote_year=`。
 - [ ] **Step 2:** 类型对齐后端返回 `{vote_year, groups:[{group, items:[...]}]}`(items 字段随 category 不同:角色 origin/first_appearance,音乐 album)。
-- [ ] **Step 3:** commit `feat(vote): generalized vote-objects data source`
+- [ ] **Step 3:** commit `feat(vote): vote-objects data source`
 
 ---
 
@@ -69,7 +69,6 @@
 
 ## 依赖
 - 后端 `/vote-objects/characters|music` 先合并;字段以后端返回为准。
-- 复用 Block 2 作品页封装 → 建议作品页先落。
 
 ## 关联
 - 后端 plan：`2026-06-08-vote-objects-backend.md`

@@ -441,5 +441,5 @@ async def test_character_gate_passes_with_paper(session):
 
 ## Self-Review 注意
 - scraper 同步调用要包 `asyncio.wait_for(..., timeout=5)`,失败降级 udid=None,绝不让提名提交因 scraper 挂掉而整体失败。
-- 门禁只加在角色/音乐/CP(及后续作品),**不加在 paper/dojin**(否则没法先填问卷)。
+- 门禁只加在角色/音乐/CP,**不加在 paper/dojin**(否则没法先填问卷)。
 - `dojin_domain_allowlist` 配置解析按 Task 1 的 property 方式,避免 pydantic list 解析坑。
