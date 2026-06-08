@@ -585,51 +585,286 @@ async function reviewNomination(id, approve) {
   searchNominations(1);
 }
 
-// ── questionnaire config (B-039) ────────────────────────────────────────────────
+// ── questionnaire config (B-041) ─────────────────────────────────────────────
 
 async function questionnaire() {
-  const year = new Date().getFullYear();
+  renderQuestionnaireList();
+}
+
+async function renderQuestionnaireList() {
+  const r = await api('/admin/questionnaires');
+  const d = await r.json();
+  const rows = (d.items || []).map(q => `<tr>
+    <td>${q.id}</td>
+    <td style="font-family:monospace">${q.key}</td>
+    <td>${q.title || ''}</td>
+    <td>${q.category}</td>
+    <td>${q.required ? '✓' : '-'}</td>
+    <td>${q.group_count}</td>
+    <td>
+      <button class="btn sm" onclick="renderQuestionnaireEditor(${q.id})">编辑</button>
+      <button class="btn sm danger" onclick="qnDelete(${q.id})">删除</button>
+    </td>
+  </tr>`).join('');
   document.getElementById('content').innerHTML = `
     <div class="card">
-      <h3 style="margin-bottom:.8rem">问卷配置（整树导入 questionnaireV2 JSON）</h3>
       <div class="search-row">
-        <input type="number" id="qn-year" value="${year}" style="width:90px" /> 年份
-        <button class="btn" onclick="loadQuestionnaire()">查看当前结构</button>
-        <button class="btn green" onclick="importQuestionnaire()">导入/覆盖</button>
+        <b style="margin-right:auto">问卷列表</b>
+        <button class="btn green" onclick="qnNewModal()">+ 新建问卷</button>
+        <button class="btn" onclick="qnImportModal()">整树导入</button>
       </div>
-      <div class="field">
-        <label>questionnaireV2 整树 JSON</label>
-        <textarea id="qn-json" rows="12" placeholder='{"mainQuestionnaire":{...},"extraQuestionnaire":{...}}'></textarea>
-      </div>
-      <div id="qn-result" style="color:#888"></div>
+      <table><thead><tr><th>id</th><th>key</th><th>标题</th><th>分类</th><th>必填</th><th>题组数</th><th>操作</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="7" style="color:#888;text-align:center">暂无问卷</td></tr>'}</tbody></table>
     </div>`;
 }
 
-async function loadQuestionnaire() {
-  const year = document.getElementById('qn-year').value;
-  const r = await api('/admin/questionnaire/structure?vote_year=' + year);
-  const d = await r.json();
-  document.getElementById('qn-json').value = JSON.stringify(d, null, 2);
-  document.getElementById('qn-result').textContent = '已加载当前结构';
+function qnNewModal() {
+  openModal(`
+    <div class="modal-head">新建问卷</div>
+    <div class="modal-body">
+      <div class="field"><label>key <span class="req">*</span></label><input id="qn-key" /></div>
+      <div class="field"><label>标题</label><input id="qn-title" /></div>
+      <div class="field"><label>说明</label><input id="qn-intro" /></div>
+      <div class="field"><label>分类</label><select id="qn-cat"><option value="main">main</option><option value="extra">extra</option></select></div>
+      <div class="field"><label><input type="checkbox" id="qn-req" /> 必填(计入投票门禁)</label></div>
+      <div class="field"><label>排序 order</label><input type="number" id="qn-order" value="0" /></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="qnCreate()">创建</button>
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+    </div>`);
 }
 
-async function importQuestionnaire() {
-  const year = document.getElementById('qn-year').value;
+async function qnCreate() {
+  const body = {
+    key: document.getElementById('qn-key').value.trim(),
+    title: document.getElementById('qn-title').value,
+    introduction: document.getElementById('qn-intro').value,
+    category: document.getElementById('qn-cat').value,
+    required: document.getElementById('qn-req').checked,
+    order: parseInt(document.getElementById('qn-order').value) || 0,
+  };
+  const r = await api('/admin/questionnaires', { method: 'POST', body: JSON.stringify(body) });
+  if (r.status === 409) { toast('key 已存在'); return; }
+  toast('已创建');
+  closeModal();
+  renderQuestionnaireList();
+}
+
+async function qnDelete(id) {
+  if (!confirm('删除此问卷？将级联删除其所有题组/问题/选项。')) return;
+  await api('/admin/questionnaires/' + id, { method: 'DELETE' });
+  toast('已删除');
+  renderQuestionnaireList();
+}
+
+function qnImportModal() {
+  openModal(`
+    <div class="modal-head">整树导入(覆盖全部问卷)</div>
+    <div class="modal-body">
+      <div class="field"><label>{"questionnaires":[...]} JSON</label>
+        <textarea id="qn-imp" rows="12" placeholder='{"questionnaires":[...]}'></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="qnImport()">导入</button>
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+    </div>`);
+}
+
+async function qnImport() {
   let tree;
-  try {
-    tree = JSON.parse(document.getElementById('qn-json').value);
-  } catch (e) {
-    toast('JSON 解析失败: ' + e.message);
-    return;
-  }
-  if (!confirm('确认导入并覆盖 ' + year + ' 年的问卷结构？')) return;
-  const r = await api('/admin/questionnaire/import?vote_year=' + year, {
-    method: 'POST', body: JSON.stringify(tree),
-  });
+  try { tree = JSON.parse(document.getElementById('qn-imp').value); }
+  catch (e) { toast('JSON 解析失败: ' + e.message); return; }
+  if (!confirm('确认导入并覆盖全部问卷结构？')) return;
+  const r = await api('/admin/questionnaire/import', { method: 'POST', body: JSON.stringify(tree) });
   const d = await r.json();
-  document.getElementById('qn-result').textContent =
-    '已导入 ' + d.imported_questionnaires + ' 份问卷';
-  toast('导入完成');
+  toast('已导入 ' + d.imported_questionnaires + ' 份问卷');
+  closeModal();
+  renderQuestionnaireList();
+}
+
+// ── single-questionnaire nested editor ───────────────────────────────────────
+
+let _qnTree = null;  // current questionnaire tree cache (for related/mutex dropdowns)
+
+async function renderQuestionnaireEditor(id) {
+  const r = await api('/admin/questionnaires/' + id);
+  if (r.status === 404) { toast('问卷不存在'); renderQuestionnaireList(); return; }
+  const q = await r.json();
+  _qnTree = q;
+  const groups = (q.questionGroups || []).map(g => `
+    <div style="border:1px solid #e2e2e2;border-radius:6px;padding:.6rem;margin:.5rem 0">
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <b>题组 #${g.id}</b> <span style="color:#888">order:${g.order} ${g.hiddenByDefault ? '默认隐藏' : ''}</span>
+        <span style="margin-left:auto"></span>
+        <button class="btn sm" onclick="grpEditModal(${id},${g.id},${g.order},${g.hiddenByDefault})">改</button>
+        <button class="btn sm danger" onclick="grpDelete(${id},${g.id})">删</button>
+        <button class="btn sm green" onclick="quNewModal(${id},${g.id})">+题</button>
+      </div>
+      ${(g.questions || []).map(qu => `
+        <div style="margin:.4rem 0 .4rem 1rem">
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <span>问题 #${qu.id} [${qu.type}] ${qu.content || ''}</span>
+            <span style="margin-left:auto"></span>
+            <button class="btn sm" onclick="quEditModal(${id},${JSON.stringify(qu).replace(/"/g,'&quot;')})">改</button>
+            <button class="btn sm danger" onclick="quDelete(${id},${qu.id})">删</button>
+            <button class="btn sm green" onclick="optNewModal(${id},${qu.id})">+选项</button>
+          </div>
+          ${(qu.options || []).map(o => `
+            <div style="margin-left:1.2rem;color:#555;font-size:.85rem;display:flex;gap:.5rem;align-items:center">
+              <span>· ${o.content || ''} ${o.relatedQuestionIds.length ? 'related:'+o.relatedQuestionIds.join(',') : ''} ${o.mutexOptionIds.length ? 'mutex:'+o.mutexOptionIds.join(',') : ''}</span>
+              <span style="margin-left:auto"></span>
+              <button class="btn sm" onclick="optEditModal(${id},${JSON.stringify(o).replace(/"/g,'&quot;')})">改</button>
+              <button class="btn sm danger" onclick="optDelete(${id},${o.id})">删</button>
+            </div>`).join('')}
+        </div>`).join('')}
+    </div>`).join('');
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      <div class="search-row">
+        <button class="btn ghost" onclick="renderQuestionnaireList()">← 返回列表</button>
+        <b style="margin-left:.5rem">${q.title} (${q.key})</b>
+        <button class="btn" style="margin-left:auto" onclick="qnMetaModal(${id})">改元数据</button>
+        <button class="btn green" onclick="grpNewModal(${id})">+ 题组</button>
+      </div>
+      ${groups || '<div style="color:#888">暂无题组</div>'}
+    </div>`;
+}
+
+function qnMetaModal(id) {
+  const q = _qnTree;
+  openModal(`
+    <div class="modal-head">问卷元数据</div>
+    <div class="modal-body">
+      <div class="field"><label>key</label><input id="m-key" value="${q.key}" /></div>
+      <div class="field"><label>标题</label><input id="m-title" value="${(q.title||'').replace(/"/g,'&quot;')}" /></div>
+      <div class="field"><label>说明</label><input id="m-intro" value="${(q.introduction||'').replace(/"/g,'&quot;')}" /></div>
+      <div class="field"><label>分类</label><select id="m-cat"><option value="main"${q.category==='main'?' selected':''}>main</option><option value="extra"${q.category==='extra'?' selected':''}>extra</option></select></div>
+      <div class="field"><label><input type="checkbox" id="m-req"${q.required?' checked':''} /> 必填</label></div>
+      <div class="field"><label>order</label><input type="number" id="m-order" value="${q.order}" /></div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="qnMetaSave(${id})">保存</button><button class="btn ghost" onclick="closeModal()">取消</button></div>`);
+}
+
+async function qnMetaSave(id) {
+  const body = {
+    key: document.getElementById('m-key').value.trim(),
+    title: document.getElementById('m-title').value,
+    introduction: document.getElementById('m-intro').value,
+    category: document.getElementById('m-cat').value,
+    required: document.getElementById('m-req').checked,
+    order: parseInt(document.getElementById('m-order').value) || 0,
+  };
+  const r = await api('/admin/questionnaires/' + id, { method: 'PUT', body: JSON.stringify(body) });
+  if (r.status === 409) { toast('key 已存在'); return; }
+  toast('已保存'); closeModal(); renderQuestionnaireEditor(id);
+}
+
+// groups
+function grpNewModal(qid) { _grpModal(qid, null, 0, false); }
+function grpEditModal(qid, gid, order, hidden) { _grpModal(qid, gid, order, hidden); }
+function _grpModal(qid, gid, order, hidden) {
+  openModal(`
+    <div class="modal-head">${gid ? '编辑' : '新建'}题组</div>
+    <div class="modal-body">
+      <div class="field"><label>order</label><input type="number" id="g-order" value="${order}" /></div>
+      <div class="field"><label><input type="checkbox" id="g-hidden"${hidden?' checked':''} /> 默认隐藏</label></div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="grpSave(${qid},${gid})">保存</button><button class="btn ghost" onclick="closeModal()">取消</button></div>`);
+}
+async function grpSave(qid, gid) {
+  const body = { order: parseInt(document.getElementById('g-order').value) || 0,
+                 hidden_by_default: document.getElementById('g-hidden').checked };
+  if (gid) { await api('/admin/question-groups/' + gid, { method: 'PUT', body: JSON.stringify(body) }); }
+  else { body.questionnaire_id = qid; await api('/admin/question-groups', { method: 'POST', body: JSON.stringify(body) }); }
+  toast('已保存'); closeModal(); renderQuestionnaireEditor(qid);
+}
+async function grpDelete(qid, gid) {
+  if (!confirm('删除此题组？将级联删除其问题/选项。')) return;
+  await api('/admin/question-groups/' + gid, { method: 'DELETE' });
+  toast('已删除'); renderQuestionnaireEditor(qid);
+}
+
+// questions
+function quNewModal(qid, gid) { _quModal(qid, gid, null, {type:'Single',content:'',introduction:'',maxInputLen:1000,order:0}); }
+function quEditModal(qid, qu) { _quModal(qid, qu.group_id || qu.groupId, qu.id, qu); }
+function _quModal(qid, gid, quid, qu) {
+  openModal(`
+    <div class="modal-head">${quid ? '编辑' : '新建'}问题</div>
+    <div class="modal-body">
+      <div class="field"><label>类型</label><select id="q-type">
+        <option value="Single"${qu.type==='Single'?' selected':''}>单选</option>
+        <option value="Multiple"${qu.type==='Multiple'?' selected':''}>多选</option>
+        <option value="Input"${qu.type==='Input'?' selected':''}>输入</option></select></div>
+      <div class="field"><label>题面</label><input id="q-content" value="${(qu.content||'').replace(/"/g,'&quot;')}" /></div>
+      <div class="field"><label>说明</label><input id="q-intro" value="${(qu.introduction||'').replace(/"/g,'&quot;')}" /></div>
+      <div class="field"><label>最大输入长度</label><input type="number" id="q-maxlen" value="${qu.maxInputLen||1000}" /></div>
+      <div class="field"><label>order</label><input type="number" id="q-order" value="${qu.order||0}" /></div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="quSave(${qid},${gid},${quid})">保存</button><button class="btn ghost" onclick="closeModal()">取消</button></div>`);
+}
+async function quSave(qid, gid, quid) {
+  const body = { type: document.getElementById('q-type').value,
+                 content: document.getElementById('q-content').value,
+                 introduction: document.getElementById('q-intro').value,
+                 max_input_len: parseInt(document.getElementById('q-maxlen').value) || 1000,
+                 order: parseInt(document.getElementById('q-order').value) || 0 };
+  if (quid) { await api('/admin/questions/' + quid, { method: 'PUT', body: JSON.stringify(body) }); }
+  else { body.group_id = gid; await api('/admin/questions', { method: 'POST', body: JSON.stringify(body) }); }
+  toast('已保存'); closeModal(); renderQuestionnaireEditor(qid);
+}
+async function quDelete(qid, quid) {
+  if (!confirm('删除此问题？将级联删除其选项。')) return;
+  await api('/admin/questions/' + quid, { method: 'DELETE' });
+  toast('已删除'); renderQuestionnaireEditor(qid);
+}
+
+// options — related/mutex chosen from current questionnaire's questions/options
+function _allQuestions() {
+  const out = [];
+  (_qnTree.questionGroups || []).forEach(g => (g.questions || []).forEach(q => out.push(q)));
+  return out;
+}
+function _allOptions() {
+  const out = [];
+  _allQuestions().forEach(q => (q.options || []).forEach(o => out.push({ ...o, q: q.content })));
+  return out;
+}
+function optNewModal(qid, quid) { _optModal(qid, quid, null, {content:'',relatedQuestionIds:[],mutexOptionIds:[],optionGroup:0,order:0}); }
+function optEditModal(qid, o) { _optModal(qid, o.question_id || o.questionId, o.id, o); }
+function _optModal(qid, quid, oid, o) {
+  const relOpts = _allQuestions().map(q =>
+    `<option value="${q.id}"${o.relatedQuestionIds.includes(q.id)?' selected':''}>#${q.id} ${q.content||''}</option>`).join('');
+  const mutOpts = _allOptions().map(x =>
+    `<option value="${x.id}"${o.mutexOptionIds.includes(x.id)?' selected':''}>#${x.id} ${x.content||''}</option>`).join('');
+  openModal(`
+    <div class="modal-head">${oid ? '编辑' : '新建'}选项</div>
+    <div class="modal-body">
+      <div class="field"><label>内容</label><input id="o-content" value="${(o.content||'').replace(/"/g,'&quot;')}" /></div>
+      <div class="field"><label>选中后展示的问题 (related, 多选)</label><select id="o-related" multiple size="4" style="width:100%">${relOpts}</select></div>
+      <div class="field"><label>互斥选项 (mutex, 多选)</label><select id="o-mutex" multiple size="4" style="width:100%">${mutOpts}</select></div>
+      <div class="field"><label>option_group</label><input type="number" id="o-group" value="${o.optionGroup||0}" /></div>
+      <div class="field"><label>order</label><input type="number" id="o-order" value="${o.order||0}" /></div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="optSave(${qid},${quid},${oid})">保存</button><button class="btn ghost" onclick="closeModal()">取消</button></div>`);
+}
+function _multiVals(id) {
+  return Array.from(document.getElementById(id).selectedOptions).map(o => parseInt(o.value));
+}
+async function optSave(qid, quid, oid) {
+  const body = { content: document.getElementById('o-content').value,
+                 related_question_ids: _multiVals('o-related'),
+                 mutex_option_ids: _multiVals('o-mutex'),
+                 option_group: parseInt(document.getElementById('o-group').value) || 0,
+                 order: parseInt(document.getElementById('o-order').value) || 0 };
+  if (oid) { await api('/admin/options/' + oid, { method: 'PUT', body: JSON.stringify(body) }); }
+  else { body.question_id = quid; await api('/admin/options', { method: 'POST', body: JSON.stringify(body) }); }
+  toast('已保存'); closeModal(); renderQuestionnaireEditor(qid);
+}
+async function optDelete(qid, oid) {
+  if (!confirm('删除此选项？')) return;
+  await api('/admin/options/' + oid, { method: 'DELETE' });
+  toast('已删除'); renderQuestionnaireEditor(qid);
 }
 
 // ── logs ──────────────────────────────────────────────────────────────────────
