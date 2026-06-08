@@ -1,6 +1,6 @@
 """Submit data access objects."""
 
-from sqlalchemy import desc, func, select, union
+from sqlalchemy import delete, desc, func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.submit.models import (
@@ -19,7 +19,12 @@ class SubmitDAO:
         self.session = session
 
     async def create_character_submit(self, data: dict) -> int:
-        """Create a character submit record."""
+        """Upsert a character submit record (replace existing for same vote_id)."""
+        await self.session.execute(
+            delete(RawCharacterSubmit).where(
+                RawCharacterSubmit.vote_id == data["vote_id"]
+            )
+        )
         row = RawCharacterSubmit(**data)
         self.session.add(row)
         await self.session.commit()
@@ -47,7 +52,12 @@ class SubmitDAO:
         return None
 
     async def create_music_submit(self, data: dict) -> int:
-        """Create a music submit record."""
+        """Upsert a music submit record (replace existing for same vote_id)."""
+        await self.session.execute(
+            delete(RawMusicSubmit).where(
+                RawMusicSubmit.vote_id == data["vote_id"]
+            )
+        )
         row = RawMusicSubmit(**data)
         self.session.add(row)
         await self.session.commit()
@@ -75,7 +85,12 @@ class SubmitDAO:
         return None
 
     async def create_cp_submit(self, data: dict) -> int:
-        """Create a CP submit record."""
+        """Upsert a CP submit record (replace existing for same vote_id)."""
+        await self.session.execute(
+            delete(RawCPSubmit).where(
+                RawCPSubmit.vote_id == data["vote_id"]
+            )
+        )
         row = RawCPSubmit(**data)
         self.session.add(row)
         await self.session.commit()
@@ -103,7 +118,12 @@ class SubmitDAO:
         return None
 
     async def create_paper_submit(self, data: dict) -> int:
-        """Create a paper submit record."""
+        """Upsert a paper submit record (replace existing for same vote_id)."""
+        await self.session.execute(
+            delete(RawPaperSubmit).where(
+                RawPaperSubmit.vote_id == data["vote_id"]
+            )
+        )
         row = RawPaperSubmit(**data)
         self.session.add(row)
         await self.session.commit()
@@ -131,7 +151,12 @@ class SubmitDAO:
         return None
 
     async def create_dojin_submit(self, data: dict) -> int:
-        """Create a dojin submit record."""
+        """Upsert a dojin submit record (replace existing for same vote_id)."""
+        await self.session.execute(
+            delete(RawDojinSubmit).where(
+                RawDojinSubmit.vote_id == data["vote_id"]
+            )
+        )
         row = RawDojinSubmit(**data)
         self.session.add(row)
         await self.session.commit()
