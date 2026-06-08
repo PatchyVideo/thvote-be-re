@@ -133,11 +133,23 @@ class SubmitService:
         self.validator = SubmitValidator()
 
     async def _require_questionnaire(self, vote_id: str) -> None:
-        """Weak gate: a user must have submitted a questionnaire before voting.
+        """Vote gate: the user must have completed the questionnaire.
 
-        Block 3 upgrades this to "all required questions answered".
+        Transition-safe:
+        - a legacy raw_paper submission counts as complete (old paperJson flow);
+        - otherwise structured answers must exist AND satisfy completion
+          against the configured questionnaire structure (Block 3).
         """
-        if not await self.submit_dao.has_paper(vote_id):
+        if await self.submit_dao.has_paper(vote_id):
+            return
+        from src.apps.questionnaire.dao import QuestionnaireDAO
+        from src.apps.questionnaire.service import QuestionnaireService
+        from src.common.config import get_settings
+
+        year = get_settings().vote_year
+        qsvc = QuestionnaireService(QuestionnaireDAO(self.submit_dao.session))
+        answers = await qsvc.get_answers(vote_id, year)
+        if not answers or not await qsvc.is_complete(vote_id, year):
             raise QuestionnaireNotCompletedError(vote_id)
 
     async def submit_character(self, data: CharacterSubmitRest) -> int:
