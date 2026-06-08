@@ -322,10 +322,34 @@ async function candidates() {
         <input type="number" id="c-year" value="${new Date().getFullYear()}" style="width:80px" />
         <input type="text" id="c-q" placeholder="名称搜索" style="width:180px" />
         <button class="btn" onclick="searchCandidates(1)">搜索</button>
+        <button class="btn" onclick="loadMerges()">查看合并</button>
         <button class="btn green" style="margin-left:auto" onclick="openImportModal()">+ 导入</button>
       </div>
       <div id="candidates-table"></div>
+      <div id="merges-view"></div>
     </div>`;
+}
+
+async function loadMerges() {
+  const cat = document.getElementById('c-cat').value;
+  const year = document.getElementById('c-year').value;
+  const r = await api('/admin/candidates/merges?category=' + cat + '&vote_year=' + year);
+  const d = await r.json();
+  const rows = (d.items || []).map(m => `<tr>
+    <td>${m.id}</td><td>${m.name}</td><td>→ ${m.merged_into}</td>
+    <td><button class="btn sm" onclick="unmergeCandidate(${m.id},'${cat}')">拆分</button></td>
+  </tr>`).join('');
+  document.getElementById('merges-view').innerHTML = `
+    <div style="margin-top:1rem"><b>合并关系</b>（被合并 → 主候选 id）</div>
+    <table><thead><tr><th>id</th><th>名称</th><th>合并到</th><th>操作</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="4" style="color:#888;text-align:center">无合并</td></tr>'}</tbody></table>`;
+}
+
+async function unmergeCandidate(id, cat) {
+  if (!confirm('拆分此合并？')) return;
+  await api('/admin/candidates/' + id + '/unmerge?category=' + cat, { method: 'POST' });
+  toast('已拆分');
+  loadMerges();
 }
 
 async function searchCandidates(page) {
