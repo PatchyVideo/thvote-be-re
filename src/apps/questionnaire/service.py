@@ -31,6 +31,15 @@ class QuestionnaireService:
         answers = await self.dao.get_answers(vote_id, vote_year)
         return is_complete(structure, answers)
 
+    async def import_structure(self, vote_year: int, tree: dict) -> int:
+        """Replace a year's questionnaire structure from a questionnaireV2 tree."""
+        from src.apps.questionnaire.importer import parse_structure_tree
+
+        qns, groups, questions, options = parse_structure_tree(tree)
+        return await self.dao.replace_structure(
+            vote_year, qns, groups, questions, options
+        )
+
 
 def _flatten_answer_state(answer_state: dict) -> list[dict]:
     """QuestionnaireAnswerStateV2 → list of paper_answer row dicts.

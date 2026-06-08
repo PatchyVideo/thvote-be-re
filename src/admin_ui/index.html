@@ -86,6 +86,7 @@
   <button onclick="showTab('sync')" id="tab-sync">数据同步</button>
   <button onclick="showTab('candidates')" id="tab-candidates">候选项</button>
   <button onclick="showTab('nominations')" id="tab-nominations">提名审核</button>
+  <button onclick="showTab('questionnaire')" id="tab-questionnaire">问卷配置</button>
   <button onclick="showTab('logs')" id="tab-logs">审计日志</button>
   <button onclick="showTab('export')" id="tab-export">导出</button>
   <button onclick="doLogout()" style="margin-left:auto;color:#f88">退出</button>
@@ -155,7 +156,7 @@ function closeModal() {
 
 // ── tabs ──────────────────────────────────────────────────────────────────────
 
-const TABS = { dashboard, users, sync, candidates, nominations, logs, export: exportTab };
+const TABS = { dashboard, users, sync, candidates, nominations, questionnaire, logs, export: exportTab };
 
 function showTab(name) {
   document.querySelectorAll('nav button[id^=tab-]').forEach(b => b.classList.remove('active'));
@@ -558,6 +559,53 @@ async function reviewNomination(id, approve) {
     toast('已驳回');
   }
   searchNominations(1);
+}
+
+// ── questionnaire config (B-039) ────────────────────────────────────────────────
+
+async function questionnaire() {
+  const year = new Date().getFullYear();
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      <h3 style="margin-bottom:.8rem">问卷配置（整树导入 questionnaireV2 JSON）</h3>
+      <div class="search-row">
+        <input type="number" id="qn-year" value="${year}" style="width:90px" /> 年份
+        <button class="btn" onclick="loadQuestionnaire()">查看当前结构</button>
+        <button class="btn green" onclick="importQuestionnaire()">导入/覆盖</button>
+      </div>
+      <div class="field">
+        <label>questionnaireV2 整树 JSON</label>
+        <textarea id="qn-json" rows="12" placeholder='{"mainQuestionnaire":{...},"extraQuestionnaire":{...}}'></textarea>
+      </div>
+      <div id="qn-result" style="color:#888"></div>
+    </div>`;
+}
+
+async function loadQuestionnaire() {
+  const year = document.getElementById('qn-year').value;
+  const r = await api('/admin/questionnaire/structure?vote_year=' + year);
+  const d = await r.json();
+  document.getElementById('qn-json').value = JSON.stringify(d, null, 2);
+  document.getElementById('qn-result').textContent = '已加载当前结构';
+}
+
+async function importQuestionnaire() {
+  const year = document.getElementById('qn-year').value;
+  let tree;
+  try {
+    tree = JSON.parse(document.getElementById('qn-json').value);
+  } catch (e) {
+    toast('JSON 解析失败: ' + e.message);
+    return;
+  }
+  if (!confirm('确认导入并覆盖 ' + year + ' 年的问卷结构？')) return;
+  const r = await api('/admin/questionnaire/import?vote_year=' + year, {
+    method: 'POST', body: JSON.stringify(tree),
+  });
+  const d = await r.json();
+  document.getElementById('qn-result').textContent =
+    '已导入 ' + d.imported_questionnaires + ' 份问卷';
+  toast('导入完成');
 }
 
 // ── logs ──────────────────────────────────────────────────────────────────────

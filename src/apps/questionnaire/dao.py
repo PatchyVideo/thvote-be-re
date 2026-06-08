@@ -81,3 +81,66 @@ class QuestionnaireDAO:
             )
         )).scalars().all()
         return [_row_to_dict(r) for r in rows]
+
+    async def replace_structure(
+        self,
+        vote_year: int,
+        questionnaires: list[dict],
+        groups: list[dict],
+        questions: list[dict],
+        options: list[dict],
+    ) -> int:
+        """Replace a year's structure: delete existing rows, insert new tree.
+
+        Deletes are scoped to the year's questionnaires and their descendants.
+        Returns the number of questionnaires written.
+        """
+        existing = (await self.session.execute(
+            select(QuestionnaireDef.id).where(
+                QuestionnaireDef.vote_year == vote_year
+            )
+        )).scalars().all()
+        if existing:
+            group_ids = (await self.session.execute(
+                select(QuestionGroupDef.id).where(
+                    QuestionGroupDef.questionnaire_id.in_(existing)
+                )
+            )).scalars().all()
+            question_ids = []
+            if group_ids:
+                question_ids = (await self.session.execute(
+                    select(QuestionDef.id).where(
+                        QuestionDef.group_id.in_(group_ids)
+                    )
+                )).scalars().all()
+            if question_ids:
+                await self.session.execute(
+                    delete(OptionDef).where(
+                        OptionDef.question_id.in_(question_ids)
+                    )
+                )
+                await self.session.execute(
+                    delete(QuestionDef).where(QuestionDef.id.in_(question_ids))
+                )
+            if group_ids:
+                await self.session.execute(
+                    delete(QuestionGroupDef).where(
+                        QuestionGroupDef.id.in_(group_ids)
+                    )
+                )
+            await self.session.execute(
+                delete(QuestionnaireDef).where(
+                    QuestionnaireDef.id.in_(existing)
+                )
+            )
+
+        for qn in questionnaires:
+            self.session.add(QuestionnaireDef(vote_year=vote_year, **qn))
+        for g in groups:
+            self.session.add(QuestionGroupDef(**g))
+        for q in questions:
+            self.session.add(QuestionDef(**q))
+        for o in options:
+            self.session.add(OptionDef(**o))
+        await self.session.commit()
+        return len(questionnaires)

@@ -356,6 +356,46 @@ async def reject_nomination(
     return {"ok": True}
 
 
+# ── questionnaire config (B-039) ────────────────────────────────────────────
+
+@router.get("/questionnaire/structure")
+async def admin_questionnaire_structure(
+    vote_year: Optional[int] = None,
+    x_admin_secret: Optional[str] = Header(None),
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    _check_admin_secret(settings, x_admin_secret)
+    from src.apps.questionnaire.dao import QuestionnaireDAO
+    from src.apps.questionnaire.service import QuestionnaireService
+
+    year = vote_year or settings.vote_year
+    svc = QuestionnaireService(QuestionnaireDAO(session))
+    return await svc.get_structure(year)
+
+
+@router.post("/questionnaire/import")
+async def admin_questionnaire_import(
+    body: dict,
+    vote_year: Optional[int] = None,
+    x_admin_secret: Optional[str] = Header(None),
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Replace a year's questionnaire structure from a questionnaireV2 tree.
+
+    Body is the QuestionnaireDefinitionAllV2-shaped JSON.
+    """
+    _check_admin_secret(settings, x_admin_secret)
+    from src.apps.questionnaire.dao import QuestionnaireDAO
+    from src.apps.questionnaire.service import QuestionnaireService
+
+    year = vote_year or settings.vote_year
+    svc = QuestionnaireService(QuestionnaireDAO(session))
+    count = await svc.import_structure(year, body)
+    return {"ok": True, "imported_questionnaires": count}
+
+
 @router.get("/activity-logs", response_model=ActivityLogResponse)
 async def list_activity_logs(
     user_id: Optional[str] = None,
