@@ -9,6 +9,7 @@ from .base import Base
 from .candidate import CandidateCharacter, CandidateMusic, FinalRanking
 from .character import Character
 from .cp import Cp
+from .dojin_nomination import DojinNomination
 from .music import Music
 from .questionnaire import Questionnaire
 from .raw_submit import (
@@ -32,6 +33,7 @@ __all__ = [
     "FinalRanking",
     "Character",
     "Cp",
+    "DojinNomination",
     "Music",
     "Questionnaire",
     "RawCharacterSubmit",
