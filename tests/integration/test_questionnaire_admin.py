@@ -1,9 +1,9 @@
-"""Integration tests for admin questionnaire config import (B-039)."""
+"""Integration tests for questionnaire admin import + CRUD endpoints (B-041)."""
 import os
 
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from src.db_model.base import Base
@@ -50,72 +50,93 @@ def admin_secret():
     cfg._settings_instance = None
 
 
-_TREE = {
-    "mainQuestionnaire": {
-        "requiredQuestionnaire": {
-            "id": 11, "name": "必填", "introduction": "",
-            "questionGroups": [{
-                "id": 1101, "questionnaireId": 11, "order": 1,
-                "initialQuestionId": 11011,
-                "questions": [{
-                    "id": 11011, "type": "Single", "content": "q1",
-                    "introduction": "",
-                    "options": [{
-                        "id": 1101101, "content": "o1",
-                        "relatedQuestionIds": [], "mutexOptionIds": [],
-                        "optionGroup": 0,
-                    }],
-                }],
-            }],
-        },
-        "optionalQuestionnaire1": {"id": 12, "questionGroups": []},
-        "optionalQuestionnaire2": {"id": 13, "questionGroups": []},
-    },
-    "extraQuestionnaire": {},
-}
+def _client(app):
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+_TREE = {"questionnaires": [
+    {"id": 1, "key": "main_required", "title": "必填", "category": "main",
+     "required": True, "order": 1, "questionGroups": [
+        {"id": 10, "order": 1, "hiddenByDefault": False, "questions": [
+            {"id": 100, "type": "Single", "content": "q1", "introduction": "",
+             "maxInputLen": 1000, "options": [
+                {"id": 1000, "content": "o1", "relatedQuestionIds": [],
+                 "mutexOptionIds": [], "optionGroup": 0}]}]}]},
+    {"id": 2, "key": "extra_1", "title": "额外", "category": "extra",
+     "required": False, "order": 2, "questionGroups": []},
+]}
 
 
 @pytest.mark.asyncio
 async def test_import_403_without_secret(app, admin_secret):
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        resp = await ac.post("/api/v1/admin/questionnaire/import?vote_year=2026", json=_TREE)
+    async with _client(app) as ac:
+        resp = await ac.post("/api/v1/admin/questionnaire/import", json=_TREE)
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_import_then_structure(app, admin_secret):
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        r1 = await ac.post(
-            "/api/v1/admin/questionnaire/import?vote_year=2026",
-            json=_TREE, headers={"X-Admin-Secret": admin_secret},
-        )
+async def test_import_then_public_structure(app, admin_secret):
+    async with _client(app) as ac:
+        r1 = await ac.post("/api/v1/admin/questionnaire/import", json=_TREE,
+                           headers={"X-Admin-Secret": admin_secret})
         assert r1.status_code == 200
-        assert r1.json()["imported_questionnaires"] == 3
-
-        # public structure endpoint reflects the import
-        r2 = await ac.get("/api/v1/questionnaire/structure?vote_year=2026")
+        assert r1.json()["imported_questionnaires"] == 2
+        r2 = await ac.get("/api/v1/questionnaire/structure")
         assert r2.status_code == 200
-        req = r2.json()["mainQuestionnaire"]["requiredQuestionnaire"]
-        assert req["id"] == 11
-        assert req["questionGroups"][0]["questions"][0]["id"] == 11011
+        qs = r2.json()["questionnaires"]
+        assert {q["key"] for q in qs} == {"main_required", "extra_1"}
 
 
 @pytest.mark.asyncio
-async def test_reimport_replaces(app, admin_secret):
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-        await ac.post(
-            "/api/v1/admin/questionnaire/import?vote_year=2027",
-            json=_TREE, headers={"X-Admin-Secret": admin_secret},
-        )
-        # re-import a smaller tree: only required
-        smaller = {
-            "mainQuestionnaire": {
-                "requiredQuestionnaire": {"id": 11, "name": "x", "questionGroups": []},
-            },
-            "extraQuestionnaire": {},
-        }
-        r = await ac.post(
-            "/api/v1/admin/questionnaire/import?vote_year=2027",
-            json=smaller, headers={"X-Admin-Secret": admin_secret},
-        )
-        assert r.json()["imported_questionnaires"] == 1
+async def test_crud_flow(app, admin_secret):
+    h = {"X-Admin-Secret": admin_secret}
+    async with _client(app) as ac:
+        r = await ac.post("/api/v1/admin/questionnaires",
+                          json={"key": "k1", "title": "t1", "category": "main",
+                                "required": True, "order": 1}, headers=h)
+        assert r.status_code == 200
+        qid = r.json()["id"]
+        # list
+        lst = await ac.get("/api/v1/admin/questionnaires", headers=h)
+        assert any(i["id"] == qid for i in lst.json()["items"])
+        # add group/question/option
+        g = await ac.post("/api/v1/admin/question-groups",
+                          json={"questionnaire_id": qid, "order": 1}, headers=h)
+        gid = g.json()["id"]
+        qn = await ac.post("/api/v1/admin/questions",
+                           json={"group_id": gid, "type": "Single", "content": "q"},
+                           headers=h)
+        quid = qn.json()["id"]
+        o = await ac.post("/api/v1/admin/options",
+                          json={"question_id": quid, "content": "o"}, headers=h)
+        assert o.status_code == 200
+        # get tree
+        tree = await ac.get(f"/api/v1/admin/questionnaires/{qid}", headers=h)
+        groups = tree.json()["questionGroups"]
+        first_option = groups[0]["questions"][0]["options"][0]
+        assert first_option["id"] == o.json()["id"]
+        # delete
+        d = await ac.delete(f"/api/v1/admin/questionnaires/{qid}", headers=h)
+        assert d.status_code == 200
+        nf = await ac.get(f"/api/v1/admin/questionnaires/{qid}", headers=h)
+        assert nf.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_key_conflict_409(app, admin_secret):
+    h = {"X-Admin-Secret": admin_secret}
+    async with _client(app) as ac:
+        await ac.post("/api/v1/admin/questionnaires",
+                      json={"key": "dup", "title": "a"}, headers=h)
+        r = await ac.post("/api/v1/admin/questionnaires",
+                          json={"key": "dup", "title": "b"}, headers=h)
+    assert r.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_create_group_parent_404(app, admin_secret):
+    h = {"X-Admin-Secret": admin_secret}
+    async with _client(app) as ac:
+        r = await ac.post("/api/v1/admin/question-groups",
+                          json={"questionnaire_id": 999999, "order": 1}, headers=h)
+    assert r.status_code == 404
