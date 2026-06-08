@@ -73,14 +73,18 @@ def compute_ranking(
     historical: dict[str, dict],
     vote_start: datetime,
     total_hours: int,
+    name_remap: dict[str, str] | None = None,
 ) -> tuple[list[dict], dict]:
     """Compute character or music ranking.
 
     votes: list of (user_id, submit_datetime, items)
            each item: {"id": str, "first": bool, "reason": str|None}
     historical: name → {"rank_1", "votes_1", "first_1", "rank_2", "votes_2", "first_2"}
+    name_remap: variant name → canonical name (B-040 merge); votes for a merged
+                variant are tallied under the canonical candidate.
     Returns (ranking_list, global_stats_dict)
     """
+    remap = name_remap or {}
     vote_count: dict[str, int] = defaultdict(int)
     first_count: dict[str, int] = defaultdict(int)
     reasons: dict[str, list[str]] = defaultdict(list)
@@ -106,6 +110,7 @@ def compute_ranking(
             name = item.get("id", "")
             if not name:
                 continue
+            name = remap.get(name, name)  # B-040: merge variant → canonical
             is_first = bool(item.get("first", False))
             reason = item.get("reason")
             vote_count[name] += 1

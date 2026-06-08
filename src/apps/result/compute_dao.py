@@ -52,7 +52,8 @@ class ComputeDAO:
             (
                 await self.session.execute(
                     select(CandidateCharacter).where(
-                        CandidateCharacter.vote_year == vote_year
+                        CandidateCharacter.vote_year == vote_year,
+                        CandidateCharacter.merged_into.is_(None),
                     )
                 )
             )
@@ -74,7 +75,10 @@ class ComputeDAO:
         rows = (
             (
                 await self.session.execute(
-                    select(CandidateMusic).where(CandidateMusic.vote_year == vote_year)
+                    select(CandidateMusic).where(
+                        CandidateMusic.vote_year == vote_year,
+                        CandidateMusic.merged_into.is_(None),
+                    )
                 )
             )
             .scalars()
@@ -306,6 +310,21 @@ class ComputeDAO:
             {"id": r.id, "name": r.name, "merged_into": r.merged_into}
             for r in rows
         ]
+
+    async def load_merge_name_map(
+        self, category: str, vote_year: int
+    ) -> dict[str, str]:
+        """variant name → canonical name, for merged candidates of a year."""
+        model = self._candidate_model(category)
+        rows = (await self.session.execute(
+            select(model).where(model.vote_year == vote_year)
+        )).scalars().all()
+        by_id = {r.id: r.name for r in rows}
+        remap: dict[str, str] = {}
+        for r in rows:
+            if r.merged_into is not None and r.merged_into in by_id:
+                remap[r.name] = by_id[r.merged_into]
+        return remap
 
     async def auto_merge(self, category: str, vote_year: int) -> int:
         """Detect + apply name-based merges for a year. Returns merges applied.

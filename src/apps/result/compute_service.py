@@ -75,6 +75,9 @@ class ComputeService:
             char_candidates = await self.dao.load_char_candidates(vote_year)
             music_candidates = await self.dao.load_music_candidates(vote_year)
 
+            char_remap = await self.dao.load_merge_name_map("character", vote_year)
+            music_remap = await self.dao.load_merge_name_map("music", vote_year)
+
             char_hist = await self.dao.load_historical(vote_year, "character")
             music_hist = await self.dao.load_historical(vote_year, "music")
             cp_hist = await self.dao.load_historical(vote_year, "cp")
@@ -93,6 +96,7 @@ class ComputeService:
                 char_hist,
                 vote_start,
                 total_hours,
+                char_remap,
             )
             music_ranking, music_global = compute_ranking(
                 music_votes,
@@ -101,6 +105,7 @@ class ComputeService:
                 music_hist,
                 vote_start,
                 total_hours,
+                music_remap,
             )
             cp_ranking, cp_global = compute_cp_ranking(
                 cp_votes, gender_map, cp_hist, vote_start, total_hours
