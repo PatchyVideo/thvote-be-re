@@ -1,101 +1,63 @@
-"""Tests for the questionnaire structure assembler (DB rows → questionnaireV2)."""
+"""Tests: assemble DB rows -> {"questionnaires":[...]} array."""
 
 
-def _q(id, slot, category, name="n", introduction="i", order=0):
-    return {
-        "id": id, "slot": slot, "category": category,
-        "name": name, "introduction": introduction, "order": order,
-    }
+def _q(id, key, category="main", required=False, title="t", introduction="i", order=0):
+    return {"id": id, "key": key, "category": category, "required": required,
+            "title": title, "introduction": introduction, "order": order}
 
 
-def _g(id, questionnaire_id, order=0, initial_question_id=0):
-    return {
-        "id": id, "questionnaire_id": questionnaire_id,
-        "order": order, "initial_question_id": initial_question_id,
-    }
+def _g(id, questionnaire_id, order=0, hidden_by_default=False):
+    return {"id": id, "questionnaire_id": questionnaire_id, "order": order,
+            "hidden_by_default": hidden_by_default}
 
 
-def _qn(id, group_id, type="Single", content="c", introduction="i", order=0):
-    return {
-        "id": id, "group_id": group_id, "type": type,
-        "content": content, "introduction": introduction, "order": order,
-    }
+def _qn(id, group_id, type="Single", content="c", introduction="i", order=0,
+        max_input_len=1000):
+    return {"id": id, "group_id": group_id, "type": type, "content": content,
+            "introduction": introduction, "order": order,
+            "max_input_len": max_input_len}
 
 
 def _o(id, question_id, content="o", related=None, mutex=None, group=0, order=0):
-    return {
-        "id": id, "question_id": question_id, "content": content,
-        "related_question_ids": related or [], "mutex_option_ids": mutex or [],
-        "option_group": group, "order": order,
-    }
+    return {"id": id, "question_id": question_id, "content": content,
+            "related_question_ids": related or [], "mutex_option_ids": mutex or [],
+            "option_group": group, "order": order}
 
 
-def test_assemble_basic_shape():
+def test_assemble_array_shape_and_order():
     from src.apps.questionnaire.assembler import assemble_structure
 
-    questionnaires = [
-        _q(11, "required", "main", name="必填"),
-        _q(12, "optional1", "main"),
-        _q(13, "optional2", "main"),
-        _q(21, "ex1", "extra"),
-        _q(22, "ex2", "extra"),
-        _q(23, "ex3", "extra"),
-        _q(24, "ex4", "extra"),
-        _q(25, "ex5", "extra"),
-    ]
-    groups = [_g(1101, 11, order=1, initial_question_id=11011)]
-    questions = [_qn(11011, 1101, type="Single", content="q1")]
-    options = [
-        _o(1101101, 11011, content="opt1", related=[11012], mutex=[1101102]),
-    ]
+    questionnaires = [_q(2, "b", order=2, required=False),
+                      _q(1, "a", order=1, required=True, title="必填")]
+    groups = [_g(10, 1, order=1, hidden_by_default=True)]
+    questions = [_qn(100, 10, type="Single")]
+    options = [_o(1000, 100, related=[101], mutex=[1001])]
 
     out = assemble_structure(questionnaires, groups, questions, options)
-
-    assert set(out.keys()) == {"mainQuestionnaire", "extraQuestionnaire"}
-    main = out["mainQuestionnaire"]
-    assert set(main.keys()) == {
-        "requiredQuestionnaire", "optionalQuestionnaire1", "optionalQuestionnaire2"
-    }
-    req = main["requiredQuestionnaire"]
-    assert req["id"] == 11
-    assert req["name"] == "必填"
-    assert len(req["questionGroups"]) == 1
-    grp = req["questionGroups"][0]
-    assert grp["id"] == 1101
-    assert grp["questionnaireId"] == 11
-    assert grp["initialQuestionId"] == 11011
-    q = grp["questions"][0]
-    assert q["id"] == 11011
-    assert q["type"] == "Single"
-    opt = q["options"][0]
-    assert opt["id"] == 1101101
-    assert opt["relatedQuestionIds"] == [11012]
-    assert opt["mutexOptionIds"] == [1101102]
+    qs = out["questionnaires"]
+    assert [q["id"] for q in qs] == [1, 2]  # sorted by order
+    q1 = qs[0]
+    assert q1["key"] == "a" and q1["required"] is True and q1["category"] == "main"
+    assert q1["title"] == "必填"
+    g = q1["questionGroups"][0]
+    assert g["hiddenByDefault"] is True
+    qout = g["questions"][0]
+    assert qout["maxInputLen"] == 1000
+    opt = qout["options"][0]
+    assert opt["relatedQuestionIds"] == [101]
+    assert opt["mutexOptionIds"] == [1001]
     assert opt["optionGroup"] == 0
-
-    extra = out["extraQuestionnaire"]
-    assert set(extra.keys()) == {
-        "exQuestionnaire1", "exQuestionnaire2", "exQuestionnaire3",
-        "exQuestionnaire4", "exQuestionnaire5",
-    }
-    assert extra["exQuestionnaire1"]["id"] == 21
+    assert qs[1]["questionGroups"] == []  # questionnaire with no groups still appears
 
 
 def test_assemble_orders_groups_and_questions():
     from src.apps.questionnaire.assembler import assemble_structure
 
-    questionnaires = [
-        _q(11, "required", "main"), _q(12, "optional1", "main"),
-        _q(13, "optional2", "main"), _q(21, "ex1", "extra"),
-        _q(22, "ex2", "extra"), _q(23, "ex3", "extra"),
-        _q(24, "ex4", "extra"), _q(25, "ex5", "extra"),
-    ]
-    groups = [_g(1102, 11, order=2), _g(1101, 11, order=1)]
-    questions = [_qn(2, 1101, order=2), _qn(1, 1101, order=1)]
+    questionnaires = [_q(1, "a", order=1)]
+    groups = [_g(12, 1, order=2), _g(11, 1, order=1)]
+    questions = [_qn(2, 11, order=2), _qn(1, 11, order=1)]
     options = []
-
     out = assemble_structure(questionnaires, groups, questions, options)
-    grps = out["mainQuestionnaire"]["requiredQuestionnaire"]["questionGroups"]
-    assert [g["id"] for g in grps] == [1101, 1102]
-    qs = grps[0]["questions"]
-    assert [q["id"] for q in qs] == [1, 2]
+    grps = out["questionnaires"][0]["questionGroups"]
+    assert [g["id"] for g in grps] == [11, 12]
+    assert [q["id"] for q in grps[0]["questions"]] == [1, 2]
