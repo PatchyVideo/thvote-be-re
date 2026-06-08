@@ -263,3 +263,75 @@ class ComputeDAO:
                 setattr(row, k, v)
         await self.session.commit()
         return "ok"
+
+    # ── merge / dedup (B-040) ────────────────────────────────────────────────
+
+    @staticmethod
+    def _candidate_model(category: str):
+        from src.db_model.candidate import CandidateCharacter, CandidateMusic
+        return CandidateCharacter if category == "character" else CandidateMusic
+
+    async def set_merged_into(
+        self, candidate_id: int, category: str, target_id: int | None
+    ) -> str:
+        """Point a candidate at a canonical one (or clear it). Returns status."""
+        model = self._candidate_model(category)
+        row = (await self.session.execute(
+            select(model).where(model.id == candidate_id)
+        )).scalar_one_or_none()
+        if row is None:
+            return "not_found"
+        if target_id is not None:
+            target = (await self.session.execute(
+                select(model).where(model.id == target_id)
+            )).scalar_one_or_none()
+            if target is None:
+                return "target_not_found"
+            if target_id == candidate_id:
+                return "self"
+        row.merged_into = target_id
+        await self.session.commit()
+        return "ok"
+
+    async def list_merges(self, category: str, vote_year: int) -> list[dict]:
+        """List merged (non-canonical) candidates for a year."""
+        model = self._candidate_model(category)
+        rows = (await self.session.execute(
+            select(model).where(
+                model.vote_year == vote_year,
+                model.merged_into.isnot(None),
+            )
+        )).scalars().all()
+        return [
+            {"id": r.id, "name": r.name, "merged_into": r.merged_into}
+            for r in rows
+        ]
+
+    async def auto_merge(self, category: str, vote_year: int) -> int:
+        """Detect + apply name-based merges for a year. Returns merges applied.
+
+        Note: candidate tables have UNIQUE(vote_year, name), so exact-name
+        duplicates cannot coexist — this is a no-op under the current schema,
+        wired for cross-source dedup / future constraint relaxation.
+        """
+        from src.apps.admin.candidate_merge import detect_merges
+
+        model = self._candidate_model(category)
+        rows = (await self.session.execute(
+            select(model).where(model.vote_year == vote_year)
+        )).scalars().all()
+        dicts = [
+            {
+                "id": r.id, "vote_year": r.vote_year, "name": r.name,
+                "album": getattr(r, "album", None),
+            }
+            for r in rows
+        ]
+        merges = detect_merges(category, dicts)
+        by_id = {r.id: r for r in rows}
+        for dup_id, canonical_id in merges:
+            if dup_id in by_id:
+                by_id[dup_id].merged_into = canonical_id
+        if merges:
+            await self.session.commit()
+        return len(merges)

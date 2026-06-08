@@ -294,6 +294,54 @@ async def delete_candidate(
     return {"ok": True}
 
 
+@router.get("/candidates/merges")
+async def list_candidate_merges(
+    category: str = "character",
+    vote_year: Optional[int] = None,
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    _check_admin_secret(settings, x_admin_secret)
+    year = vote_year or settings.vote_year
+    return {"items": await service.list_merges(category, year)}
+
+
+@router.post("/candidates/{candidate_id}/merge-into/{target_id}")
+async def merge_candidate(
+    candidate_id: int,
+    target_id: int,
+    category: str = "character",
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    _check_admin_secret(settings, x_admin_secret)
+    result = await service.merge_candidate(candidate_id, target_id, category)
+    if result == "not_found":
+        raise HTTPException(status_code=404, detail="CANDIDATE_NOT_FOUND")
+    if result == "target_not_found":
+        raise HTTPException(status_code=404, detail="TARGET_NOT_FOUND")
+    if result == "self":
+        raise HTTPException(status_code=400, detail="CANNOT_MERGE_SELF")
+    return {"ok": True}
+
+
+@router.post("/candidates/{candidate_id}/unmerge")
+async def unmerge_candidate(
+    candidate_id: int,
+    category: str = "character",
+    x_admin_secret: Optional[str] = Header(None),
+    service: AdminService = Depends(get_admin_service),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    _check_admin_secret(settings, x_admin_secret)
+    result = await service.unmerge_candidate(candidate_id, category)
+    if result == "not_found":
+        raise HTTPException(status_code=404, detail="CANDIDATE_NOT_FOUND")
+    return {"ok": True}
+
+
 def _nomination_to_item(n) -> dict:
     return {
         "id": n.id,

@@ -156,6 +156,9 @@ class AdminService:
             imported = await self.compute_dao.upsert_candidates(
                 vote_year, category, valid
             )
+            # auto-merge name duplicates (no-op under UNIQUE(year,name); wired
+            # for cross-source dedup)
+            await self.compute_dao.auto_merge(category, vote_year)
         return {
             "valid": valid,
             "valid_count": len(valid),
@@ -191,6 +194,23 @@ class AdminService:
         return await dao.set_nomination_status(
             nom_id, status, reviewed_by, None if approve else reason
         )
+
+    # ── candidate merge (B-040) ─────────────────────────────────────────────
+
+    async def merge_candidate(
+        self, candidate_id: int, target_id: int, category: str
+    ) -> str:
+        return await self.compute_dao.set_merged_into(
+            candidate_id, category, target_id
+        )
+
+    async def unmerge_candidate(self, candidate_id: int, category: str) -> str:
+        return await self.compute_dao.set_merged_into(
+            candidate_id, category, None
+        )
+
+    async def list_merges(self, category: str, vote_year: int) -> list[dict]:
+        return await self.compute_dao.list_merges(category, vote_year)
 
     async def list_activity_logs(
         self,
