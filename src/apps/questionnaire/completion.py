@@ -1,13 +1,9 @@
 """Questionnaire completion check — pure logic, no DB.
 
-Block 1 used a weak gate ("any paper submitted"). Block 3 upgrades it to:
-"every question group in the required questionnaire has at least one answer".
-
-The "required" questionnaire is the ``requiredQuestionnaire`` slot under
-``mainQuestionnaire``. A group is considered answered when a paper_answer row
-exists for that (questionnaire_id, group_id). This intentionally tracks
-group-level coverage rather than per-question — a simplification noted in the
-plan; it can be tightened later with frontend agreement.
+Completion = every question group of every ``required=true`` questionnaire has
+at least one answer. A group is answered when a paper_answer row exists for
+that (questionnaire_id, group_id). Group-level coverage (not per-question) —
+a deliberate simplification, tightenable later with frontend agreement.
 """
 from __future__ import annotations
 
@@ -15,13 +11,12 @@ from typing import Any
 
 
 def _required_groups(structure: dict[str, Any]) -> list[tuple[int, int]]:
-    """Return [(questionnaire_id, group_id)] for the required questionnaire."""
-    main = structure.get("mainQuestionnaire") or {}
-    req = main.get("requiredQuestionnaire") or {}
-    qid = req.get("id")
+    """Return [(questionnaire_id, group_id)] across all required questionnaires."""
     out = []
-    for g in req.get("questionGroups", []):
-        out.append((qid, g["id"]))
+    for qn in structure.get("questionnaires", []):
+        if qn.get("required"):
+            for g in qn.get("questionGroups", []):
+                out.append((qn["id"], g["id"]))
     return out
 
 
