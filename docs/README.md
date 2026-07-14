@@ -49,6 +49,8 @@
 | [`superpowers/specs/2026-06-07-mongodb-sync-design.md`](./superpowers/specs/2026-06-07-mongodb-sync-design.md) | MongoDB 全量历史数据同步**设计稿**（4 类数据 A/B/C/D、断点重试、migration 0006、CLI+API 双入口） |
 | [`superpowers/specs/2026-06-07-admin-panel-design.md`](./superpowers/specs/2026-06-07-admin-panel-design.md) | 管理端**设计稿**（REST API 扩展 + 单文件 Web UI，覆盖用户管理、同步触发、候选项、审计日志、导出） |
 | [`superpowers/specs/2026-06-08-candidate-management-design.md`](./superpowers/specs/2026-06-08-candidate-management-design.md) | 候选项管理增强**设计稿**（B-036，CSV/JSON 导入 dry-run 预览 + 单条编辑 + 白色主题） |
+| [`superpowers/specs/2026-06-09-api-version-upgrade-and-nginx-routing-fix-design.md`](./superpowers/specs/2026-06-09-api-version-upgrade-and-nginx-routing-fix-design.md) | v11→v12 API 版本升级 + nginx location 精确路由**设计稿**（配套 plans：[nginx-routing-fix](./superpowers/plans/2026-06-09-nginx-routing-fix.md)、[frontend-api-version-upgrade](./superpowers/plans/2026-06-09-frontend-api-version-upgrade.md)；**均未实施**，联调前置） |
+| [`superpowers/specs/2026-06-09-mongodump-import-design.md`](./superpowers/specs/2026-06-09-mongodump-import-design.md) | 离线 BSON dump 导入**设计稿**（`scripts/import_mongo_dump.py`，复用 sync mappers） |
 
 ### 跨前后端功能设计（Block 1-3，2026-06-08）
 
@@ -60,8 +62,9 @@
 | **B-038 作品投票** ⛔废弃 | [works-voting-backend-design](./superpowers/specs/2026-06-08-works-voting-backend-design.md) | [works-voting-frontend-design](./superpowers/specs/2026-06-08-works-voting-frontend-design.md) |
 | **B-039 问卷结构化(3A)** | [questionnaire-backend-design](./superpowers/specs/2026-06-08-questionnaire-backend-design.md) | [questionnaire-frontend-design](./superpowers/specs/2026-06-08-questionnaire-frontend-design.md) |
 | **B-040 投票对象迁后端(3B)** | [vote-objects-backend-design](./superpowers/specs/2026-06-08-vote-objects-backend-design.md) | [vote-objects-frontend-design](./superpowers/specs/2026-06-08-vote-objects-frontend-design.md) |
+| **B-041 自由问卷管理** | [questionnaire-admin-backend-design](./superpowers/specs/2026-06-08-questionnaire-admin-backend-design.md) | [questionnaire-admin-frontend-design](./superpowers/specs/2026-06-08-questionnaire-admin-frontend-design.md) |
 
-> 对应实施计划在 `superpowers/plans/2026-06-08-<topic>-{backend,frontend}.md`（每块 4 份文档：design×2 + plan×2）。**B-038 作品投票已废弃**（官方作品本届不做）。实施顺序建议 B-037 → B-039/B-040。
+> 对应实施计划在 `superpowers/plans/2026-06-08-<topic>-{backend,frontend}.md`（每块 4 份文档：design×2 + plan×2）。**B-038 作品投票已废弃**（官方作品本届不做）。实施顺序建议 B-037 → B-039/B-040。**B-037/B-039/B-040/B-041 后端已全部合入 main（2026-07-14），四项的前端侧均待做**；B-041 取代 B-039 的 admin/契约部分。
 
 ---
 

@@ -1,7 +1,7 @@
 # 后续开发 BACKLOG（单一仪表盘）
 
 > 创建日期：2026-04-27
-> 最后更新：2026-06-07（B-034 完成：MongoDB 全量历史数据同步，11 collections，batch runner，checkpoint/resume，CLI + API 双入口）
+> 最后更新：2026-07-14（zfq_dev 合并进 main：B-039/B-040/B-041 后端全部进主线；三项前端仍待做）
 
 把散落在 5 份文档里的 follow-up 收拢到这里。**这是仪表盘，不是真理来源**——每项的上下文还在原文档里，本表只给一行摘要 + 跳转。
 
@@ -49,9 +49,9 @@
 | **B-036** | ~~候选项管理增强：CSV/JSON 导入(dry-run 预览) + 单条编辑 + 列表/详情完善 + 管理端改白色主题~~ | ✅ 已完成 (2026-06-08) | — | 3 端点(fields/import/edit) + 后端解析校验 + 白色主题 + 导入/编辑弹窗 |
 | **B-037** | 安全块：二创提名校验(域名/发布时间/udid去重)+ 人工审核队列 + 提名时间窗 + 投票问卷门禁(弱校验) | 🟡 后端+管理端已完成 (2026-06-08)；前端待做 | — | 后端✅[plan](./superpowers/plans/2026-06-08-security-backend.md)：配置/模型0007/纯校验/DAO/编排+门禁/GraphQL/管理端审核UI/公开查询;前端[plan](./superpowers/plans/2026-06-08-security-frontend.md)待实施 |
 | **B-038** | ~~作品投票全链路~~ | ⛔ 已废弃 (2026-06-08)：官方作品投票本届确认不做 | — | 文档存档于 specs/plans,标记废弃,不实施 |
-| **B-039** | 问卷结构化系统(Block 3A)：后端 4 结构表 + admin 整树导入 + structure 查询 + 结构化答题 + 完成校验升级；前端 questionnaireV2 改从后端拉(一次性切换) | 🟡 后端已完成 (2026-06-08, 分支 feat/questionnaire-and-vote-objects-backend)；前端待做 | — | 后端✅：模型0008/assembler/completion/domain/graphql submitPaperV2/门禁升级/整树导入+UI；前端[plan](./superpowers/plans/2026-06-08-questionnaire-frontend.md)待做 |
-| **B-040** | 投票对象迁后端(Block 3B)：角色/音乐 merged_into 去重合并(自动+admin手调) + /vote-objects/characters\|music\|{id} 分类查询；前端角色/音乐/CP 改从后端拉 | 🟡 后端已完成 (2026-06-08, 同分支)；前端待做 | — | 后端✅：merged_into 0009/detect_merges/merge端点/compute归并/vote-objects端点/合并UI；前端[plan](./superpowers/plans/2026-06-08-vote-objects-frontend.md)待做 |
-| **B-041** | 问卷管理增强：自由问卷列表(去年份,持续迭代) + 全层级 CRUD(问卷/题组/题/选项) + 自研嵌套编辑器；契约改问卷数组(migration 0010);取代 B-039 的 admin/契约部分 | 🟡 后端+管理端已完成 (2026-06-09, 分支 feat/questionnaire-and-vote-objects-backend)；投票前端待做 | — | 后端✅：模型重塑+0010/assembler数组/importer数组/completion required/结构端点去年份/扁平答案/13 CRUD端点/自研嵌套编辑器UI；前端[plan](./superpowers/plans/2026-06-08-questionnaire-admin-frontend.md)待做 |
+| **B-039** | 问卷结构化系统(Block 3A)：后端 4 结构表 + admin 整树导入 + structure 查询 + 结构化答题 + 完成校验升级；前端 questionnaireV2 改从后端拉(一次性切换) | 🟡 后端已完成 (2026-06-08, 已合并 main 2026-07-14)；前端待做 | — | 后端✅：模型0008/assembler/completion/domain/graphql submitPaperV2/门禁升级/整树导入+UI；前端[plan](./superpowers/plans/2026-06-08-questionnaire-frontend.md)待做 |
+| **B-040** | 投票对象迁后端(Block 3B)：角色/音乐 merged_into 去重合并(自动+admin手调) + /vote-objects/characters\|music\|{id} 分类查询；前端角色/音乐/CP 改从后端拉 | 🟡 后端已完成 (2026-06-08, 已合并 main 2026-07-14)；前端待做 | — | 后端✅：merged_into 0009/detect_merges/merge端点/compute归并/vote-objects端点/合并UI；前端[plan](./superpowers/plans/2026-06-08-vote-objects-frontend.md)待做 |
+| **B-041** | 问卷管理增强：自由问卷列表(去年份,持续迭代) + 全层级 CRUD(问卷/题组/题/选项) + 自研嵌套编辑器；契约改问卷数组(migration 0010);取代 B-039 的 admin/契约部分 | 🟡 后端+管理端已完成 (2026-06-09, 已合并 main 2026-07-14)；投票前端待做 | — | 后端✅：模型重塑+0010/assembler数组/importer数组/completion required/结构端点去年份/扁平答案/13 CRUD端点/自研嵌套编辑器UI；前端[plan](./superpowers/plans/2026-06-08-questionnaire-admin-frontend.md)待做 |
 | **B-032** ⚡ | 删除（或收紧）`alembic/env.py` 的 `_maybe_baseline_existing_schema`。它只按"表是否存在"自动 stamp、**不校验列是否匹配**，会**掩盖 schema 漂移**——2026-05-31 测试库 `user` 表缺 `phone_verified` 等列、登录全挂就是它造成的（残缺旧表被 stamp 成 0001，0001 的正确建表从未执行）。B-025 已移除 init_db 后门,该 shim 已无存在必要。**首选直接删除**(让 `alembic upgrade head` 老实从 0001 跑)+ 空库重建一次清除残留漂移;次选 stamp 前校验列匹配、不匹配则报错而非闷头 stamp。归属 B-025/B-026 DB 治理。 | 中 | 🟢 可立即做（B-025 已完成,前置解除） | `alembic/env.py:48-94` |
 
 ---

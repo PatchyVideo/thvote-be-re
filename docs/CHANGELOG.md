@@ -4,7 +4,28 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-06-07（GraphQL submit 桥接:投票提交/回读适配前端契约）
+> 最后更新：2026-07-14（合并 zfq_dev:B-039/B-040/B-041 + BSON 离线导入）
+
+## [2026-07-14] 合并 zfq_dev：问卷结构化(B-039) + 投票对象后端(B-040) + 自由问卷管理(B-041) + BSON 离线导入
+
+> 合并记录:代码作者 zfqxuz(分支 `zfq_dev`,2026-06-08..06-28,31 commits),`main` 快进合并至 `e516321`。合并前在隔离 worktree 全量 pytest:343 passed / 1 skipped(跳过项依赖可选 `pymongo`,预期行为)。本条目按 CLAUDE.md §4 补记(原分支未随代码更新 CHANGELOG)。
+
+### Added
+- **B-039 问卷结构化(Block 3A)**:4 张问卷结构表 + `PaperAnswer`(migration `0008`);DB→questionnaireV2 assembler;完成度纯校验;questionnaire domain dao/service/router + `GET /api/v1/questionnaire/structure`;GraphQL `submitPaperV2`/`getPaperV2`(SDL 契约测试钉死);投票门禁升级为结构化完成校验(过渡安全:无结构数据时回退旧行为)。
+- **B-040 投票对象迁后端(Block 3B)**:候选表加 `merged_into`(migration `0009`);`detect_merges` 纯逻辑 + 导入时自动合并 + admin merge/unmerge 端点;统计 compute 尊重 `merged_into`(仅 canonical 项 + 票数归并);`GET /api/v1/vote-objects/characters|music|{id}` 分组查询;管理端候选项合并视图。
+- **B-041 自由问卷管理**(取代 B-039 的 admin/契约部分):问卷结构表重塑为自由列表(去年份、自增 id,migration `0010`,**drop & recreate 4 表**);`GET /questionnaire/structure` 改返回**问卷数组**(原固定 8 槽对象作废)且去年份参数;答案改扁平数组;completion 改按 `required` 字段;13 个 admin CRUD 端点(问卷/题组/题/选项,均 `X-Admin-Secret`)+ 整树导入(支持无 id JSON);管理端自研嵌套编辑器 UI(卡片式问卷列表 + 逐层编辑)。
+- `scripts/import_mongo_dump.py`:离线 BSON dump 导入 CLI(复用 sync mappers,`ON CONFLICT DO NOTHING`;需可选依赖 `pymongo`)。
+- 设计文档:v11→v12 API 版本升级 + nginx 路由修复 spec/plans(`docs/superpowers/{specs,plans}/2026-06-09-*`)——**nginx 与前端侧均未实施**,是前后端联调前置项。
+
+### Fixed
+- alembic:`inspect()` 残留事务导致迁移不落库(clear transaction 后再 `begin_transaction`)。
+- submit:raw submit 改 upsert,防重复落库。
+- questionnaire:`_row_to_dict` 的 datetime 转 ISO 字符串;层级树导入兼容无 id JSON。
+
+### 兼容性 / 部署
+- 需 `alembic upgrade head`(0008→0010)。**0010 对 4 张问卷结构表 drop & recreate**,已导入的问卷结构需重新导入(设计时测试库为空,无损;若目标库已有结构数据需先导出)。
+- `GET /questionnaire/structure` 为破坏性契约变更(数组形态);投票前端 questionnaireV2 加载**待适配**(plan 已写)。
+- v12 路由契约(`/v12-be/` + nginx location 拆分)未部署;部署顺序约束:nginx 升版 ≤ 前端升版,后端结构端点先于前端切换。
 
 ## [2026-06-07] GraphQL Submit 桥接(投票提交/回读适配前端契约)
 
