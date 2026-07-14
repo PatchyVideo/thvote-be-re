@@ -52,20 +52,19 @@
 | **B-039** | 问卷结构化系统(Block 3A)：后端 4 结构表 + admin 整树导入 + structure 查询 + 结构化答题 + 完成校验升级；前端 questionnaireV2 改从后端拉(一次性切换) | 🟡 后端已完成 (2026-06-08, 已合并 main 2026-07-14)；前端待做 | — | 后端✅：模型0008/assembler/completion/domain/graphql submitPaperV2/门禁升级/整树导入+UI；前端[plan](./superpowers/plans/2026-06-08-questionnaire-frontend.md)待做 |
 | **B-040** | 投票对象迁后端(Block 3B)：角色/音乐 merged_into 去重合并(自动+admin手调) + /vote-objects/characters\|music\|{id} 分类查询；前端角色/音乐/CP 改从后端拉 | 🟡 后端已完成 (2026-06-08, 已合并 main 2026-07-14)；前端待做 | — | 后端✅：merged_into 0009/detect_merges/merge端点/compute归并/vote-objects端点/合并UI；前端[plan](./superpowers/plans/2026-06-08-vote-objects-frontend.md)待做 |
 | **B-041** | 问卷管理增强：自由问卷列表(去年份,持续迭代) + 全层级 CRUD(问卷/题组/题/选项) + 自研嵌套编辑器；契约改问卷数组(migration 0010);取代 B-039 的 admin/契约部分 | 🟡 后端+管理端已完成 (2026-06-09, 已合并 main 2026-07-14)；投票前端待做 | — | 后端✅：模型重塑+0010/assembler数组/importer数组/completion required/结构端点去年份/扁平答案/13 CRUD端点/自研嵌套编辑器UI；前端[plan](./superpowers/plans/2026-06-08-questionnaire-admin-frontend.md)待做 |
-| **B-032** ⚡ | 删除（或收紧）`alembic/env.py` 的 `_maybe_baseline_existing_schema`。它只按"表是否存在"自动 stamp、**不校验列是否匹配**，会**掩盖 schema 漂移**——2026-05-31 测试库 `user` 表缺 `phone_verified` 等列、登录全挂就是它造成的（残缺旧表被 stamp 成 0001，0001 的正确建表从未执行）。B-025 已移除 init_db 后门,该 shim 已无存在必要。**首选直接删除**(让 `alembic upgrade head` 老实从 0001 跑)+ 空库重建一次清除残留漂移;次选 stamp 前校验列匹配、不匹配则报错而非闷头 stamp。归属 B-025/B-026 DB 治理。 | 中 | 🟢 可立即做（B-025 已完成,前置解除） | `alembic/env.py:48-94` |
+| **B-032** | ~~删除（或收紧）`alembic/env.py` 的 `_maybe_baseline_existing_schema`。它只按"表是否存在"自动 stamp、**不校验列是否匹配**，会**掩盖 schema 漂移**——2026-05-31 测试库 `user` 表缺 `phone_verified` 等列、登录全挂就是它造成的（残缺旧表被 stamp 成 0001，0001 的正确建表从未执行）。B-025 已移除 init_db 后门,该 shim 已无存在必要。**首选直接删除**(让 `alembic upgrade head` 老实从 0001 跑)+ 空库重建一次清除残留漂移;次选 stamp 前校验列匹配、不匹配则报错而非闷头 stamp。归属 B-025/B-026 DB 治理。~~ | ✅ 已完成 (2026-07-14) | — | 已删 shim,连带移除其配套的"清残留事务"补丁,env.py 恢复标准写法;空库全链路由 CI 迁移烟雾测试(每次 push 对空 PG 跑 upgrade head)持续覆盖 |
 
 ---
 
 > **2026-05-30 对账说明：** `feat/user-and-verify` 已全部合入 `main`，原先「🟡 等本 PR merge」的依赖前提消失。下面按「现在还开放的项」重新分组，不再用「等 PR」维度。已完成项保留在上方状态表（标 ✅ + commit）。
 
-## 🟢 现在可立即做（10 项，全部已解除阻塞）
+## 🟢 现在可立即做（9 项，全部已解除阻塞）
 
 按建议优先级排序：
 
 | 编号 | 一句话 | 估时 |
 |---|---|---|
 | **B-028** ⚡ | 确认/补齐 prod 部署通道（当前 `deploy-test.yml` 是孤本，main push 也只到 test） | 1 天（视真实部署现状而定） |
-| **B-032** ⚡ | 删除/收紧 `_maybe_baseline_existing_schema`（按表存在 stamp、不校验列，掩盖 schema 漂移；2026-05-31 登录全挂的根因）+ 空库重建清残留 | 半天（含空库重建验证） |
 | **B-008** | MongoDB → PG 数据回填脚本**实现**（设计稿已写，`scripts/` 仍空，不动主代码） | 1-3 天（看数据量与边界） |
 | **B-020** | mypy 在 CI 改硬门禁前先清告警 | 半天-1 天（看现存告警量） |
 | **B-021** | Pydantic V1→V2 配置迁移（清 deprecation 告警） | 半天 |

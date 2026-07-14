@@ -4,7 +4,18 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-14（合并 zfq_dev:B-039/B-040/B-041 + BSON 离线导入）
+> 最后更新：2026-07-14（B-032 删除 alembic auto-baseline shim；同日合并 zfq_dev）
+
+## [2026-07-14] B-032：删除 alembic auto-baseline shim
+
+### Removed
+- `alembic/env.py` 的 `_maybe_baseline_existing_schema` 与 `_SENTINELS`:该 shim 按"表是否存在"闷头 stamp、不校验列,会掩盖 schema 漂移(2026-05-31 测试库登录全挂的根因)。B-025 移除 init_db 后门后它已无存在必要,`alembic upgrade head` 现在对空库老实从 0001 跑全链。
+- 连带移除 zfq 为 shim 打的"清残留事务"补丁(`connection.in_transaction()` 时 rollback):shim 没了,inspect() 不再先于 begin_transaction 执行,补丁失去存在理由,`do_run_migrations` 恢复标准 alembic 写法。
+
+### 兼容性
+- 已被 alembic 管理的库(测试机已 stamp 至 0010)不受影响,upgrade head 为 no-op。
+- 若存在**从未被 alembic 管理**的祖传库(有 `user` 表但无 `alembic_version`),upgrade 将因 CREATE TABLE 冲突显式报错而非静默 stamp——这是刻意行为,此类库应清空重建。
+- 空库全链路由 CI 每次 push 的迁移烟雾测试(空 PG 跑 `alembic upgrade head`)持续验证。5-31 事件的残留漂移核查(空库重建测试机)暂缓:待 B-026 CI `alembic check` 门禁或联调中发现异常时再做。
 
 ## [2026-07-14] 合并 zfq_dev：问卷结构化(B-039) + 投票对象后端(B-040) + 自由问卷管理(B-041) + BSON 离线导入
 
