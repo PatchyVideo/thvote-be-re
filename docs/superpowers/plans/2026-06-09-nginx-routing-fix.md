@@ -124,3 +124,13 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### 依赖与顺序
 - 本 plan **独立于**前端 API_PREFIX plan —— nginx 先改可以先部署，前端后续改 URL 也进入 v12
 - 部署后前端仍用 v11 → 全部 404（旧路径不再匹配），**必须**前端同步升级 v12
+
+---
+
+### 实施记录（2026-07-14，Touhou-Vote `c5c508f` + `cfba9cc`）
+
+已部署到测试机 :8082，两处**刻意偏离**原 plan：
+
+1. **保留了 `/v11-be/` 兜底块**作为过渡兼容（原 plan 直接废弃 v11）。原因：当时已部署的前端仍打 v11，砍掉会立刻打断测试页。**移除条件：前端全部切到 v12 API_PREFIX 后删除该块。**
+2. **doujin 映射修正**：`/v12-be/doujin/api` 用精确匹配（`location =`）转发到 `/api/v1/scraper/scrape`，而非原 plan 的 `/api/v1/submit/dojin`。原 plan 映射有两个问题：(a) 语义错——前端 `/doujin/api`（EditDoujin.vue `fetchMsg`）是二创 URL 刮削，Python 对应物是 scraper 模块，请求/响应契约（`{url}` → `{status,msg,data:{title,author_name,tname,cover}}`）实测吻合；(b) nginx 前缀替换会把余下路径拼成 `/api/v1/submit/dojinapi`。
+3. 验收（2026-07-14 curl 实测）：`/v12-be/questionnaire/structure`、`/v12-be/vote-objects/characters`、`/v12-be/graphql`、`/v11-be/graphql` 均 200；doujin 待第二次镜像构建后复验。另：测试环境 scraper 的 Pixiv 凭据未配（返回 `Pixiv authentication failed`），联调二创提名前需在 Nacos 补配置。

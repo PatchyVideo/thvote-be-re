@@ -4,7 +4,16 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-14（B-032 删除 alembic auto-baseline shim；同日合并 zfq_dev）
+> 最后更新：2026-07-14（B-032 删 shim + nginx v12 路由已部署；同日合并 zfq_dev）
+
+## [2026-07-14] nginx v12 路由部署（Touhou-Vote 仓库改动，此处记录以便追溯）
+
+### Changed
+- 测试机 :8082 vote 容器 nginx（`Touhou-Vote/Dockerfile.vote.template`,`c5c508f`+`cfba9cc`）：新增 `/v12-be/` 精确 location（vote-objects/questionnaire → `/api/v1/*`;`/v12-be/doujin/api` 精确匹配 → `/api/v1/scraper/scrape`;兜底 → 根路径），**保留 `/v11-be/` 过渡块**（移除条件：前端全量切 v12）。与原 plan 的两处刻意偏离及验收记录见 [nginx-routing-fix plan 实施记录](./superpowers/plans/2026-06-09-nginx-routing-fix.md)。
+
+### 兼容性
+- v11 前端不受影响（过渡块在）；前端可开始按 v12 API_PREFIX 切换。
+- 发现项：测试环境 scraper 的 Pixiv 凭据未配（`Pixiv authentication failed`），二创提名联调前需补。
 
 ## [2026-07-14] B-032：删除 alembic auto-baseline shim
 
