@@ -4,7 +4,12 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-14（B-032 删 shim + nginx v12 路由已部署；同日合并 zfq_dev）
+> 最后更新：2026-07-14（新增前后端契约对账文档；B-032 删 shim + nginx v12 已部署；同日合并 zfq_dev）
+
+## [2026-07-14] 前后端 API 契约对账（docs）
+
+### Added
+- `docs/migration/api-contract-audit-2026-07-14.md`：后端全量 API × 前端全量调用交叉对账。要点：vote 包 GraphQL 已全量在桥接层（零漂移）;**result 包 18 文件 21+ query 全在老 Rust 契约上**（Python 无 `query*Ranking` 等字段,测试机 :8084 已指向 Python → result 页全挂,为当前最大缺口）;旧 GraphQL submit 12 字段确认全坏但前端零调用（死代码,建议删）;本地静态数据→后端化对照表;修正两条旧判断（`/server-time` 前端并不调用、`search_cps` 恒空暂不影响前端）。
 
 ## [2026-07-14] nginx v12 路由部署（Touhou-Vote 仓库改动，此处记录以便追溯）
 

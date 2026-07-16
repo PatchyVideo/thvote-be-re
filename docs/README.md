@@ -26,6 +26,7 @@
 | 文档 | 用途 |
 |---|---|
 | [`migration/user-manager.md`](./migration/user-manager.md) | Rust → Python 用户与认证模块迁移文档（基础对照 + 阶段进度跟踪） |
+| [`migration/api-contract-audit-2026-07-14.md`](./migration/api-contract-audit-2026-07-14.md) | 前后端 API 契约**全量对账**：无漂移清单、result 包全量漂移（最大项）、旧 GraphQL 死字段、本地静态数据→后端化对照、待拍板决策 |
 
 ## 运维 / 操作（`operations/`）
 
