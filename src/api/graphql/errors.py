@@ -37,6 +37,9 @@ _HUMAN_READABLE_MESSAGES: dict[str, str] = {
     "USER_NOT_FOUND": "用户不存在",
     "SMS_SEND_FAILED": "短信发送失败，请稍后重试",
     "ALIYUN_NOT_CONFIGURED": "服务暂未配置，请联系管理员",
+    "CAPTCHA_REQUIRED": "请完成人机验证",
+    "CAPTCHA_FAILED": "人机验证未通过，请重试",
+    "CAPTCHA_UNAVAILABLE": "人机验证服务暂不可用，请稍后再试",
     "INTERNAL_ERROR": "服务器开小差了，请稍后重试",
     "SUBMIT_LOCKED": "提交处理中，请稍后再试",
 }

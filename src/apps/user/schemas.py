@@ -76,11 +76,14 @@ class LoginPhoneRequest(BaseModel):
 
 class SendEmailCodeRequest(BaseModel):
     email: EmailStr
+    # 前端人机验证回调参数(B-043);ALIYUN_CAPTCHA_ENABLED=true 时必填
+    captcha_verify_param: Optional[str] = Field(None, max_length=8192)
     meta: Meta = Field(default_factory=Meta)
 
 
 class SendSmsCodeRequest(BaseModel):
     phone: str = Field(..., min_length=1, max_length=32)
+    captcha_verify_param: Optional[str] = Field(None, max_length=8192)
     meta: Meta = Field(default_factory=Meta)
 
 

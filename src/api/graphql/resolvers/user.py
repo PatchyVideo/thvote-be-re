@@ -75,20 +75,38 @@ async def _throttle_user_mutation(
 @strawberry.type
 class UserMutation:
     @strawberry.mutation
-    async def request_phone_code(self, info: strawberry.Info, phone: str) -> bool:
+    async def request_phone_code(
+        self,
+        info: strawberry.Info,
+        phone: str,
+        captcha_verify_param: Optional[str] = None,
+    ) -> bool:
         async with map_app_errors(service="sms-service"):
             ip = _client_ip_from_info(info)
-            req = SendSmsCodeRequest(phone=phone, meta=Meta(user_ip=ip))
+            req = SendSmsCodeRequest(
+                phone=phone,
+                captcha_verify_param=captcha_verify_param,
+                meta=Meta(user_ip=ip),
+            )
             async for db in get_db_session():
                 await build_user_service(db).send_sms_code(req)
                 return True
         raise RuntimeError("unreachable")  # pragma: no cover
 
     @strawberry.mutation
-    async def request_email_code(self, info: strawberry.Info, email: str) -> bool:
+    async def request_email_code(
+        self,
+        info: strawberry.Info,
+        email: str,
+        captcha_verify_param: Optional[str] = None,
+    ) -> bool:
         async with map_app_errors(service="mail-service"):
             ip = _client_ip_from_info(info)
-            req = SendEmailCodeRequest(email=email, meta=Meta(user_ip=ip))
+            req = SendEmailCodeRequest(
+                email=email,
+                captcha_verify_param=captcha_verify_param,
+                meta=Meta(user_ip=ip),
+            )
             async for db in get_db_session():
                 await build_user_service(db).send_email_code(req)
                 return True

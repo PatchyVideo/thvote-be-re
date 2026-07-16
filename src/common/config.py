@@ -325,6 +325,30 @@ class Settings(BaseSettings):
         None, validation_alias="ALIYUN_DM_SMTP_PASSWORD"
     )
 
+    # 人机验证(阿里云验证码 2.0,B-043)。enabled=False 时发码闸门直接放行,
+    # 与未接入前行为一致;打开前先在 Nacos 配齐 AK/SceneId 并重启容器(B-017)。
+    aliyun_captcha_enabled: bool = Field(
+        False, validation_alias="ALIYUN_CAPTCHA_ENABLED"
+    )
+    aliyun_captcha_access_key_id: Optional[str] = Field(
+        None, validation_alias="ALIYUN_CAPTCHA_ACCESS_KEY_ID"
+    )
+    aliyun_captcha_access_key_secret: Optional[str] = Field(
+        None, validation_alias="ALIYUN_CAPTCHA_ACCESS_KEY_SECRET"
+    )
+    aliyun_captcha_endpoint: str = Field(
+        "captcha.cn-shanghai.aliyuncs.com",
+        validation_alias="ALIYUN_CAPTCHA_ENDPOINT",
+    )
+    aliyun_captcha_scene_id_send_code: Optional[str] = Field(
+        None, validation_alias="ALIYUN_CAPTCHA_SCENE_ID_SEND_CODE"
+    )
+    # 阿里云侧服务异常时的策略:closed=拒绝发码(默认,防"打挂验证码就能刷"),
+    # open=放行(仅限确认阿里云大面积故障时人工临时切换)。
+    aliyun_captcha_fail_mode: str = Field(
+        "closed", validation_alias="ALIYUN_CAPTCHA_FAIL_MODE"
+    )
+
     @property
     def database_url(self) -> str:
         """兼容性别段，返回数据库连接 URL。"""
