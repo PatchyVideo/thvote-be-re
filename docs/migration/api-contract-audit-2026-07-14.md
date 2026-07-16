@@ -49,5 +49,5 @@
    - 路线 a（沿用既定打法）：后端加 result 桥接层,复刻老 Rust 字段名/签名/返回 shape,result 前端零改动。工作量大（11 个字段,entries/trend 等复杂 shape）。
    - 路线 b：result 前端改写到 Python 新契约（`ranking(category:...)` JSON）。前端 18 文件全动,且 result 是给公众看的,回归成本高。
    - 无论 a/b,`voteYear=11`/`voteStart=2023` 硬编码都要一并处理。
-2. 旧 GraphQL submit 死字段是否删除（建议删,单独小 PR）。
+2. ~~旧 GraphQL submit 死字段是否删除~~ → 已删（同日 PR `refactor/remove-dead-submit-graphql`,详见 CHANGELOG）。
 3. `time.ts` deadline=2099 的改回机制（建议至少加 BACKLOG 提醒项,或直接切后端 voting-status）。

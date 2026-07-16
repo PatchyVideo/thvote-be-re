@@ -21,8 +21,9 @@ async def test_login_mutations_present_and_camelcase():
     }
     missing = expected - names
     assert not missing, f"missing mutations: {missing}"
-    # submit mutations must still be present
-    assert "submitCharacter" in names
+    # submit bridge mutations must still be present (old submitCharacter
+    # etc. were removed as dead code, 2026-07-14)
+    assert "submitCharacterVote" in names
 
 
 VOTERFE_TYPE = """

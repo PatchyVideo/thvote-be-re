@@ -1,5 +1,1 @@
-"""Submit resolvers."""
-
-from .submit import SubmitMutation, SubmitQuery
-
-__all__ = ["SubmitQuery", "SubmitMutation"]
+"""GraphQL resolvers. Import resolver classes from their modules directly."""

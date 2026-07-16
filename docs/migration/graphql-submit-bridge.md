@@ -52,13 +52,9 @@ Python 侧现有 GraphQL submit 字段是自创命名(`submitCharacter(input:)` 
 ## 4. 已定决策
 
 - **改后端适配前端**(A 方案哲学,同 user 模块):前端零改动。
-- **旧字段保留**(用户拍板,以防万一):`submitCharacter(input:)` ×5、`getCharacterSubmit(voteId)` ×7 暂不删除,双轨并存。
-  - ⚠️ 遗留风险记录:`get*(voteId)` 系列**无鉴权可凭裸 voteId 查任意人提交**;保留期间此暴露面继续存在。移除条件:新契约上线且前端验证通过后,单独 PR 清理(届时记 changelog)。
-- ⚠️ 旧 GraphQL submit resolver(resolvers/submit.py)构造服务时传错参数(`SubmitService(db)`,
-  构造函数要 `SubmitDAO`),即旧字段在运行时本就不可用——进一步佐证其无消费者。按"原样保留"
-  决策未修;将来清理旧字段时一并处理。
-- ⚠️ `submitDojin` 例外:新旧 GraphQL 字段同名,无法并存,桥版本经 MRO 取代旧版本(详见
-  CHANGELOG 2026-06-07)。这是"旧字段保留"决策的唯一例外,且旧版本本就不可用。
+- ~~**旧字段保留**(用户拍板,以防万一):`submitCharacter(input:)` ×5、`getCharacterSubmit(voteId)` ×7 暂不删除,双轨并存~~ → **已删除(2026-07-14,用户拍板,单独 PR)**。移除条件当日由全量契约对账满足:前端(Touhou-Vote dev `cfba9cc`)确认零调用、全部在桥接字段上(见 `docs/migration/api-contract-audit-2026-07-14.md`)。删除范围:`resolvers/submit.py` 整文件(12 个旧字段,当时已确认因 `SubmitService(db)` 传参错误运行时全坏)+ `types.py` 13 个孤儿类型;SDL diff 验证零新增、桥接字段原样。
+  - ✅ 附带关闭遗留风险:`get*(voteId)` 系列"无鉴权可凭裸 voteId 查任意人提交"的暴露面随删除消失。
+- `submitDojin` 说明:桥版本此前经 MRO 取代旧同名版本(CHANGELOG 2026-06-07);旧类删除后 MRO 技巧不再需要,桥字段行为不变。
 - 实现期刻意差异(详见 CHANGELOG):锁 key 全局而非按类别;回读 query 不限流;无 per-IP
   预解码限流。
 
