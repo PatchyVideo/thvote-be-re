@@ -4,7 +4,18 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-17（B-043 人机验证后端壳 + 接入手册）
+> 最后更新：2026-07-17（B-043 人机验证全链路上线:后端壳+前端 widget+配置）
+
+## [2026-07-17] B-043 人机验证前端接入 + 测试机全链路生效（Touhou-Vote 仓库改动,此处记录以便追溯）
+
+### Added
+- 前端（Touhou-Vote dev `30efc96`）:`packages/vote/src/common/lib/aliyunCaptcha.ts`（脚本预载+隐藏代理按钮弹出 popup 验证,`CAPTCHA_PREFIX`/`CAPTCHA_SCENE_ID` 常量集中于此,换账户改这里）;LoginBox/UserSettings 的"获取验证码"改为先过验证再发码,`captchaVerifyParam` 随 `request*Code` 提交;新增 CAPTCHA_* 错误的用户提示分支。
+- 降级语义:用户关闭弹窗=静默中止;`AliyunCaptcha.js` 加载失败(如海外网络)=无参直发,由后端闸门裁决。
+
+### 部署/验证（2026-07-17 实测）
+- Nacos 六键已配（ENABLED=true,FAIL_MODE=closed,SceneId `8yhz5jet`）;后端(:18000)与前端(:8082)均已部署。
+- smoke:无参发码→`CAPTCHA_REQUIRED`;伪造参数→`CAPTCHA_FAILED`（阿里云真实判定回包,证明 AK/SceneId/endpoint 全通）;部署产物 chunk 内确认集成存在。
+- 待办:真人浏览器全链路验收、海外网络加载实测、发码端点限流（B-043 剩余项）。
 
 ## [2026-07-17] B-043 人机验证后端壳（配置/客户端/闸门,默认关闭）
 

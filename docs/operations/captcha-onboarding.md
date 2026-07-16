@@ -90,7 +90,7 @@ curl -s -X POST http://154.37.215.62:18000/graphql -H 'content-type: application
 **切换执行顺序**（缺一步就是全站发不出验证码）：
 
 1. 公家账户走一遍 §一~§三，拿到新 SceneId / prefix / AK（新场景先 test 模式）。
-2. **前端**：替换初始化里的 `prefix` 和 `SceneId`（位置见前端接入 plan；两个值都在前端代码/配置里），发版。
+2. **前端**：替换 `Touhou-Vote/packages/vote/src/common/lib/aliyunCaptcha.ts` 里的 `CAPTCHA_PREFIX` 与 `CAPTCHA_SCENE_ID` 两个常量，push dev 发版。⚠️ prefix 与 SceneId 是**两个不同的值**：prefix 在控制台"概览"页（账户级身份标），SceneId 在"场景管理"（场景级）——别填成同一个。
 3. **后端**：Nacos 更新 `ACCESS_KEY_ID/SECRET/SCENE_ID_SEND_CODE` 三个键 → 重启容器。
 4. 跑一遍 §五 smoke（1、2、3 全做）。
 5. 新场景切 formal；个人账户的场景删除、RAM AK **禁用并删除**（避免个人账户继续计费/泄露风险）。
