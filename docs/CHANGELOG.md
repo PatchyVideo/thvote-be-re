@@ -4,7 +4,19 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-14（新增前后端契约对账文档；B-032 删 shim + nginx v12 已部署；同日合并 zfq_dev）
+> 最后更新：2026-07-14（删除 GraphQL 旧 submit 死字段；契约对账文档；B-032 删 shim + nginx v12；同日合并 zfq_dev）
+
+## [2026-07-14] 删除 GraphQL 旧 submit 死字段（refactor PR）
+
+### Removed
+- `resolvers/submit.py` 整文件:旧 `SubmitQuery`(7 字段:`getCharacterSubmit`/`getMusicSubmit`/`getCpSubmit`/`getPaperSubmit`/`getDojinSubmit`/`getVotingStatus`/`getVotingStatistics`,均 `voteId` 入参)与旧 `SubmitMutation`(5 字段:`submitCharacter`/`submitMusic`/`submitCp`/`submitPaper`(input:)及被 MRO 遮蔽的旧 `submitDojin`)。全部 resolver 因 `SubmitService(db)` 传参错误**运行时本就不可用**,且契约对账确认前端零调用(见 api-contract-audit-2026-07-14.md)。
+- `types.py` 13 个随之成为孤儿的类型/转换器:`SubmitMetadata(Input)`、`*SubmitResult`×4、`VotingStatus`、`VotingStatistics`、`SubmitSuccess`、`*SubmitMutationInput`×5→其中 Dojin 系早已被 SDL 剪除、`DojinSubmitInput`、`pydantic_to_graphql_meta/voting_status/voting_statistics`。
+- `tests/contract/test_graphql_login_contract.py` 中"旧 submit 字段仍在"的断言改为守护桥接字段 `submitCharacterVote`。
+
+### 兼容性
+- **SDL 变更**(§8 报备):11 个字段、13 个类型从 schema 消失;**桥接字段与其余契约零变化**(删除前后 SDL diff 验证:只减不增)。前端 codegen 下次运行后 `__generated__` 类型同步瘦身,因无 documents 校验且前端零调用,无破坏。
+- 附带收益:关闭 `get*(voteId)` 无鉴权查任意人提交的历史暴露面(migration 文档 §4 遗留风险项)。
+- REST 的 `/api/v1/voting-status/`、`/voting-statistics/`(pydantic 同名模型)不受影响。
 
 ## [2026-07-14] 前后端 API 契约对账（docs）
 
