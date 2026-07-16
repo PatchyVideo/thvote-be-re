@@ -37,6 +37,7 @@
 | [`operations/deploy-server-setup.md`](./operations/deploy-server-setup.md) | 部署机环境配置：docker-compose.yml 的生命周期、Redis/Nacos 管理方式 |
 | [`operations/nacos-config-center.md`](./operations/nacos-config-center.md) | Nacos 配置中心 + 服务注册接入说明（2026-05-12 替换原 Apollo；含 R-NACOS 双控制台访问） |
 | [`operations/login-config-checklist.md`](./operations/login-config-checklist.md) | 🎯 登录模块所需 Nacos 配置项**待填清单**（按登录方式分组 + JSON 骨架 + 访问入口）|
+| [`operations/captcha-onboarding.md`](./operations/captcha-onboarding.md) | 验证码 2.0 人机验证**傻瓜式接入手册**（B-043：开通/建场景/RAM AK/Nacos 六键/smoke + **个人→公家账户切换清单**） |
 
 ## 设计稿与实施记录（`superpowers/specs/`）
 

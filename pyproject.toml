@@ -29,6 +29,7 @@ dependencies = [
     "nacos-sdk-python>=2.0.0",
     "alembic>=1.13.0",
     "alibabacloud-dypnsapi20170525>=2.0.0",
+    "alibabacloud-captcha20230305>=1.1.0",
     "alibabacloud-tea-openapi>=0.3.0",
     "lxml>=5.0.0",
     "aiohttp>=3.9",

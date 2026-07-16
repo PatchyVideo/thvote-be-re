@@ -4,7 +4,22 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-16（B-043 注册防刷人机验证调研+构思文档）
+> 最后更新：2026-07-17（B-043 人机验证后端壳 + 接入手册）
+
+## [2026-07-17] B-043 人机验证后端壳（配置/客户端/闸门,默认关闭）
+
+### Added
+- `Settings` 新增 `ALIYUN_CAPTCHA_*` 六键（ENABLED/AK 对/ENDPOINT/SCENE_ID_SEND_CODE/FAIL_MODE,均 Nacos 下发,改后需重启,B-017）。
+- `src/common/aliyun/captcha_client.py`:验证码 2.0 `VerifyIntelligentCaptcha` 封装（照 pnvs_client 模式:lazy SDK import、线程池异步、lru_cache 单例;API 级错误→`CAPTCHA_UNAVAILABLE`）。依赖新增 `alibabacloud-captcha20230305>=1.1.0`。
+- `src/common/verification/captcha.py`:`CaptchaService.verify_or_raise` 闸门（行为矩阵:关闭=放行;缺参=`CAPTCHA_REQUIRED`;未过=`CAPTCHA_FAILED`+VerifyCode;服务异常按 `FAIL_MODE` closed(默认拒)/open(放行)）。
+- 接入点:`UserService.send_sms_code/send_email_code` 首行调闸门——GraphQL 与 REST 双入口同时收口。
+- GraphQL `requestPhoneCode/requestEmailCode` 新增**可选**参数 `captchaVerifyParam`(SDL 向后兼容,契约测试钉死可选性);REST `Send*CodeRequest` 加同名可选字段;错误文案表 +3(中文)。
+- 测试 +12(闸门行为矩阵/响应解析/service 接线顺序/SDL 契约),全量 355 passed。
+- `docs/operations/captcha-onboarding.md`:傻瓜式接入手册（开通→建场景→RAM AK→Nacos→smoke→**个人→公家账户切换清单**→坑速查）。
+
+### 兼容性
+- **`ALIYUN_CAPTCHA_ENABLED` 默认 false,零行为变化**;拨 true 前需按手册配齐 Nacos 六键并重启。
+- SDL 变更(§8 报备):仅两个 mutation 各加一个可空参数,旧调用不受影响。
 
 ## [2026-07-16] B-043 注册防刷人机验证：调研与构思（docs）
 

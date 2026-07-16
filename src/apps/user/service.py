@@ -45,8 +45,10 @@ from src.common.exceptions import (
     ValidationError,
 )
 from src.common.verification import (
+    CaptchaService,
     EmailCodeService,
     SmsCodeService,
+    get_captcha_service,
     get_email_code_service,
     get_sms_code_service,
 )
@@ -74,6 +76,7 @@ class UserService:
     activity_dao: ActivityLogDAO
     email_code_service: EmailCodeService = field(default_factory=get_email_code_service)
     sms_code_service: SmsCodeService = field(default_factory=get_sms_code_service)
+    captcha_service: CaptchaService = field(default_factory=get_captcha_service)
     auth: AuthProvider = field(default_factory=AuthProvider)
     redis: object = field(default=None)
     settings: object = field(default=None)
@@ -81,6 +84,7 @@ class UserService:
     # ─── verification-code endpoints ──────────────────────────────────
 
     async def send_email_code(self, request: SendEmailCodeRequest) -> None:
+        await self.captcha_service.verify_or_raise(request.captcha_verify_param)
         await self.email_code_service.send(request.email)
         await self._safe_log(
             event_type="send_email",
@@ -90,6 +94,7 @@ class UserService:
         )
 
     async def send_sms_code(self, request: SendSmsCodeRequest) -> None:
+        await self.captcha_service.verify_or_raise(request.captcha_verify_param)
         result = await self.sms_code_service.send(request.phone)
         await self._safe_log(
             event_type="send_sms",
