@@ -52,6 +52,7 @@
 | [`superpowers/specs/2026-06-08-candidate-management-design.md`](./superpowers/specs/2026-06-08-candidate-management-design.md) | 候选项管理增强**设计稿**（B-036，CSV/JSON 导入 dry-run 预览 + 单条编辑 + 白色主题） |
 | [`superpowers/specs/2026-06-09-api-version-upgrade-and-nginx-routing-fix-design.md`](./superpowers/specs/2026-06-09-api-version-upgrade-and-nginx-routing-fix-design.md) | v11→v12 API 版本升级 + nginx location 精确路由**设计稿**（配套 plans：[nginx-routing-fix](./superpowers/plans/2026-06-09-nginx-routing-fix.md)、[frontend-api-version-upgrade](./superpowers/plans/2026-06-09-frontend-api-version-upgrade.md)；**均未实施**，联调前置） |
 | [`superpowers/specs/2026-06-09-mongodump-import-design.md`](./superpowers/specs/2026-06-09-mongodump-import-design.md) | 离线 BSON dump 导入**设计稿**（`scripts/import_mongo_dump.py`，复用 sync mappers） |
+| [`superpowers/specs/2026-07-16-captcha-anti-abuse-design.md`](./superpowers/specs/2026-07-16-captcha-anti-abuse-design.md) | 注册防刷人机验证**调研+构思**（B-043，阿里云验证码 2.0：闸发码、双入口收口、fail-closed、成本/排期/待拍板项） |
 
 ### 跨前后端功能设计（Block 1-3，2026-06-08）
 

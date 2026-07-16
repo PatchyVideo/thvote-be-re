@@ -4,7 +4,16 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-14（删除 GraphQL 旧 submit 死字段；契约对账文档；B-032 删 shim + nginx v12；同日合并 zfq_dev）
+> 最后更新：2026-07-16（B-043 注册防刷人机验证调研+构思文档）
+
+## [2026-07-16] B-043 注册防刷人机验证：调研与构思（docs）
+
+### Added
+- `docs/superpowers/specs/2026-07-16-captcha-anti-abuse-design.md`：阿里云验证码 2.0 联网调研（1.0 已于 2026-06-10 停服;计费 0.005 元/次;前端动态加载 `AliyunCaptcha.js` popup 绑定发码按钮;服务端 `VerifyIntelligentCaptcha` + PyPI `alibabacloud-captcha20230305`;`captchaVerifyParam` 一次性防重放）+ 方案构思（闸门设在发验证码,service 层双入口收口;`requestPhoneCode/EmailCode` 加可选参数,SDL 向后兼容;默认 fail-closed,Nacos 开关人工降级;成本约 0.005 元/次可忽略）。
+- ⚠️ 勘探发现并记录：发码端点（GraphQL `request*Code` + REST `send-*-code`）**当前无任何后端限流**——列入 B-043 一并修复。
+
+### 兼容性
+- 纯文档,无代码变更。实施将新增 GraphQL 可选参数与 `ALIYUN_CAPTCHA_*` 配置组（届时另记）。
 
 ## [2026-07-14] 删除 GraphQL 旧 submit 死字段（refactor PR）
 
