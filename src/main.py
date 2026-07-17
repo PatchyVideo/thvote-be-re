@@ -24,6 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from .api.graphql.http import AppGraphQLRouter
+from .common.middleware.origin_guard import BrowserOriginGuardMiddleware
 from .api.graphql.schema import schema as graphql_schema
 from .api.rest.legacy import legacy_router
 from .api.rest.v1 import api_router
@@ -109,6 +110,10 @@ def create_app() -> FastAPI:
 
     # Logging middleware
     app.add_middleware(LoggingMiddleware)
+
+    # Browser-origin guard: block lazy scripts on mutating endpoints (B-048).
+    # No-op unless REQUIRE_BROWSER_ORIGIN is enabled.
+    app.add_middleware(BrowserOriginGuardMiddleware)
 
     # CORS middleware
     settings = get_settings()
