@@ -119,13 +119,14 @@ class UserMutation:
         phone: str,
         verify_code: str,
         nickname: Optional[str] = None,
+        device_id: Optional[str] = None,
     ) -> LoginResult:
         async with map_app_errors(service="user-manager"):
             ip = _client_ip_from_info(info)
             await rate_limit(f"login-{ip or 'unknown'}", window=60, max_requests=5)
             req = LoginPhoneRequest(
                 phone=phone, nickname=nickname, verify_code=verify_code,
-                meta=Meta(user_ip=ip),
+                meta=Meta(user_ip=ip, additional_fingureprint=device_id),
             )
             async for db in get_db_session():
                 resp = await build_user_service(db).login_with_phone_code(req)
@@ -139,13 +140,14 @@ class UserMutation:
         email: str,
         verify_code: str,
         nickname: Optional[str] = None,
+        device_id: Optional[str] = None,
     ) -> LoginResult:
         async with map_app_errors(service="user-manager"):
             ip = _client_ip_from_info(info)
             await rate_limit(f"login-{ip or 'unknown'}", window=60, max_requests=5)
             req = LoginEmailRequest(
                 email=email, nickname=nickname, verify_code=verify_code,
-                meta=Meta(user_ip=ip),
+                meta=Meta(user_ip=ip, additional_fingureprint=device_id),
             )
             async for db in get_db_session():
                 resp = await build_user_service(db).login_with_email_code(req)

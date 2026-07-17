@@ -39,6 +39,11 @@ class User(Base):
     register_ip_address: Mapped[str] = mapped_column(
         String(64), nullable=False, default=""
     )
+    # 注册时的客户端设备指纹(localStorage UUID),反刷票取证用(B-044)。
+    # server_default 与 migration 0011 的 DEFAULT '' 一致(避免模型/迁移漂移)。
+    register_device_id: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="", server_default=""
+    )
 
     __table_args__ = (
         # Soft-deleted rows are allowed to have both identifiers cleared
