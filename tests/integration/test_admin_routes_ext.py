@@ -169,6 +169,19 @@ async def test_activity_logs_empty(app, admin_secret):
 
 
 @pytest.mark.asyncio
+async def test_activity_logs_bad_since_returns_400(app, admin_secret):
+    """Regression: an unparsable `since` used to blow up datetime.fromisoformat
+    into an unhandled 500; it must now be a clean 400 (INVALID_SINCE_FORMAT)."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.get(
+            "/api/v1/admin/activity-logs?since=not-a-date",
+            headers={"X-Admin-Secret": admin_secret},
+        )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_export_votes_csv(app, admin_secret):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.get(

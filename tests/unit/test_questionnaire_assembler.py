@@ -61,3 +61,20 @@ def test_assemble_orders_groups_and_questions():
     grps = out["questionnaires"][0]["questionGroups"]
     assert [g["id"] for g in grps] == [11, 12]
     assert [q["id"] for q in grps[0]["questions"]] == [1, 2]
+
+
+def test_assemble_keeps_question_and_option_order_value():
+    """Regression: _question_out/_option_out used to drop "order", so editing
+    a question/option in the admin UI silently reset its order to 0."""
+    from src.apps.questionnaire.assembler import assemble_structure
+
+    questionnaires = [_q(1, "a", order=1)]
+    groups = [_g(10, 1, order=1)]
+    questions = [_qn(100, 10, order=3)]
+    options = [_o(1000, 100, order=7)]
+
+    out = assemble_structure(questionnaires, groups, questions, options)
+    group = out["questionnaires"][0]["questionGroups"][0]
+    question = group["questions"][0]
+    assert question["order"] == 3
+    assert question["options"][0]["order"] == 7

@@ -162,6 +162,33 @@ async def test_key_conflict_409(app, admin_secret):
 
 
 @pytest.mark.asyncio
+async def test_list_questionnaires_returns_question_count(app, admin_secret):
+    """Regression: list endpoint used to return only group_count, so the
+    admin UI's "问题" (question) count column always showed 0."""
+    h = {"X-Admin-Secret": admin_secret}
+    async with _client(app) as ac:
+        r = await ac.post("/api/v1/admin/questionnaires",
+                          json={"key": "qc1", "title": "t1", "category": "main",
+                                "required": True, "order": 1}, headers=h)
+        assert r.status_code == 200
+        qid = r.json()["id"]
+        g = await ac.post("/api/v1/admin/question-groups",
+                          json={"questionnaire_id": qid, "order": 1}, headers=h)
+        gid = g.json()["id"]
+        for i in range(2):
+            qn = await ac.post("/api/v1/admin/questions",
+                               json={"group_id": gid, "type": "Single",
+                                     "content": f"q{i}"}, headers=h)
+            assert qn.status_code == 200
+
+        lst = await ac.get("/api/v1/admin/questionnaires", headers=h)
+        assert lst.status_code == 200
+        item = next(i for i in lst.json()["items"] if i["id"] == qid)
+        assert item["question_count"] == 2
+        assert item["group_count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_create_group_parent_404(app, admin_secret):
     h = {"X-Admin-Secret": admin_secret}
     async with _client(app) as ac:
