@@ -54,6 +54,7 @@
 | [`superpowers/specs/2026-06-09-api-version-upgrade-and-nginx-routing-fix-design.md`](./superpowers/specs/2026-06-09-api-version-upgrade-and-nginx-routing-fix-design.md) | v11→v12 API 版本升级 + nginx location 精确路由**设计稿**（配套 plans：[nginx-routing-fix](./superpowers/plans/2026-06-09-nginx-routing-fix.md)、[frontend-api-version-upgrade](./superpowers/plans/2026-06-09-frontend-api-version-upgrade.md)；**均未实施**，联调前置） |
 | [`superpowers/specs/2026-06-09-mongodump-import-design.md`](./superpowers/specs/2026-06-09-mongodump-import-design.md) | 离线 BSON dump 导入**设计稿**（`scripts/import_mongo_dump.py`，复用 sync mappers） |
 | [`superpowers/specs/2026-07-16-captcha-anti-abuse-design.md`](./superpowers/specs/2026-07-16-captcha-anti-abuse-design.md) | 注册防刷人机验证**调研+构思**（B-043，阿里云验证码 2.0：闸发码、双入口收口、fail-closed、成本/排期/待拍板项） |
+| [`superpowers/specs/2026-07-17-anti-vote-farming-design.md`](./superpowers/specs/2026-07-17-anti-vote-farming-design.md) | 反刷票（一人多小号）**证据采集设计**（B-044，设备 UUID + 可信 IP，只取证不拦截；Phase 0 已实现，Phase 1/2 follow-up） |
 
 ### 跨前后端功能设计（Block 1-3，2026-06-08）
 
