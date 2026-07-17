@@ -290,15 +290,26 @@ def create_app() -> FastAPI:
     graphql_app = AppGraphQLRouter(graphql_schema)
     app.include_router(graphql_app, prefix="/graphql")
 
-    # Admin UI static files (optional — only if directory exists)
+    # Admin UI static files (optional — only if directory exists).
+    # /admin-ui       = new Vue app (Vite build output, committed to src/admin_ui)
+    # /admin-ui-legacy = old single-file panel, kept as fallback for the tools not
+    #                    yet migrated to Vue (B-049 Plan 2 phased migration).
     import os as _os
     from fastapi.staticfiles import StaticFiles
-    _admin_ui_dir = _os.path.join(_os.path.dirname(__file__), "admin_ui")
+    _here = _os.path.dirname(__file__)
+    _admin_ui_dir = _os.path.join(_here, "admin_ui")
     if _os.path.isdir(_admin_ui_dir):
         app.mount(
             "/admin-ui",
             StaticFiles(directory=_admin_ui_dir, html=True),
             name="admin_ui",
+        )
+    _admin_ui_legacy_dir = _os.path.join(_here, "admin_ui_legacy")
+    if _os.path.isdir(_admin_ui_legacy_dir):
+        app.mount(
+            "/admin-ui-legacy",
+            StaticFiles(directory=_admin_ui_legacy_dir, html=True),
+            name="admin_ui_legacy",
         )
 
     return app
