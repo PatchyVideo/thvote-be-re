@@ -119,10 +119,13 @@ def test_parse_api_error_raises_unavailable():
 
 
 @pytest.mark.asyncio
-async def test_send_sms_code_gates_before_sending():
+async def test_send_sms_code_gates_before_sending(monkeypatch):
+    import src.apps.user.service as service_mod
     from src.apps.user.schemas import SendSmsCodeRequest
     from src.apps.user.service import UserService
 
+    # per-IP rate limit runs before captcha; stub it out (no redis in unit test)
+    monkeypatch.setattr(service_mod, "rate_limit", AsyncMock())
     captcha = SimpleNamespace(
         verify_or_raise=AsyncMock(side_effect=ValidationError("CAPTCHA_REQUIRED"))
     )
@@ -141,10 +144,12 @@ async def test_send_sms_code_gates_before_sending():
 
 
 @pytest.mark.asyncio
-async def test_send_email_code_passes_param_through():
+async def test_send_email_code_passes_param_through(monkeypatch):
+    import src.apps.user.service as service_mod
     from src.apps.user.schemas import SendEmailCodeRequest
     from src.apps.user.service import UserService
 
+    monkeypatch.setattr(service_mod, "rate_limit", AsyncMock())
     captcha = SimpleNamespace(verify_or_raise=AsyncMock())
     email = SimpleNamespace(send=AsyncMock())
     service = UserService(

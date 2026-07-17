@@ -44,6 +44,7 @@ from src.common.exceptions import (
     UnauthorizedError,
     ValidationError,
 )
+from src.common.middleware.rate_limit import rate_limit
 from src.common.verification import (
     CaptchaService,
     EmailCodeService,
@@ -82,9 +83,30 @@ class UserService:
     settings: object = field(default=None)
 
     # ─── verification-code endpoints ──────────────────────────────────
+    #
+    # 限流分两层(B-043 补齐:此前发码端点无任何后端限流):
+    # 1. per-IP 洪泛限流放在 captcha **之前**——挡洪泛,并保护每次验证码校验
+    #    对阿里云的付费调用(0.005 元/次)不被刷爆。依赖 X-Real-IP 可信(B-044)。
+    #    额度取 30/60s(宽松):captcha 已逐次拦每一次发码,per-IP 只是洪泛/成本
+    #    兜底,可放宽;而共用出口 IP(校园/小区 NAT)一分钟内可能有几十真实用户同时
+    #    注册,30/60s 给足余量避免误伤(30×0.005=0.15 元/分钟/IP 成本可忽略)。
+    #    撞线仅"请求过于频繁"软提示,60s 后可重试。
+    # 2. per-目标(手机号/邮箱)重发间隔放在 captcha **之后**——只对真正发出的
+    #    码计数,避免"过验证码前失败也占额度"误伤真实用户。邮箱已有 120s guard。
+
+    _SEND_CODE_IP_WINDOW = 60
+    _SEND_CODE_IP_MAX = 30
+    _SEND_CODE_PHONE_WINDOW = 60
+    _SEND_CODE_PHONE_MAX = 1
 
     async def send_email_code(self, request: SendEmailCodeRequest) -> None:
+        await rate_limit(
+            f"sendcode-ip-{request.meta.user_ip or 'unknown'}",
+            window=self._SEND_CODE_IP_WINDOW,
+            max_requests=self._SEND_CODE_IP_MAX,
+        )
         await self.captcha_service.verify_or_raise(request.captcha_verify_param)
+        # 邮箱 per-地址重发间隔由 EmailCodeService 的 120s guard 承担(在 captcha 之后)
         await self.email_code_service.send(request.email)
         await self._safe_log(
             event_type="send_email",
@@ -94,7 +116,17 @@ class UserService:
         )
 
     async def send_sms_code(self, request: SendSmsCodeRequest) -> None:
+        await rate_limit(
+            f"sendcode-ip-{request.meta.user_ip or 'unknown'}",
+            window=self._SEND_CODE_IP_WINDOW,
+            max_requests=self._SEND_CODE_IP_MAX,
+        )
         await self.captcha_service.verify_or_raise(request.captcha_verify_param)
+        await rate_limit(
+            f"sendcode-phone-{request.phone}",
+            window=self._SEND_CODE_PHONE_WINDOW,
+            max_requests=self._SEND_CODE_PHONE_MAX,
+        )
         result = await self.sms_code_service.send(request.phone)
         await self._safe_log(
             event_type="send_sms",
