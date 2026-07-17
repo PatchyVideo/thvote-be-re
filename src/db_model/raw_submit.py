@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import DateTime, Index, Integer, String, Text, func
+from sqlalchemy import (
+    Boolean, DateTime, Index, Integer, String, Text, func, text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -27,6 +29,10 @@ class RawCharacterSubmit(Base):
     # 客户端环境指纹 {ua(服务端从请求头取), tz, screen, lang};反刷票取证,
     # 仅记录不拦截。JSON 便于以后加信号不改表(B-046)。
     client_env: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # 管理端作废软标记(B-049):可逆,仅记录。让它影响排名属 B-050 计票重写。
+    invalidated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     payload: Mapped[list] = mapped_column(JSON, nullable=False)
     legacy_mongo_id: Mapped[str | None] = mapped_column(
         String(24), nullable=True, unique=True
@@ -53,6 +59,10 @@ class RawMusicSubmit(Base):
     # 客户端环境指纹 {ua(服务端从请求头取), tz, screen, lang};反刷票取证,
     # 仅记录不拦截。JSON 便于以后加信号不改表(B-046)。
     client_env: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # 管理端作废软标记(B-049):可逆,仅记录。让它影响排名属 B-050 计票重写。
+    invalidated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     payload: Mapped[list] = mapped_column(JSON, nullable=False)
     legacy_mongo_id: Mapped[str | None] = mapped_column(
         String(24), nullable=True, unique=True
@@ -79,6 +89,10 @@ class RawCPSubmit(Base):
     # 客户端环境指纹 {ua(服务端从请求头取), tz, screen, lang};反刷票取证,
     # 仅记录不拦截。JSON 便于以后加信号不改表(B-046)。
     client_env: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # 管理端作废软标记(B-049):可逆,仅记录。让它影响排名属 B-050 计票重写。
+    invalidated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     payload: Mapped[list] = mapped_column(JSON, nullable=False)
     legacy_mongo_id: Mapped[str | None] = mapped_column(
         String(24), nullable=True, unique=True
@@ -105,6 +119,10 @@ class RawPaperSubmit(Base):
     # 客户端环境指纹 {ua(服务端从请求头取), tz, screen, lang};反刷票取证,
     # 仅记录不拦截。JSON 便于以后加信号不改表(B-046)。
     client_env: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # 管理端作废软标记(B-049):可逆,仅记录。让它影响排名属 B-050 计票重写。
+    invalidated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     papers_json: Mapped[str] = mapped_column(Text, nullable=False)
     legacy_mongo_id: Mapped[str | None] = mapped_column(
         String(24), nullable=True, unique=True
@@ -131,6 +149,10 @@ class RawDojinSubmit(Base):
     # 客户端环境指纹 {ua(服务端从请求头取), tz, screen, lang};反刷票取证,
     # 仅记录不拦截。JSON 便于以后加信号不改表(B-046)。
     client_env: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # 管理端作废软标记(B-049):可逆,仅记录。让它影响排名属 B-050 计票重写。
+    invalidated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     payload: Mapped[list] = mapped_column(JSON, nullable=False)
     legacy_mongo_id: Mapped[str | None] = mapped_column(
         String(24), nullable=True, unique=True
@@ -159,6 +181,12 @@ Index(
     RawDojinSubmit.created_at.desc(),
 )
 
+Index("idx_raw_character_user_ip", RawCharacterSubmit.user_ip)
+Index("idx_raw_music_user_ip", RawMusicSubmit.user_ip)
+Index("idx_raw_cp_user_ip", RawCPSubmit.user_ip)
+Index("idx_raw_paper_user_ip", RawPaperSubmit.user_ip)
+Index("idx_raw_dojin_user_ip", RawDojinSubmit.user_ip)
+
 
 class RawWorkSubmit(Base):
     __tablename__ = "raw_work"
@@ -180,6 +208,10 @@ class RawWorkSubmit(Base):
     # 客户端环境指纹 {ua(服务端从请求头取), tz, screen, lang};反刷票取证,
     # 仅记录不拦截。JSON 便于以后加信号不改表(B-046)。
     client_env: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # 管理端作废软标记(B-049):可逆,仅记录。让它影响排名属 B-050 计票重写。
+    invalidated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     payload: Mapped[list] = mapped_column(JSON, nullable=False)
     legacy_mongo_id: Mapped[str | None] = mapped_column(
         String(24), nullable=True, unique=True

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 from typing import Optional
 
 import redis.asyncio as aioredis
@@ -10,6 +11,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.apps.admin.deps import require_admin
 from src.apps.admin.schemas import (
     ActivityLogResponse,
     BanResponse,
@@ -43,11 +45,20 @@ from src.common.redis import get_redis
 
 _logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(
+    prefix="/admin",
+    tags=["admin"],
+    # B-049:统一鉴权闸门(secret 必填 + IP 白名单,fail-closed)。
+    dependencies=[Depends(require_admin)],
+)
 
 
 def _check_admin_secret(settings: Settings, secret: Optional[str]) -> None:
-    if settings.admin_secret and secret != settings.admin_secret:
+    # belt-and-suspenders:router 级 require_admin 已是主闸门,这里保留仅为
+    # 冗余兜底(同样返回 403),不再是唯一防线。
+    if settings.admin_secret and (
+        not secret or not secrets.compare_digest(secret, settings.admin_secret)
+    ):
         raise HTTPException(status_code=403, detail="FORBIDDEN")
 
 

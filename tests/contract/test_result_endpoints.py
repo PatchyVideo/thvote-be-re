@@ -17,7 +17,11 @@ except ImportError:
 @pytest_asyncio.fixture
 async def client():
     """Create an ASGI test client with fakeredis and in-memory SQLite."""
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        async_sessionmaker,
+        create_async_engine,
+    )
     from src.db_model.base import Base
     from src.common.database import get_db_session
     from src.common.redis import get_redis
@@ -44,21 +48,24 @@ async def client():
     app.dependency_overrides[get_db_session] = _override_get_db
     app.dependency_overrides[get_redis] = _override_get_redis
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
 
     await eng.dispose()
 
 
+_ALICE = {"category": "character", "name": "Alice"}
+
 RESULT_ENDPOINTS = [
-    ("POST", "/api/v1/result/ranking/",          {"category": "character"}),
-    ("POST", "/api/v1/result/trends/",            {"category": "character", "name": "Alice"}),
-    ("POST", "/api/v1/result/global-stats/",      {}),
-    ("POST", "/api/v1/result/single/",            {"category": "character", "name": "Alice"}),
-    ("POST", "/api/v1/result/reasons/",           {"category": "character", "name": "Alice"}),
-    ("POST", "/api/v1/result/covote/",            {"category": "character"}),
-    ("POST", "/api/v1/result/completion-rates/",  {}),
-    ("POST", "/api/v1/result/questionnaire/",     {"question_id": "q11011"}),
+    ("POST", "/api/v1/result/ranking/", {"category": "character"}),
+    ("POST", "/api/v1/result/trends/", _ALICE),
+    ("POST", "/api/v1/result/global-stats/", {}),
+    ("POST", "/api/v1/result/single/", _ALICE),
+    ("POST", "/api/v1/result/reasons/", _ALICE),
+    ("POST", "/api/v1/result/covote/", {"category": "character"}),
+    ("POST", "/api/v1/result/completion-rates/", {}),
+    ("POST", "/api/v1/result/questionnaire/", {"question_id": "q11011"}),
     ("POST", "/api/v1/result/questionnaire-trend/", {"question_id": "q11011"}),
 ]
 
@@ -67,13 +74,18 @@ RESULT_ENDPOINTS = [
 @pytest.mark.parametrize("method,path,body", RESULT_ENDPOINTS)
 async def test_result_endpoints_503_before_compute(client, method, path, body):
     resp = await client.request(method, path, json=body)
-    assert resp.status_code == 503, f"{path} expected 503, got {resp.status_code}: {resp.text}"
+    assert resp.status_code == 503, (
+        f"{path} expected 503, got {resp.status_code}: {resp.text}"
+    )
     assert resp.json()["detail"] == "RESULT_NOT_COMPUTED"
 
 
 @pytest.mark.asyncio
-async def test_admin_compute_results_endpoint_reachable(client):
-    resp = await client.post("/api/v1/admin/compute-results")
+async def test_admin_compute_results_endpoint_reachable(client, admin_secret):
+    resp = await client.post(
+        "/api/v1/admin/compute-results",
+        headers={"X-Admin-Secret": admin_secret},
+    )
     # Returns 200 with empty data (no votes seeded), not 404
     assert resp.status_code == 200
     data = resp.json()
@@ -81,11 +93,22 @@ async def test_admin_compute_results_endpoint_reachable(client):
 
 
 @pytest.mark.asyncio
-async def test_admin_import_candidates_endpoint_reachable(client):
-    resp = await client.post("/api/v1/admin/import-candidates", json={
-        "vote_year": 2026,
-        "category": "character",
-        "items": [{"name": "Alice", "name_jp": "アリス", "origin": "EoSD", "type": "旧作"}],
-    })
+async def test_admin_import_candidates_endpoint_reachable(client, admin_secret):
+    resp = await client.post(
+        "/api/v1/admin/import-candidates",
+        json={
+            "vote_year": 2026,
+            "category": "character",
+            "items": [
+                {
+                    "name": "Alice",
+                    "name_jp": "アリス",
+                    "origin": "EoSD",
+                    "type": "旧作",
+                }
+            ],
+        },
+        headers={"X-Admin-Secret": admin_secret},
+    )
     assert resp.status_code == 200
     assert resp.json()["ok"] is True

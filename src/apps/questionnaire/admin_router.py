@@ -1,11 +1,13 @@
 """Questionnaire admin CRUD router (B-041). All endpoints require X-Admin-Secret."""
 from __future__ import annotations
 
+import secrets
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.apps.admin.deps import require_admin
 from src.apps.questionnaire.admin_dao import QuestionnaireAdminDAO
 from src.apps.questionnaire.admin_service import (
     KeyConflictError,
@@ -17,11 +19,18 @@ from src.apps.questionnaire.service import QuestionnaireService
 from src.common.config import Settings, get_settings
 from src.common.database import get_db_session
 
-router = APIRouter(prefix="/admin", tags=["questionnaire-admin"])
+router = APIRouter(
+    prefix="/admin",
+    tags=["questionnaire-admin"],
+    # B-049:统一鉴权闸门(secret 必填 + IP 白名单,fail-closed)。
+    dependencies=[Depends(require_admin)],
+)
 
 
 def _check_admin_secret(settings: Settings, secret: Optional[str]) -> None:
-    if settings.admin_secret and secret != settings.admin_secret:
+    if settings.admin_secret and (
+        not secret or not secrets.compare_digest(secret, settings.admin_secret)
+    ):
         raise HTTPException(status_code=403, detail="FORBIDDEN")
 
 

@@ -4,7 +4,48 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-17（删除死代码 vote_data 模块 + 记录计票断链 B-050）
+> 最后更新：2026-07-17（B-049 安全监控管理端 API：概览/聚类/可疑名单/投票浏览器/账号钻取 + 处置动作）
+
+## [2026-07-17] B-049 安全监控管理端 API + 处置动作（record-only）
+
+> 承接 B-044~B-048 各反刷票取证信号(IP/设备指纹、`fill_duration_ms`、`client_env`、作弊评分)，本次落地一套只读监控视图 + 可逆的人工处置端点，挂在既有 fail-closed 的 `require_admin` 闸门下(见上一条目)。只读 `raw_*`(路径 A)，`raw_work`(废弃路径 B)不纳入。
+
+### Added
+- migration `0014`：`raw_character/music/cp/paper/dojin` 各表加 `invalidated`(bool，默认 `false`，管理端软作废标记)+ 若干监控查询索引；新表 `voter_review`(`user_id` 主键，`status`/`note`/`updated_at`，人工复核记录)。
+- `src/apps/admin/monitor/`：新的监控子模块，挂在 `/api/v1/admin/monitor`，与 `router.py` 一样受 `require_admin` 统一闸门保护。
+  - `GET /overview`：各类别投票总数、去重 IP/设备数、按日提交量。
+  - `GET /groups`、`GET /groups/{kind}/{key}/members`：IP/设备聚类(同一 IP 或设备关联的多账号)及成员列表。
+  - `GET /suspects`：固定权重可疑打分(首投过快、无 `client_env`、UA 疑似脚本、注册到首投间隔过短、所在 IP/设备组过大)，分页返回、候选集封顶避免全量算分。
+  - `GET /votes`：单类别投票浏览器，支持按 `vote_id`/`user_ip`/`device`/`invalidated` 过滤 + 分页。
+  - `GET /account/{vote_id}`：单账号钻取，聚合其在 5 个类别下的全部提交 + 已有复核记录 + 关联的 IP/设备组。
+  - `PATCH /vote/{category}/{row_id}/invalidate`、`.../restore`：切换单条投票记录的 `invalidated` 标记，行不存在返回 404。
+  - `PATCH /account/{vote_id}/review`：人工复核状态 upsert(`status`/`note`，每账号一行，覆盖式更新)。
+- `tests/integration/test_admin_monitor.py`：15 个用例，覆盖聚类/分页/评分/HTTP 鉴权 + 本次新增的处置动作(作废→列表可见→恢复；作废不存在的行 404；复核 upsert 覆盖并反映到账号详情)。
+
+### Record-only 边界（重要）
+- `invalidate`/`restore`/`review` **只写标记或行数据，不做任何排名重算**——排名仍完全由现有(未改动的)计票逻辑产出。响应 `detail` 明确写"已记录；影响排名需 B-050 计票重写落地后生效"，前端据此提示管理员"已记录，暂不影响当前排名"。
+- 这是刻意的阶段边界：B-050(计票重写)落地前，本控制台只做"取证 + 记录"，不接入排名计算，避免在旧计票逻辑上叠加新的隐式规则。
+
+### 兼容性 / 部署
+- 新增数据库表/列需要 `alembic upgrade head`(migration `0014`)才能使用；未跑迁移时相关端点会因列/表缺失报错。
+- 无破坏性变更：新增端点均为新路径，不影响既有 `/api/v1/admin/*` 端点语义。
+
+## [2026-07-17] B-049 管理端鉴权 fail-closed + IP 白名单
+
+> Review 发现 `src/apps/questionnaire/admin_router.py` 有独立 `/admin` 路由,仍用旧的 fail-open `_check_admin_secret`(未配 `admin_secret` 时直接放行)——与 `src/apps/admin/router.py` 已切换的 fail-closed `require_admin` 不是同一套闸门,形成一个未闭合的开放口子。本次把它补齐。
+
+### Changed
+- `_check_admin_secret` 由 fail-open 改 fail-closed(未配 `admin_secret` 一律 403);`require_admin` 统一闸门(secret + IP 白名单)应用于 `src/apps/admin/router.py` 与 `src/apps/questionnaire/admin_router.py` 两个 `/admin` 路由。
+- `require_admin`(以及两处 `_check_admin_secret`)的 secret 比较改用 `secrets.compare_digest` 常量时间比较,避免逐字节比较的响应耗时差被用于旁路猜测 secret。
+
+### Security
+- 新配置 `ADMIN_ALLOWED_IPS`(Nacos JSON 数组字符串,空 = 不限 IP;非空时客户端 IP 须精确匹配或落入某个 CIDR 才放行,否则 403)。
+- 新增 `tests/integration/test_admin_auth.py`:对 `require_admin` 的 fail-closed 行为做 HTTP 级回归覆盖(未配 secret 403、错 secret 403、IP 不在白名单 403、空白名单 + 正确 secret 放行)。
+- `tests/contract/test_result_endpoints.py` 删除了一个本地 `admin_secret` fixture——它不还原 `ADMIN_SECRET` 环境变量,会污染同进程内后续测试;改用 `tests/contract/conftest.py` 里已有的、会正确还原环境的同名 fixture。
+
+### 兼容性 / 部署
+- **部署警告(重要)**:上线前必须在 Nacos 配好 `ADMIN_SECRET`,否则**所有 `/api/v1/admin/*` 端点将 403**(测试机此前 `ADMIN_SECRET` 未配 = 裸奔,部署本改动前务必先配)。
+- 遗留:`main.py` 的 `/admin/reload-config`、`/admin/discover*` 三个 ops 端点仍未纳入闸门(需先分析内部调用方),B-042 部分保留。
 
 ## [2026-07-17] 删除死代码：vote_data 模块（路径 B 空壳）
 
