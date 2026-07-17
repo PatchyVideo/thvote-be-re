@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Date, cast, func, or_, select, union_all
+from sqlalchemy import Date, func, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.admin.monitor.scoring import AccountFeatures
@@ -65,7 +65,10 @@ class MonitorDAO:
         sub = union_all(*[
             select(m.created_at.label("ts")) for m in _MODELS
         ]).subquery()
-        day = cast(sub.c.ts, Date).label("day")
+        # func.date(...)(不是 SQL CAST)在 Postgres/SQLite 都编译为 date(...):
+        # Postgres 的 date(timestamp) 是标准日期函数;SQLite 的 CAST(ts AS DATE) 会走数值
+        # 亲和性把日期字符串截成整数(如 2026-07-17 -> 2026),date(ts) 才是两侧都对的写法。
+        day = func.date(sub.c.ts, type_=Date).label("day")
         stmt = select(day, func.count().label("n")).group_by(day).order_by(day)
         rows = (await self.session.execute(stmt)).all()
         return [{"date": str(r.day), "count": r.n} for r in rows]
