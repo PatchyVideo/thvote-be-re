@@ -4,7 +4,24 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-17（删除死代码 vote_data 模块 + 记录计票断链 B-050）
+> 最后更新：2026-07-17（B-049 管理端鉴权 fail-closed + IP 白名单）
+
+## [2026-07-17] B-049 管理端鉴权 fail-closed + IP 白名单
+
+> Review 发现 `src/apps/questionnaire/admin_router.py` 有独立 `/admin` 路由,仍用旧的 fail-open `_check_admin_secret`(未配 `admin_secret` 时直接放行)——与 `src/apps/admin/router.py` 已切换的 fail-closed `require_admin` 不是同一套闸门,形成一个未闭合的开放口子。本次把它补齐。
+
+### Changed
+- `_check_admin_secret` 由 fail-open 改 fail-closed(未配 `admin_secret` 一律 403);`require_admin` 统一闸门(secret + IP 白名单)应用于 `src/apps/admin/router.py` 与 `src/apps/questionnaire/admin_router.py` 两个 `/admin` 路由。
+- `require_admin`(以及两处 `_check_admin_secret`)的 secret 比较改用 `secrets.compare_digest` 常量时间比较,避免逐字节比较的响应耗时差被用于旁路猜测 secret。
+
+### Security
+- 新配置 `ADMIN_ALLOWED_IPS`(Nacos JSON 数组字符串,空 = 不限 IP;非空时客户端 IP 须精确匹配或落入某个 CIDR 才放行,否则 403)。
+- 新增 `tests/integration/test_admin_auth.py`:对 `require_admin` 的 fail-closed 行为做 HTTP 级回归覆盖(未配 secret 403、错 secret 403、IP 不在白名单 403、空白名单 + 正确 secret 放行)。
+- `tests/contract/test_result_endpoints.py` 删除了一个本地 `admin_secret` fixture——它不还原 `ADMIN_SECRET` 环境变量,会污染同进程内后续测试;改用 `tests/contract/conftest.py` 里已有的、会正确还原环境的同名 fixture。
+
+### 兼容性 / 部署
+- **部署警告(重要)**:上线前必须在 Nacos 配好 `ADMIN_SECRET`,否则**所有 `/api/v1/admin/*` 端点将 403**(测试机此前 `ADMIN_SECRET` 未配 = 裸奔,部署本改动前务必先配)。
+- 遗留:`main.py` 的 `/admin/reload-config`、`/admin/discover*` 三个 ops 端点仍未纳入闸门(需先分析内部调用方),B-042 部分保留。
 
 ## [2026-07-17] 删除死代码：vote_data 模块（路径 B 空壳）
 

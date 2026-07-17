@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import secrets
 from typing import Optional
 
 from fastapi import Depends, Header, HTTPException, Request
@@ -43,7 +44,12 @@ async def require_admin(
     settings: Settings = Depends(get_settings),
 ) -> None:
     # fail-closed:未配 secret 一律拒(不留"未配=放行"的开放后门)
-    if not settings.admin_secret or x_admin_secret != settings.admin_secret:
+    # 常量时间比较,避免逐字节比较的响应耗时差被用于旁路猜测 secret。
+    if (
+        not settings.admin_secret
+        or not x_admin_secret
+        or not secrets.compare_digest(x_admin_secret, settings.admin_secret)
+    ):
         raise HTTPException(status_code=403, detail="FORBIDDEN")
     client_ip = get_client_ip(request)
     if not _ip_allowed(client_ip, settings.admin_allowed_ips):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 from typing import Optional
 
 import redis.asyncio as aioredis
@@ -55,7 +56,9 @@ router = APIRouter(
 def _check_admin_secret(settings: Settings, secret: Optional[str]) -> None:
     # belt-and-suspenders:router 级 require_admin 已是主闸门,这里保留仅为
     # 冗余兜底(同样返回 403),不再是唯一防线。
-    if settings.admin_secret and secret != settings.admin_secret:
+    if settings.admin_secret and (
+        not secret or not secrets.compare_digest(secret, settings.admin_secret)
+    ):
         raise HTTPException(status_code=403, detail="FORBIDDEN")
 
 
