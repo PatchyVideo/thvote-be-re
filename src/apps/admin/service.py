@@ -22,8 +22,6 @@ from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeService
 from src.apps.result.dao import ResultNotComputedError
 from src.apps.user.dao import UserDAO
-from src.apps.vote_data.dao import VoteDataDAO
-from src.db_model.raw_submit import RawDojinSubmit
 from src.db_model.sync_run_log import SyncRunLog
 
 
@@ -81,24 +79,19 @@ class AdminService:
         user = await user_dao.get_by_id_any(user_id)
         if user is None:
             return None
-        vote_dao = VoteDataDAO(self._session)
-        char = await vote_dao.get_character_by_id(user_id)
-        music = await vote_dao.get_music_by_id(user_id)
-        cp = await vote_dao.get_cp_by_id(user_id)
-        questionnaire = await vote_dao.get_questionnaire_by_id(user_id)
-        dojin_count = (await self._session.execute(
-            select(sqlfunc.count())
-            .select_from(RawDojinSubmit)
-            .where(RawDojinSubmit.vote_id == user_id)
-        )).scalar_one()
+        # 投票状态读真实提交表 raw_*(路径 A);此前读的 character/music/cp/questionnaire
+        # 死表(路径 B)已随 vote_data 模块删除——它们无写入方、永远为空,显示不准。
+        from src.apps.submit.dao import SubmitDAO
+
+        submitted = await SubmitDAO(self._session).has_submit(user_id)
         return {
             "user": user,
             "vote_submitted": {
-                "character": char is not None,
-                "music": music is not None,
-                "cp": cp is not None,
-                "paper": questionnaire is not None,
-                "dojin": dojin_count > 0,
+                "character": submitted["characters"],
+                "music": submitted["musics"],
+                "cp": submitted["cps"],
+                "paper": submitted["papers"],
+                "dojin": submitted["dojin"],
             },
         }
 
