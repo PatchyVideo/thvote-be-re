@@ -31,6 +31,7 @@ EXPECTED_SIGNATURES = [
         "  characters: [CharacterSubmitInput!]!\n"
         "  deviceId: String = null\n"
         "  fillDurationMs: Int = null\n"
+        "  clientEnv: String = null\n"
         "}"
     ),
     (
@@ -39,6 +40,7 @@ EXPECTED_SIGNATURES = [
         "  musics: [MusicSubmitInput!]!\n"
         "  deviceId: String = null\n"
         "  fillDurationMs: Int = null\n"
+        "  clientEnv: String = null\n"
         "}"
     ),
     (
@@ -47,6 +49,7 @@ EXPECTED_SIGNATURES = [
         "  cps: [CPSubmitInput!]!\n"
         "  deviceId: String = null\n"
         "  fillDurationMs: Int = null\n"
+        "  clientEnv: String = null\n"
         "}"
     ),
     (
@@ -55,6 +58,7 @@ EXPECTED_SIGNATURES = [
         "  paperJson: String!\n"
         "  deviceId: String = null\n"
         "  fillDurationMs: Int = null\n"
+        "  clientEnv: String = null\n"
         "}"
     ),
     (
@@ -63,6 +67,7 @@ EXPECTED_SIGNATURES = [
         "  dojins: [DojinSubmitItemGQL!]!\n"
         "  deviceId: String = null\n"
         "  fillDurationMs: Int = null\n"
+        "  clientEnv: String = null\n"
         "}"
     ),
     # 回读结果字段(music 单数怪癖 + papersJson)
