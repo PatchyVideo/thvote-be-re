@@ -57,6 +57,8 @@
 | [`superpowers/specs/2026-07-17-anti-vote-farming-design.md`](./superpowers/specs/2026-07-17-anti-vote-farming-design.md) | 反刷票（一人多小号）**证据采集设计**（B-044，设备 UUID + 可信 IP，只取证不拦截；Phase 0 已实现，Phase 1/2 follow-up） |
 | [`superpowers/specs/2026-07-17-submit-timing-signal-design.md`](./superpowers/specs/2026-07-17-submit-timing-signal-design.md) | 提交耗时 + 服务端改票计数**反机器人时序特征设计**（B-045，fill_duration_ms + attempt；改票假阳性由 attempt 兜底，只取证不拦截） |
 | [`superpowers/specs/2026-07-17-block-scripts-design.md`](./superpowers/specs/2026-07-17-block-scripts-design.md) | 拦脚本设计（B-048，Origin/Referer 校验拦裸脚本 + 端口收口待办；只拦变更、query 放行；默认关灰度） |
+| [`superpowers/specs/2026-07-17-admin-console-vue-security-monitoring-design.md`](./superpowers/specs/2026-07-17-admin-console-vue-security-monitoring-design.md) | 管理后台 **Vue 重写 + 安全监控设计**（B-049：流量概览/IP·设备聚类/可疑名单/可过滤投票浏览器/账号钻取+处置；X-Admin-Secret 强制+IP白名单；作废/封号**仅记录**,影响排名依赖 B-050） |
+| [`superpowers/plans/2026-07-17-admin-console-security-monitoring-backend.md`](./superpowers/plans/2026-07-17-admin-console-security-monitoring-backend.md) | B-049 **后端实施计划(Plan 1/2)**：7 任务 TDD——fail-closed 鉴权+IP白名单 / migration 0014 / MonitorDAO 聚合 / 固定加权评分 / service+轻缓存 / 只读端点 / 只记录处置。前端 Vue 为 Plan 2 |
 
 ### 跨前后端功能设计（Block 1-3，2026-06-08）
 
