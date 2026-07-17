@@ -178,3 +178,24 @@ async def test_distinct_ip_and_device_counts(db_session):
     dao = MonitorDAO(db_session)
     assert await dao.distinct_ip_count() == 2
     assert await dao.distinct_device_count() == 2
+
+
+@pytest.mark.asyncio
+async def test_service_suspects_ranks_fast_fill(db_session):
+    import fakeredis
+    from src.apps.admin.monitor.service import MonitorService
+    from src.common.config import get_settings
+
+    await _seed_char(db_session, "bot", "3.3.3.3", fill=200, env=None)   # suspicious
+    await _seed_char(db_session, "human", "4.4.4.4", fill=9000,
+                     env={"ua": "Mozilla/5.0"})                          # clean
+
+    redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    svc = MonitorService(db_session, redis, get_settings())
+    page = await svc.suspects(page=1, page_size=20)
+    ids = [s.vote_id for s in page.items]
+    assert "bot" in ids
+    top = page.items[0]
+    assert top.vote_id == "bot"
+    assert top.score >= 3
+    assert top.reasons
