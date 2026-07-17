@@ -154,6 +154,18 @@ class QuestionnaireAdminDAO:
         )
         counts = {row[0]: row[1] for row in count_res.all()}
 
+        # 每问卷的题目数(题 → 组 → 问卷),供列表卡片显示;此前只有 group_count,
+        # 前端"问题"数恒显示 0。
+        qcount_res = await self.session.execute(
+            select(
+                QuestionGroupDef.questionnaire_id,
+                func.count(QuestionDef.id),
+            )
+            .join(QuestionDef, QuestionDef.group_id == QuestionGroupDef.id)
+            .group_by(QuestionGroupDef.questionnaire_id)
+        )
+        qcounts = {row[0]: row[1] for row in qcount_res.all()}
+
         return [
             {
                 "id": qn.id,
@@ -163,6 +175,7 @@ class QuestionnaireAdminDAO:
                 "required": qn.required,
                 "order": qn.order,
                 "group_count": counts.get(qn.id, 0),
+                "question_count": qcounts.get(qn.id, 0),
             }
             for qn in questionnaires
         ]

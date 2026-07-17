@@ -4,7 +4,22 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-17（B-042：`main.py` 三个 admin ops 端点纳入 require_admin 闸门）
+> 最后更新：2026-07-17（管理端 UI↔API 对齐:修 5 处子页面/按钮/字段/结果显示错位）
+
+## [2026-07-17] 管理端面板 UI↔API 对齐修复
+
+> 全量审计现有 admin panel(`src/admin_ui/index.html`)各子页面/按钮 vs 后端端点契约,修复实测发现的 3 个真 bug + 2 个显示/健壮性缺陷。为 Vue 重写(Plan 2)前先把现有面板的功能/字段/结果显示对齐。
+
+### Fixed
+- **候选项编辑不再破坏合并状态**:`candidate_field_specs` 排除内部列 `merged_into`(合并链,只应由 merge/unmerge 端点改)。此前它被当可编辑文本字段渲染,`saveEdit` 每次保存都回发 `merged_into=""` → 空串写入 Integer 列 500,或悄悄清掉候选的合并链;且 `saveEdit` 只处理 409/404,其他状态(含 500)仍提示"已保存"。同时给 `saveEdit` 加 `!r.ok` 判错。
+- **问卷题/选项编辑不再把 `order` 重置为 0**:`assembler.py` 的 `_question_out`/`_option_out` 现在输出 `order`(此前只有 `_group_out` 带)。编辑弹窗读 `qu.order||0`/`o.order||0` 恒为 0,保存又回发 → 静默打乱展示顺序。
+- **"Reload Config" 按钮不再 404**:该端点挂在裸 `/admin/reload-config`(非 `/api/v1`),前端 `quickAction` 经 `api()` 误加 `/api/v1` 前缀 → 404。改为直连裸路径并带 `X-Admin-Secret`;三个 quick action 一并加 `!r.ok` 判错。
+- **问卷列表卡片"问题"数不再恒为 0**:`list_questionnaires` 现返回 `question_count`(题→组→问卷计数),卡片改读它。
+- **审计日志 `since` 传非法格式返回 400** `INVALID_SINCE_FORMAT`(此前 `datetime.fromisoformat` 无 try/except → 500)。
+
+### 兼容性
+- assembler 结构输出**新增 `order` 键**(问题/选项层):附加字段,向后兼容(结构本就按 order 排序);问卷列表项新增 `question_count`。二者均只增不改。
+- 纯后端 + 管理端静态页,无 schema/迁移/GraphQL SDL 变更。测试 +4,全量 411 passed。
 
 ## [2026-07-17] B-042 收口 admin ops 端点鉴权
 

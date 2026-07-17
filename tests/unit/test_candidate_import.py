@@ -26,6 +26,19 @@ def test_field_specs_music():
     assert "origin" not in by_name
 
 
+def test_candidate_field_specs_excludes_merged_into():
+    from src.apps.admin.candidate_service import candidate_field_specs
+
+    character_names = [f["name"] for f in candidate_field_specs("character")]
+    assert "merged_into" not in character_names
+    assert "name" in character_names
+    assert "name_jp" in character_names
+
+    music_names = [f["name"] for f in candidate_field_specs("music")]
+    assert "merged_into" not in music_names
+    assert "name" in music_names
+
+
 # ── parse_content ───────────────────────────────────────────────────────────
 
 def test_parse_json_array():
