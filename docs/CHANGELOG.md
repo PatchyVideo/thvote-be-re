@@ -4,7 +4,29 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-17（管理端 UI↔API 对齐:修 5 处子页面/按钮/字段/结果显示错位）
+> 最后更新：2026-07-18（B-049 Plan 2 前端 Phase 1:Vue3+Vite+TS 模块化管理台,拆掉 1115 行单文件）
+
+## [2026-07-18] B-049 Plan 2 Phase 1：管理台 Vue 模块化重写
+
+> 拆掉旧 `src/admin_ui/index.html`(1115 行单文件),重写为 Vue3+Vite+TypeScript 模块化应用。首要目的是可维护/可扩展,其次补齐 B-049 安全监控 UI(后端 Plan 1 已上线但一直无前端)。设计见 `docs/superpowers/specs/2026-07-18-admin-console-vue-frontend-design.md`。
+
+### Added
+- 新 `admin-ui/`(Vue3 `<script setup>` + Vite + TS,hash 路由,无 Pinia):
+  - **api 层**:`api/client.ts` 唯一 fetch 封装(`/api/v1` 前缀、`X-Admin-Secret`、403→登出、`!ok`→带 detail 抛错、裸 `/admin/reload-config`)+ 类型化端点模块 `admin.ts`/`monitor.ts` + `types.ts`(后端契约镜像)。契约集中一处。
+  - **composable**:useAuth/useToast/useAsync/usePagination。
+  - **共享组件**:DataTable(分页表格)/Modal/Toast/FilterBar/StatCard/AppShell/LoginOverlay —— 取代旧版每 tab 手写的表格/弹窗/fetch。
+  - **view**:仪表盘 + 5 监控页(流量概览/IP·设备聚类/可疑名单/投票浏览器+作废恢复/账号钻取+人工复核)+ 用户(搜索/封解封,模块化打样)。
+- **构建方式 commit-dist**:`admin-ui/` 源码 `pnpm build`(vue-tsc 类型检查 + vite build)→ 产物提交到 `src/admin_ui/`,StaticFiles 服务、`COPY src/` 进镜像,**部署管线零改动**。见 `admin-ui/README.md`。
+
+### Changed
+- `/admin-ui` 现服务新 Vue 台;旧单文件面板移到 **`src/admin_ui_legacy/`**、挂 **`/admin-ui-legacy`** 作迁移期兜底(尚未迁移的候选/同步/提名/问卷编辑器/日志/导出仍在旧面板用,新台顶栏有入口)。`main.py` 加第二个 StaticFiles 挂载。
+
+### 兼容性 / 部署
+- 纯前端 + 一处 StaticFiles 挂载;无后端 API/schema/迁移变更。前端 `pnpm build` 类型检查通过;Python 全量 411 passed。
+- 访问 `/admin-ui` 需管理密钥(`ADMIN_SECRET` 已在 Nacos 配)。
+- 后续:增量迁移其余 7 工具 + 几个当前无 UI 的端点(用户详情钻取/建合并/ranking preview),迁完删 legacy。
+
+## [2026-07-17] 管理端 UI↔API 对齐:修 5 处子页面/按钮/字段/结果显示错位
 
 ## [2026-07-17] 管理端面板 UI↔API 对齐修复
 

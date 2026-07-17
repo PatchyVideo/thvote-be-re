@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THVote Admin</title>
+<style>
+  :root {
+    --bg:#f6f7fb; --panel:#ffffff; --ink:#1f2430; --muted:#8a91a3; --line:#eaecf2;
+    --indigo:#4f46e5; --indigo-soft:#eef0ff; --teal:#0ea5a4; --amber:#d97706;
+    --red:#e11d48; --green:#16a34a; --slate:#64748b;
+    --shadow:0 1px 2px rgba(16,24,40,.04),0 4px 16px rgba(16,24,40,.06);
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);
+       -webkit-font-smoothing:antialiased;line-height:1.45;min-height:100vh}
+
+  /* login */
+  #login-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:100}
+  #login-box{background:var(--panel);padding:2rem;border-radius:14px;width:340px;border:1px solid var(--line);box-shadow:var(--shadow)}
+  #login-box h2{margin-bottom:1.2rem;color:var(--ink);font-size:1.2rem}
+  #login-box input{width:100%;padding:.65rem .75rem;background:#fff;border:1px solid #d6dae6;color:var(--ink);border-radius:9px;margin-bottom:.85rem;font-family:inherit;font-size:.9rem}
+  #login-box input:focus{outline:none;border-color:var(--indigo);box-shadow:0 0 0 3px var(--indigo-soft)}
+  #login-error{color:var(--red);font-size:.85rem;margin-bottom:.5rem;min-height:1.2em}
+
+  /* nav */
+  nav{background:var(--panel);padding:.7rem 1.4rem;display:flex;gap:.35rem;align-items:center;border-bottom:1px solid var(--line)}
+  nav .brand{color:var(--muted);margin-right:auto;font-weight:700;font-size:.9rem}
+  nav button{background:none;border:none;color:var(--slate);cursor:pointer;padding:.4rem .75rem;border-radius:7px;font-size:.84rem;font-weight:600;font-family:inherit;transition:.12s}
+  nav button.active,nav button:hover{background:var(--indigo-soft);color:var(--indigo)}
+
+  #content{padding:1.4rem 1.2rem 4rem;max-width:980px;margin:0 auto}
+
+  /* buttons */
+  .btn{border:none;border-radius:9px;padding:.5rem .9rem;font-size:.85rem;font-weight:600;cursor:pointer;
+       display:inline-flex;align-items:center;gap:.4rem;transition:.15s;font-family:inherit}
+  .btn:active{transform:translateY(1px)}
+  .btn{background:var(--indigo);color:#fff}
+  .btn:hover{background:#4338ca}
+  .btn.primary{background:var(--indigo);color:#fff}
+  .btn.primary:hover{background:#4338ca}
+  .btn.ghost{background:#fff;color:var(--slate);border:1px solid var(--line)}
+  .btn.ghost:hover{border-color:#c9cdd9;color:var(--ink)}
+  .btn.sm{padding:.32rem .55rem;font-size:.78rem;border-radius:7px}
+  .btn.green{background:var(--green);color:#fff}
+  .btn.green:hover{background:#15803d}
+  .btn.danger{background:var(--red);color:#fff}
+  .btn.danger:hover{background:#be123c}
+
+  /* cards, tables */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1.2rem;margin-bottom:1rem;box-shadow:var(--shadow)}
+  .stats-row{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}
+  .stat-card{background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:1rem 1.5rem;min-width:140px}
+  .stat-card .val{font-size:1.8rem;font-weight:700;color:var(--indigo)}
+  .stat-card .lbl{font-size:.8rem;color:var(--muted);margin-top:.2rem}
+  input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=submit]):not([type=button]),
+  select,textarea{
+    background:#fff;border:1px solid #d6dae6;color:var(--ink);padding:.55rem .7rem;
+    border-radius:9px;font-family:inherit;font-size:.88rem;transition:.12s}
+  input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=submit]):not([type=button]):focus,
+  select:focus,textarea:focus{outline:none;border-color:var(--indigo);box-shadow:0 0 0 3px var(--indigo-soft)}
+  table{width:100%;border-collapse:collapse;font-size:.9rem}
+  th,td{text-align:left;padding:.5rem .7rem;border-bottom:1px solid #eee}
+  th{color:var(--muted);font-weight:500}
+  .search-row{display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center}
+  .badge{display:inline-block;padding:.15rem .5rem;border-radius:5px;font-size:.78rem;font-weight:600}
+  .badge.open{background:#dcfce7;color:var(--green)}
+  .badge.closed{background:#fee2e2;color:var(--red)}
+  .badge.upcoming{background:#fef9c3;color:var(--amber)}
+  .loading{color:var(--muted);padding:1rem}
+  .ok{color:var(--green)} .err{color:var(--red)}
+  .spacer{margin-left:auto}
+
+  /* toast */
+  .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
+         padding:.7rem 1.2rem;border-radius:10px;font-size:.88rem;opacity:0;transition:.25s;pointer-events:none;z-index:300}
+  .toast.show{opacity:1}
+
+  /* modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(20,24,38,.4);backdrop-filter:blur(2px);
+       display:flex;align-items:flex-start;justify-content:center;padding-top:7vh;z-index:150}
+  .modal{width:480px;max-width:92vw;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.28);overflow:hidden}
+  .modal-head{padding:1rem 1.2rem;font-weight:700;font-size:1rem;border-bottom:1px solid var(--line)}
+  .modal-body{padding:1.1rem 1.2rem;max-height:64vh;overflow-y:auto}
+  .modal-foot{display:flex;gap:.6rem;justify-content:flex-end;padding:.9rem 1.2rem;border-top:1px solid var(--line);background:#fafbfd}
+  .field{margin-bottom:.9rem}
+  .field label{display:block;font-size:.82rem;color:var(--slate);margin-bottom:.3rem}
+  .field label .req{color:var(--red)}
+  .field input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=submit]):not([type=button]),
+  .field select,.field textarea{
+    width:100%;background:#fff;border:1px solid #d6dae6;color:var(--ink);
+    padding:.55rem .7rem;border-radius:9px;font-family:inherit;font-size:.88rem;transition:.12s}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--indigo);box-shadow:0 0 0 3px var(--indigo-soft)}
+  .field .hint{font-size:.74rem;color:var(--muted);margin-top:.25rem}
+  .field .check{display:flex;align-items:center;gap:.5rem;font-size:.86rem;cursor:pointer}
+  .seg{display:inline-flex;background:#f1f3f7;border-radius:9px;padding:.2rem;gap:.2rem}
+  .seg span{padding:.35rem .8rem;border-radius:7px;cursor:pointer;font-size:.82rem;font-weight:600;color:var(--slate)}
+  .seg span.on{background:#fff;color:var(--indigo);box-shadow:var(--shadow)}
+  .picklist{border:1px solid var(--line);border-radius:9px;max-height:150px;overflow-y:auto;padding:.3rem}
+  .picklist label{display:flex;align-items:center;gap:.5rem;padding:.32rem .45rem;border-radius:7px;font-size:.83rem;cursor:pointer}
+  .picklist label:hover{background:#f6f7fb}
+  .picklist .empty{color:var(--muted);font-size:.8rem;padding:.4rem .45rem}
+  .preview{border:1px solid var(--line);border-radius:9px;margin-top:.6rem}
+  .preview-head{padding:.4rem .6rem;background:#f7f7f7;font-size:.8rem;border-bottom:1px solid var(--line)}
+  progress{width:100%;height:8px}
+  .progress-wrap{margin:.5rem 0}
+
+  /* icon buttons */
+  .icobtn{border:1px solid transparent;background:transparent;color:var(--muted);cursor:pointer;
+       width:30px;height:30px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;
+       font-size:.95rem;transition:.12s}
+  .icobtn:hover{background:#f1f2f7;color:var(--ink)}
+  .icobtn.danger:hover{background:#fff1f3;color:var(--red)}
+
+  /* questionnaire — list cards */
+  .pill{display:inline-flex;align-items:center;gap:.25rem;padding:.12rem .5rem;border-radius:999px;
+       font-size:.72rem;font-weight:700;line-height:1.6}
+  .pill.main{background:var(--indigo-soft);color:var(--indigo)}
+  .pill.extra{background:#f1f3f7;color:var(--slate)}
+  .pill.req{background:#fff0f3;color:var(--red)}
+  .pill.hidden{background:#fff7ed;color:var(--amber)}
+  .qlist{display:grid;grid-template-columns:1fr 1fr;gap:.85rem}
+  @media(max-width:760px){.qlist{grid-template-columns:1fr}}
+  .qcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1rem 1.1rem;
+       box-shadow:var(--shadow);position:relative;display:flex;flex-direction:column;gap:.6rem;
+       transition:.15s;cursor:pointer}
+  .qcard:hover{border-color:#cdd2e4;box-shadow:0 6px 22px rgba(16,24,40,.10);transform:translateY(-1px)}
+  .qcard .row1{display:flex;align-items:center;gap:.5rem}
+  .qcard .title{font-weight:700;font-size:1.02rem}
+  .qcard .key{font-family:ui-monospace,monospace;font-size:.74rem;color:var(--muted);
+       background:#f4f5f9;padding:.1rem .4rem;border-radius:5px}
+  .qcard .intro{color:var(--muted);font-size:.83rem;min-height:1.1em}
+  .qcard .meta{display:flex;gap:1.1rem;align-items:center;color:var(--slate);font-size:.8rem;
+       border-top:1px dashed var(--line);padding-top:.55rem;margin-top:.1rem}
+  .qcard .meta b{color:var(--ink);font-weight:700}
+  .qcard .acts{position:absolute;top:.7rem;right:.7rem;display:flex;gap:.15rem;opacity:0;transition:.15s}
+  .qcard:hover .acts{opacity:1}
+  .qadd{border:1.5px dashed #d3d8e6;border-radius:14px;display:flex;align-items:center;justify-content:center;
+       gap:.5rem;color:var(--indigo);font-weight:600;cursor:pointer;min-height:118px;background:#fcfcff}
+  .qadd:hover{background:var(--indigo-soft);border-color:var(--indigo)}
+
+  /* questionnaire — editor */
+  .qhead{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+       padding:1rem 1.2rem;display:flex;align-items:center;gap:.7rem;margin-bottom:1rem}
+  .qhead .back{cursor:pointer;color:var(--muted);font-size:1.1rem;padding:.2rem .4rem;border-radius:7px}
+  .qhead .back:hover{background:#f1f2f7;color:var(--ink)}
+  .qhead .title{font-weight:700;font-size:1.1rem}
+  .qhead .key{font-family:ui-monospace,monospace;font-size:.75rem;color:var(--muted)}
+  .group{background:var(--panel);border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow);
+       margin-bottom:.85rem;overflow:hidden}
+  .group>.ghead{display:flex;align-items:center;gap:.6rem;padding:.7rem .9rem;cursor:pointer;
+       border-left:4px solid var(--teal)}
+  .group>.ghead:hover{background:#fbfcfe}
+  .group .chev{color:var(--muted);transition:.2s;font-size:.8rem}
+  .group.collapsed .chev{transform:rotate(-90deg)}
+  .group .gname{font-weight:700;font-size:.92rem}
+  .group .gcount{color:var(--muted);font-size:.78rem}
+  .group .gbody{padding:.2rem .9rem .8rem 1.3rem}
+  .group.collapsed .gbody{display:none}
+  .ghead .acts,.ques .acts{display:flex;gap:.1rem;opacity:0;transition:.12s}
+  .group>.ghead:hover .acts,.ques:hover .acts{opacity:1}
+  .ques{border:1px solid var(--line);border-radius:10px;margin:.55rem 0;padding:.6rem .75rem;background:#fff}
+  .ques:hover{border-color:#dfe3ef}
+  .ques .qrow{display:flex;align-items:center;gap:.5rem}
+  .ques .qtext{font-weight:600;font-size:.9rem}
+  .tbadge{font-size:.7rem;font-weight:700;padding:.1rem .45rem;border-radius:6px}
+  .tbadge.single{background:#e8f0fe;color:#1a56db}
+  .tbadge.multiple{background:#f3e8ff;color:#7c3aed}
+  .tbadge.input{background:#e7f6ec;color:#15803d}
+  .opts{display:flex;flex-wrap:wrap;gap:.4rem;margin:.5rem 0 .1rem .2rem}
+  .opt{display:inline-flex;align-items:center;gap:.4rem;background:#f7f8fb;border:1px solid var(--line);
+       border-radius:8px;padding:.28rem .55rem;font-size:.82rem}
+  .opt .lbl{font-weight:500}
+  .opt .tag{font-size:.66rem;font-weight:700;padding:.05rem .35rem;border-radius:5px}
+  .opt .tag.rel{background:#eef0ff;color:var(--indigo)}
+  .opt .tag.mut{background:#fff1f3;color:var(--red)}
+  .opt .oa{opacity:0;transition:.12s;display:flex;gap:.05rem}
+  .opt:hover .oa{opacity:1}
+  .opt .oa span{cursor:pointer;color:var(--muted);padding:0 .15rem;border-radius:4px}
+  .opt .oa span:hover{color:var(--ink)}
+  .opt.add{cursor:pointer;color:var(--indigo);border-style:dashed;font-weight:600;background:#fcfcff}
+  .opt.add:hover{background:var(--indigo-soft)}
+  .addq{margin:.4rem 0 .2rem;color:var(--indigo);font-weight:600;font-size:.82rem;cursor:pointer;
+       display:inline-flex;gap:.35rem;align-items:center}
+  .addq:hover{text-decoration:underline}
+  .addgroup{border:1.5px dashed #d3d8e6;border-radius:13px;text-align:center;padding:.8rem;color:var(--indigo);
+       font-weight:600;cursor:pointer;background:#fcfcff}
+  .addgroup:hover{background:var(--indigo-soft);border-color:var(--indigo)}
+</style>
+</head>
+<body>
+
+<div id="login-overlay">
+  <div id="login-box">
+    <h2>THVote Admin</h2>
+    <input id="secret-input" type="password" placeholder="Admin Secret" />
+    <div id="login-error"></div>
+    <button class="btn" onclick="doLogin()">进入</button>
+  </div>
+</div>
+
+<nav id="main-nav" style="display:none">
+  <span class="brand">THVote Admin</span>
+  <button onclick="showTab('dashboard')" id="tab-dashboard" class="active">Dashboard</button>
+  <button onclick="showTab('users')" id="tab-users">用户管理</button>
+  <button onclick="showTab('sync')" id="tab-sync">数据同步</button>
+  <button onclick="showTab('candidates')" id="tab-candidates">候选项</button>
+  <button onclick="showTab('nominations')" id="tab-nominations">提名审核</button>
+  <button onclick="showTab('questionnaire')" id="tab-questionnaire">问卷配置</button>
+  <button onclick="showTab('logs')" id="tab-logs">审计日志</button>
+  <button onclick="showTab('export')" id="tab-export">导出</button>
+  <button onclick="doLogout()" style="margin-left:auto;color:#f88">退出</button>
+</nav>
+
+<div id="content" style="display:none"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+let SECRET = '';
+let syncPollTimer = null;
+const BASE = '/api/v1';
+
+// ── auth ──────────────────────────────────────────────────────────────────────
+
+async function doLogin() {
+  const val = document.getElementById('secret-input').value.trim();
+  const err = document.getElementById('login-error');
+  err.textContent = '';
+  try {
+    const r = await fetch(BASE + '/admin/stats', { headers: { 'X-Admin-Secret': val } });
+    if (r.status === 403) { err.textContent = '密码错误'; return; }
+    SECRET = val;
+    sessionStorage.setItem('adminSecret', val);
+    document.getElementById('login-overlay').style.display = 'none';
+    document.getElementById('main-nav').style.display = 'flex';
+    document.getElementById('content').style.display = 'block';
+    showTab('dashboard');
+  } catch (e) { err.textContent = '连接失败: ' + e.message; }
+}
+
+function doLogout() {
+  sessionStorage.removeItem('adminSecret');
+  SECRET = '';
+  location.reload();
+}
+
+async function api(path, opts = {}) {
+  const r = await fetch(BASE + path, {
+    ...opts,
+    headers: { 'X-Admin-Secret': SECRET, 'Content-Type': 'application/json', ...(opts.headers || {}) }
+  });
+  if (r.status === 403) { doLogout(); throw new Error('Unauthorized'); }
+  return r;
+}
+
+function toast(msg, ms = 3000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), ms);
+}
+
+function openModal(html) {
+  closeModal();
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.id = 'modal-overlay';
+  ov.innerHTML = '<div class="modal">' + html + '</div>';
+  ov.addEventListener('click', e => { if (e.target === ov) closeModal(); });
+  document.body.appendChild(ov);
+}
+function closeModal() {
+  const ov = document.getElementById('modal-overlay');
+  if (ov) ov.remove();
+}
+
+// ── tabs ──────────────────────────────────────────────────────────────────────
+
+const TABS = { dashboard, users, sync, candidates, nominations, questionnaire, logs, export: exportTab };
+
+function showTab(name) {
+  document.querySelectorAll('nav button[id^=tab-]').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('tab-' + name);
+  if (btn) btn.classList.add('active');
+  if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; }
+  document.getElementById('content').innerHTML = '<div class="loading">加载中…</div>';
+  (TABS[name] || (() => {}))();
+}
+
+// ── dashboard ─────────────────────────────────────────────────────────────────
+
+async function dashboard() {
+  const r = await api('/admin/stats');
+  const d = await r.json();
+  const w = d.vote_window;
+  document.getElementById('content').innerHTML = `
+    <div class="stats-row">
+      <div class="stat-card"><div class="val">${d.total_users}</div><div class="lbl">注册用户</div></div>
+      <div class="stat-card"><div class="val">${d.submissions.character}</div><div class="lbl">角色投票</div></div>
+      <div class="stat-card"><div class="val">${d.submissions.music}</div><div class="lbl">音乐投票</div></div>
+      <div class="stat-card"><div class="val">${d.submissions.cp}</div><div class="lbl">CP 投票</div></div>
+      <div class="stat-card"><div class="val"><span class="badge ${w.status}">${w.status}</span></div><div class="lbl">投票窗口</div></div>
+    </div>
+    <div class="card">
+      <div style="display:flex;gap:.8rem;flex-wrap:wrap">
+        <button class="btn" onclick="quickAction('compute-results','POST','触发排名计算？')">Compute Results</button>
+        <button class="btn" onclick="quickAction('finalize-ranking','POST','归档最终排名？')">Finalize Ranking</button>
+        <button class="btn" onclick="quickAction('reload-config','POST','热更新配置？')">Reload Config</button>
+      </div>
+    </div>`;
+}
+
+async function quickAction(endpoint, method, confirm_msg) {
+  if (!confirm(confirm_msg)) return;
+  try {
+    // reload-config 挂在裸 /admin(非 /api/v1),需绕过 api() 的前缀,但仍带 secret
+    const r = endpoint === 'reload-config'
+      ? await fetch('/admin/reload-config', { method, headers: { 'X-Admin-Secret': SECRET } })
+      : await api('/admin/' + endpoint, { method });
+    if (r.status === 403) { doLogout(); return; }
+    if (!r.ok) { toast('Error ' + r.status + ': ' + (await r.text()).slice(0, 120)); return; }
+    const d = await r.json();
+    toast(JSON.stringify(d).slice(0, 80));
+  } catch (e) { toast('Error: ' + e.message); }
+}
+
+// ── users ─────────────────────────────────────────────────────────────────────
+
+async function users() {
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      <div class="search-row">
+        <input type="text" id="u-email" placeholder="邮箱" style="width:200px" />
+        <input type="text" id="u-phone" placeholder="手机号" style="width:160px" />
+        <button class="btn" onclick="searchUsers(1)">搜索</button>
+      </div>
+      <div id="users-table"></div>
+    </div>`;
+}
+
+async function searchUsers(page) {
+  const email = document.getElementById('u-email').value;
+  const phone = document.getElementById('u-phone').value;
+  let url = '/admin/users?page=' + page + '&page_size=20';
+  if (email) url += '&email=' + encodeURIComponent(email);
+  if (phone) url += '&phone=' + encodeURIComponent(phone);
+  const r = await api(url);
+  const d = await r.json();
+  const rows = d.items.map(u => `<tr>
+    <td style="font-family:monospace;font-size:.8rem">${u.id.slice(0,12)}…</td>
+    <td>${u.nickname || '-'}</td><td>${u.email || '-'}</td><td>${u.phone || '-'}</td>
+    <td>${u.email_verified ? '✓' : '-'}</td>
+    <td><span class="badge ${u.removed ? 'closed' : 'open'}">${u.removed ? '封禁' : '正常'}</span></td>
+    <td>${u.removed
+      ? '<button class="btn sm" onclick="toggleBan(\'' + u.id + '\',false)">解封</button>'
+      : '<button class="btn sm danger" onclick="toggleBan(\'' + u.id + '\',true)">封禁</button>'}</td>
+  </tr>`).join('');
+  document.getElementById('users-table').innerHTML = `
+    <table><thead><tr><th>ID</th><th>昵称</th><th>邮箱</th><th>手机</th><th>邮箱验证</th><th>状态</th><th>操作</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="7" style="color:#888;text-align:center">无结果</td></tr>'}</tbody></table>
+    <div style="margin-top:.8rem;color:var(--muted)">共 ${d.total} 条</div>`;
+}
+
+async function toggleBan(userId, ban) {
+  if (!confirm(ban ? '确认封禁此用户？' : '确认解封此用户？')) return;
+  await api('/admin/users/' + userId + '/' + (ban ? 'ban' : 'unban'), { method: 'PATCH' });
+  toast(ban ? '已封禁' : '已解封');
+  searchUsers(1);
+}
+
+// ── sync ──────────────────────────────────────────────────────────────────────
+
+async function sync() {
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      <h3 style="margin-bottom:1rem">启动同步</h3>
+      <div class="search-row">
+        <input type="number" id="sync-batch" value="500" style="width:100px" /> 批次大小
+        <button class="btn" onclick="startSync()">Start Sync</button>
+        <button class="btn danger" onclick="cancelSync()">Cancel</button>
+      </div>
+      <div id="sync-progress" style="margin-top:1rem"></div>
+    </div>
+    <div class="card"><h3 style="margin-bottom:.8rem">历史记录</h3><div id="sync-history"></div></div>`;
+  await loadSyncHistory();
+  syncPollTimer = setInterval(pollSyncStatus, 2000);
+}
+
+async function startSync() {
+  const batch = parseInt(document.getElementById('sync-batch').value) || 500;
+  const r = await api('/admin/sync/start', {
+    method: 'POST', body: JSON.stringify({ batch_size: batch, collections: [] }) });
+  const d = await r.json();
+  toast('Started: ' + (d.run_id || '').slice(0, 8));
+}
+
+async function cancelSync() {
+  await api('/admin/sync/cancel', { method: 'POST' });
+  toast('Cancel signal sent');
+}
+
+async function pollSyncStatus() {
+  const r = await api('/admin/sync/status');
+  const d = await r.json();
+  const el = document.getElementById('sync-progress');
+  if (!el) return;
+  if (d.status === 'idle' || !d.run_id) {
+    el.innerHTML = '<span style="color:var(--muted)">无运行中的同步</span>'; return;
+  }
+  const pct = d.total > 0 ? Math.round(d.processed / d.total * 100) : 0;
+  el.innerHTML = `
+    <div>Run: ${(d.run_id||'').slice(0,8)} | ${d.status} | ${d.current_collection || '-'}</div>
+    <div class="progress-wrap"><progress value="${d.processed}" max="${Math.max(d.total,1)}"></progress></div>
+    <div style="color:var(--muted);font-size:.85rem">${d.processed}/${d.total} 插入:${d.inserted} 跳过:${d.skipped} 错误:${d.errors}</div>`;
+  if (d.status === 'completed' || d.status === 'failed') loadSyncHistory();
+}
+
+async function loadSyncHistory() {
+  const r = await api('/admin/sync/history');
+  const d = await r.json();
+  const el = document.getElementById('sync-history');
+  if (!el) return;
+  const rows = (d.items || []).map(i => `<tr>
+    <td style="font-family:monospace">${i.run_id.slice(0,8)}</td>
+    <td>${i.started_at.slice(0,19)}</td>
+    <td><span class="badge ${i.status==='completed'?'open':i.status==='running'?'upcoming':'closed'}">${i.status}</span></td>
+    <td>${(i.collections||[]).length}</td><td>${i.inserted}</td><td>${i.errors}</td>
+    <td><button class="btn sm" onclick="retrySyncRun('${i.run_id}')">Retry</button></td>
+  </tr>`).join('');
+  el.innerHTML = `<table><thead><tr><th>Run ID</th><th>开始时间</th><th>状态</th><th>集合</th><th>插入</th><th>错误</th><th>操作</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="7" style="color:var(--muted);text-align:center">暂无记录</td></tr>'}</tbody></table>`;
+}
+
+async function retrySyncRun(runId) {
+  if (!confirm('从断点重试此运行？')) return;
+  await api('/admin/sync/retry/' + runId, { method: 'POST' });
+  toast('Retry started');
+}
+
+// ── candidates ────────────────────────────────────────────────────────────────
+
+async function candidates() {
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      <div class="search-row">
+        <select id="c-cat" onchange="searchCandidates(1)"><option value="character">角色</option><option value="music">音乐</option></select>
+        <input type="number" id="c-year" value="${new Date().getFullYear()}" style="width:80px" onchange="searchCandidates(1)" />
+        <input type="text" id="c-q" placeholder="名称搜索（回车搜索）" style="width:180px" onkeydown="if(event.key==='Enter')searchCandidates(1)" />
+        <button class="btn" onclick="searchCandidates(1)">搜索</button>
+        <button class="btn" onclick="loadMerges()">查看合并</button>
+        <button class="btn green" style="margin-left:auto" onclick="openImportModal()">+ 导入</button>
+      </div>
+      <div id="candidates-table"></div>
+      <div id="merges-view"></div>
+    </div>`;
+  searchCandidates(1);
+}
+
+async function loadMerges() {
+  const cat = document.getElementById('c-cat').value;
+  const year = document.getElementById('c-year').value;
+  const r = await api('/admin/candidates/merges?category=' + cat + '&vote_year=' + year);
+  const d = await r.json();
+  const rows = (d.items || []).map(m => `<tr>
+    <td>${m.id}</td><td>${m.name}</td><td>→ ${m.merged_into}</td>
+    <td><button class="btn sm" onclick="unmergeCandidate(${m.id},'${cat}')">拆分</button></td>
+  </tr>`).join('');
+  document.getElementById('merges-view').innerHTML = `
+    <div style="margin-top:1rem"><b>合并关系</b>（被合并 → 主候选 id）</div>
+    <table><thead><tr><th>id</th><th>名称</th><th>合并到</th><th>操作</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="4" style="color:var(--muted);text-align:center">无合并</td></tr>'}</tbody></table>`;
+}
+
+async function unmergeCandidate(id, cat) {
+  if (!confirm('拆分此合并？')) return;
+  await api('/admin/candidates/' + id + '/unmerge?category=' + cat, { method: 'POST' });
+  toast('已拆分');
+  loadMerges();
+}
+
+async function searchCandidates(page) {
+  const cat = document.getElementById('c-cat').value;
+  const year = document.getElementById('c-year').value;
+  const q = document.getElementById('c-q').value;
+  let url = '/admin/candidates?category=' + cat + '&vote_year=' + year + '&page=' + page + '&page_size=50';
+  if (q) url += '&q=' + encodeURIComponent(q);
+  const r = await api(url);
+  const d = await r.json();
+  window._candCache = {};
+  const rows = d.items.map(i => {
+    window._candCache[i.id] = i;
+    return `<tr>
+      <td>${i.name}</td><td>${i.name_jp||''}</td><td>${i.type||''}</td>
+      <td>${i.origin||i.album||''}</td><td>${i.first_appearance||''}</td>
+      <td><span style="color:var(--indigo);cursor:pointer" onclick="openEditModal(${i.id})">编辑</span>
+      &nbsp;<span style="color:var(--red);cursor:pointer" onclick="deleteCandidate(${i.id},'${cat}')">删除</span></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('candidates-table').innerHTML = `
+    <table><thead><tr><th>名称</th><th>日文名</th><th>类型</th><th>来源/专辑</th><th>首登</th><th>操作</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="6" style="color:var(--muted);text-align:center">无结果</td></tr>'}</tbody></table>
+    <div style="margin-top:.8rem;color:var(--muted)">共 ${d.total} 条</div>`;
+}
+
+async function deleteCandidate(id, category) {
+  if (!confirm('确认删除此候选项？')) return;
+  await api('/admin/candidates/' + id + '?category=' + category, { method: 'DELETE' });
+  toast('已删除');
+  searchCandidates(1);
+}
+
+// ── candidate import modal ──────────────────────────────────────────────────────
+
+let _impFmt = 'auto';
+
+function openImportModal() {
+  const cat = document.getElementById('c-cat').value;
+  const year = document.getElementById('c-year').value;
+  _impFmt = 'auto';
+  openModal(`
+    <div class="modal-head">导入候选项</div>
+    <div class="modal-body">
+      <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.6rem">
+        <select id="imp-cat"><option value="character"${cat==='character'?' selected':''}>角色</option><option value="music"${cat==='music'?' selected':''}>音乐</option></select>
+        <input type="number" id="imp-year" value="${year}" style="width:80px" />
+        <span class="seg" id="imp-fmt">
+          <span class="on" data-f="auto" onclick="setFmt(this)">自动</span>
+          <span data-f="csv" onclick="setFmt(this)">CSV</span>
+          <span data-f="json" onclick="setFmt(this)">JSON</span>
+        </span>
+      </div>
+      <div class="field"><textarea id="imp-text" rows="4" placeholder="粘贴 CSV / JSON 文本…"></textarea></div>
+      <div style="display:flex;gap:.5rem">
+        <input type="file" id="imp-file" accept=".csv,.json,.txt" style="display:none" onchange="loadImportFile(this)" />
+        <button class="btn ghost" onclick="document.getElementById('imp-file').click()">选择文件</button>
+        <button class="btn" onclick="previewImport()">解析预览</button>
+      </div>
+      <div id="imp-preview"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="imp-confirm" style="display:none" onclick="commitImport()">确认导入</button>
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+    </div>`);
+}
+
+function setFmt(el) {
+  _impFmt = el.dataset.f;
+  el.parentElement.querySelectorAll('span').forEach(s => s.classList.remove('on'));
+  el.classList.add('on');
+}
+
+function loadImportFile(input) {
+  const f = input.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => { document.getElementById('imp-text').value = reader.result; };
+  reader.readAsText(f);
+}
+
+async function _importCall(dryRun) {
+  return api('/admin/candidates/import', {
+    method: 'POST',
+    body: JSON.stringify({
+      vote_year: parseInt(document.getElementById('imp-year').value),
+      category: document.getElementById('imp-cat').value,
+      format: _impFmt,
+      content: document.getElementById('imp-text').value,
+      dry_run: dryRun,
+    }),
+  });
+}
+
+async function previewImport() {
+  const r = await _importCall(true);
+  if (r.status === 400) {
+    const e = await r.json();
+    document.getElementById('imp-preview').innerHTML =
+      `<div class="preview"><div class="preview-head err">解析失败: ${e.detail}</div></div>`;
+    document.getElementById('imp-confirm').style.display = 'none';
+    return;
+  }
+  const d = await r.json();
+  const sample = d.valid.slice(0, 5).map(i =>
+    `<tr><td>${i.name||''}</td><td>${i.name_jp||''}</td><td>${i.type||''}</td><td>${i.origin||i.album||''}</td></tr>`
+  ).join('');
+  const errLines = d.rejected.map(e => `第${e.line}行: ${e.reason}`).join('；');
+  document.getElementById('imp-preview').innerHTML = `
+    <div class="preview">
+      <div class="preview-head">
+        <span class="ok">✓ 有效 ${d.valid_count}</span>
+        ${d.rejected.length ? ` &nbsp; <span class="err">✗ 错误 ${d.rejected.length}（${errLines}）</span>` : ''}
+      </div>
+      <table>${sample}</table>
+    </div>`;
+  const btn = document.getElementById('imp-confirm');
+  btn.textContent = '确认导入 ' + d.valid_count + ' 条';
+  btn.style.display = d.valid_count > 0 ? '' : 'none';
+}
+
+async function commitImport() {
+  const r = await _importCall(false);
+  if (r.status === 400) { const e = await r.json(); toast('解析失败: ' + e.detail); return; }
+  const d = await r.json();
+  toast('成功导入 ' + d.imported + ' 条');
+  closeModal();
+  searchCandidates(1);
+}
+
+// ── candidate edit modal ────────────────────────────────────────────────────────
+
+async function openEditModal(id) {
+  const cat = document.getElementById('c-cat').value;
+  const row = (window._candCache || {})[id] || {};
+  const fr = await api('/admin/candidates/fields?category=' + cat);
+  const spec = (await fr.json()).fields;
+  const fieldsHtml = spec.map(f => `
+    <div class="field">
+      <label>${f.name}${f.required ? ' <span class="req">*</span>' : ''}</label>
+      <input type="text" id="ed-${f.name}" value="${row[f.name] != null ? String(row[f.name]).replace(/"/g,'&quot;') : ''}" />
+    </div>`).join('');
+  openModal(`
+    <div class="modal-head">编辑：${row.name || ''}</div>
+    <div class="modal-body">${fieldsHtml}</div>
+    <div class="modal-foot">
+      <button class="btn" onclick="saveEdit(${id},'${cat}')">保存</button>
+      <button class="btn danger" onclick="deleteFromEdit(${id},'${cat}')">删除</button>
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+    </div>`);
+  window._editSpec = spec.map(f => f.name);
+}
+
+async function saveEdit(id, cat) {
+  const fields = {};
+  (window._editSpec || []).forEach(n => {
+    fields[n] = document.getElementById('ed-' + n).value;
+  });
+  const r = await api('/admin/candidates/' + id, {
+    method: 'PUT',
+    body: JSON.stringify({ category: cat, fields }),
+  });
+  if (r.status === 409) { toast('该名称在本年份已存在'); return; }
+  if (r.status === 404) { toast('候选项不存在'); return; }
+  if (!r.ok) { toast('保存失败: ' + r.status); return; }
+  toast('已保存');
+  closeModal();
+  searchCandidates(1);
+}
+
+async function deleteFromEdit(id, cat) {
+  if (!confirm('确认删除此候选项？')) return;
+  await api('/admin/candidates/' + id + '?category=' + cat, { method: 'DELETE' });
+  toast('已删除');
+  closeModal();
+  searchCandidates(1);
+}
+
+// ── nominations ──────────────────────────────────────────────────────────────────
+
+async function nominations() {
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      <div class="search-row">
+        <select id="nom-status">
+          <option value="pending">待审核</option>
+          <option value="approved">已通过</option>
+          <option value="rejected">已驳回</option>
+          <option value="all">全部</option>
+        </select>
+        <button class="btn" onclick="searchNominations(1)">查询</button>
+      </div>
+      <div id="nominations-table"></div>
+    </div>`;
+  searchNominations(1);
+}
+
+async function searchNominations(page) {
+  const status = document.getElementById('nom-status').value;
+  const r = await api('/admin/nominations?status=' + status + '&page=' + page + '&page_size=50');
+  const d = await r.json();
+  const rows = d.items.map(i => `<tr>
+    <td>${i.title || '-'}</td>
+    <td>${i.author || '-'}</td>
+    <td><a href="${i.url}" target="_blank" style="color:var(--indigo)">链接</a></td>
+    <td style="font-family:monospace;font-size:.8rem">${i.udid || '-'}</td>
+    <td>${(i.publish_date || '').slice(0,10)}</td>
+    <td><span class="badge ${i.status==='approved'?'open':i.status==='rejected'?'closed':'upcoming'}">${i.status}</span></td>
+    <td>
+      ${i.status === 'pending' ? `
+        <button class="btn sm" onclick="reviewNomination(${i.id}, true)">通过</button>
+        <button class="btn sm danger" onclick="reviewNomination(${i.id}, false)">驳回</button>
+      ` : (i.reject_reason ? `<span style="color:var(--muted)">${i.reject_reason}</span>` : '-')}
+    </td>
+  </tr>`).join('');
+  document.getElementById('nominations-table').innerHTML = `
+    <table><thead><tr><th>标题</th><th>作者</th><th>链接</th><th>UDID</th><th>发布</th><th>状态</th><th>操作</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="7" style="color:var(--muted);text-align:center">无结果</td></tr>'}</tbody></table>
+    <div style="margin-top:.8rem;color:var(--muted)">共 ${d.total} 条</div>`;
+}
+
+async function reviewNomination(id, approve) {
+  if (approve) {
+    await api('/admin/nominations/' + id + '/approve', { method: 'PATCH' });
+    toast('已通过');
+  } else {
+    const reason = prompt('驳回原因：', '');
+    if (reason === null) return;
+    await api('/admin/nominations/' + id + '/reject', {
+      method: 'PATCH', body: JSON.stringify({ reason }),
+    });
+    toast('已驳回');
+  }
+  searchNominations(1);
+}
+
+// ── questionnaire config (B-041) ─────────────────────────────────────────────
+
+let _qnTree = null;
+let _qnCollapsed = {};
+
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+async function questionnaire() {
+  renderQuestionnaireList();
+}
+
+async function renderQuestionnaireList() {
+  const r = await api('/admin/questionnaires');
+  const d = await r.json();
+  const countQ = q => (q.questionGroups||[]).reduce((a,g)=>a+(g.questions||[]).length,0);
+  const cards = (d.items || []).map(q => `
+    <div class="qcard" onclick="renderQuestionnaireEditor(${q.id})">
+      <div class="acts">
+        <button class="icobtn" title="编辑" onclick="event.stopPropagation();renderQuestionnaireEditor(${q.id})">✎</button>
+        <button class="icobtn danger" title="删除" onclick="event.stopPropagation();qnDelete(${q.id})">🗑</button>
+      </div>
+      <div class="row1">
+        <span class="title">${esc(q.title||'无标题')}</span>
+        <span class="pill ${q.category}">${q.category==='main'?'主问卷':'附加'}</span>
+        ${q.required?'<span class="pill req">必填</span>':''}
+      </div>
+      <div class="key">${esc(q.key)}</div>
+      <div class="intro">${esc(q.introduction||'—')}</div>
+      <div class="meta">
+        <span><b>${q.questionGroups? q.questionGroups.length : q.group_count||0}</b> 题组</span>
+        <span><b>${q.questionGroups? countQ(q) : (q.question_count||0)}</b> 问题</span>
+        <span class="spacer"></span>
+        <span style="color:var(--indigo);font-weight:600">编辑 →</span>
+      </div>
+    </div>`).join('');
+  document.getElementById('content').innerHTML = `
+    <div class="search-row">
+      <b style="margin-right:auto;font-size:1.05rem">问卷管理</b>
+      <button class="btn ghost" onclick="qnImportModal()">⇪ 整树导入</button>
+      <button class="btn primary" onclick="qnNewModal()">＋ 新建问卷</button>
+    </div>
+    <div class="qlist">
+      ${cards}
+      <div class="qadd" onclick="qnNewModal()">＋ 新建问卷</div>
+    </div>`;
+}
+
+function qnNewModal() {
+  openModal(`
+    <div class="modal-head">新建问卷</div>
+    <div class="modal-body">
+      <div class="field"><label>标识</label><input type="text" id="qn-key" placeholder="唯一英文标识，前端按此引用" /></div>
+      <div class="field"><label>标题</label><input type="text" id="qn-title" placeholder="展示给用户的标题" /></div>
+      <div class="field"><label>说明</label><input type="text" id="qn-intro" placeholder="副标题 / 引导语" /></div>
+      <div class="field"><label>分类</label><select id="qn-cat"><option value="main">主问卷 (main)</option><option value="extra">附加 (extra)</option></select></div>
+      <div class="field"><label class="check"><input type="checkbox" id="qn-req" /> 必填（计入投票门禁）</label></div>
+      <div class="field"><label>排序</label><input type="number" id="qn-order" value="0" /></div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost" onclick="closeModal()">取消</button><button class="btn primary" onclick="qnCreate()">创建</button></div>`);
+}
+
+async function qnCreate() {
+  const body = {
+    key: document.getElementById('qn-key').value.trim(),
+    title: document.getElementById('qn-title').value,
+    introduction: document.getElementById('qn-intro').value,
+    category: document.getElementById('qn-cat').value,
+    required: document.getElementById('qn-req').checked,
+    order: parseInt(document.getElementById('qn-order').value) || 0,
+  };
+  const r = await api('/admin/questionnaires', { method: 'POST', body: JSON.stringify(body) });
+  if (r.status === 409) { toast('key 已存在'); return; }
+  toast('已创建'); closeModal(); renderQuestionnaireList();
+}
+
+async function qnDelete(id) {
+  if (!confirm('删除此问卷？将级联删除其所有题组/问题/选项。')) return;
+  await api('/admin/questionnaires/' + id, { method: 'DELETE' });
+  toast('已删除'); renderQuestionnaireList();
+}
+
+function qnImportModal() {
+  openModal(`
+    <div class="modal-head">整树导入 · 覆盖全部问卷</div>
+    <div class="modal-body">
+      <div class="field"><label>粘贴 {"questionnaires":[...]} JSON</label>
+        <textarea id="qn-imp" rows="14" style="font-family:ui-monospace,monospace;font-size:.82rem;min-height:220px" placeholder='{"questionnaires":[...]}'></textarea>
+        <div class="hint">⚠ 导入会清空并替换现有全部问卷结构。可省略 id，导入时自动分配。</div></div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost" onclick="closeModal()">取消</button><button class="btn primary" onclick="qnImport()">导入</button></div>`);
+}
+
+async function qnImport() {
+  let tree;
+  try { tree = JSON.parse(document.getElementById('qn-imp').value); }
+  catch (e) { toast('JSON 解析失败: ' + e.message); return; }
+  if (!confirm('确认导入并覆盖全部问卷结构？')) return;
+  const r = await api('/admin/questionnaire/import', { method: 'POST', body: JSON.stringify(tree) });
+  const d = await r.json();
+  toast('已导入 ' + d.imported_questionnaires + ' 份问卷');
+  closeModal(); renderQuestionnaireList();
+}
+
+// ── single-questionnaire nested editor ───────────────────────────────────────
+
+function qnToggleGroup(gid) {
+  _qnCollapsed['g'+gid] = !_qnCollapsed['g'+gid];
+  renderQuestionnaireEditor(_qnTree.id);
+}
+
+function _allQuestions() {
+  const out = [];
+  (_qnTree.questionGroups || []).forEach(g => (g.questions || []).forEach(q => out.push(q)));
+  return out;
+}
+function _allOptions() {
+  const out = [];
+  _allQuestions().forEach(q => (q.options || []).forEach(o => out.push({ ...o, q: q.content })));
+  return out;
+}
+
+async function renderQuestionnaireEditor(id) {
+  const r = await api('/admin/questionnaires/' + id);
+  if (r.status === 404) { toast('问卷不存在'); renderQuestionnaireList(); return; }
+  const q = await r.json();
+  _qnTree = q;
+  _qnCollapsed = {};
+  const groups = (q.questionGroups || []).map(g => {
+    const isCol = _qnCollapsed['g'+g.id];
+    const ques = (g.questions || []).map(qu => {
+      const tbn = ({Single:'single',Multiple:'multiple',Input:'input'})[qu.type]||'single';
+      const tbr = ({Single:'单选',Multiple:'多选',Input:'输入'})[qu.type]||qu.type;
+      const opts = qu.type==='Input'
+        ? `<div class="opts"><span style="color:var(--muted);font-size:.8rem">文本输入题 · 最大 ${qu.maxInputLen} 字</span></div>`
+        : `<div class="opts">${(qu.options||[]).map(o => {
+            const rel = (o.relatedQuestionIds||[]).length ? `<span class="tag rel" title="选中后展示问题 ${o.relatedQuestionIds.join(',')}">↪${o.relatedQuestionIds.length}</span>` : '';
+            const mut = (o.mutexOptionIds||[]).length ? `<span class="tag mut" title="与选项 ${o.mutexOptionIds.join(',')} 互斥">⊘${o.mutexOptionIds.length}</span>` : '';
+            return `<span class="opt"><span class="lbl">${esc(o.content)}</span>${rel}${mut}<span class="oa"><span title="编辑" onclick="optEditModal(${id},${JSON.stringify(o).replace(/"/g,'&quot;')})">✎</span><span title="删除" onclick="optDelete(${id},${o.id})">🗑</span></span></span>`;
+          }).join('')}<span class="opt add" onclick="optNewModal(${id},${qu.id})">＋ 选项</span></div>`;
+      return `<div class="ques">
+        <div class="qrow">
+          <span class="tbadge ${tbn}">${tbr}</span>
+          <span class="qtext">${esc(qu.content||'')}</span>
+          ${qu.introduction?`<span style="color:var(--muted);font-size:.78rem">${esc(qu.introduction)}</span>`:''}
+          <span class="spacer"></span>
+          <span class="acts">
+            <button class="icobtn" title="编辑问题" onclick="quEditModal(${id},${JSON.stringify(qu).replace(/"/g,'&quot;')})">✎</button>
+            <button class="icobtn danger" title="删除问题" onclick="quDelete(${id},${qu.id})">🗑</button>
+          </span>
+        </div>
+        ${opts}
+      </div>`;
+    }).join('');
+    return `<div class="group ${isCol?'collapsed':''}">
+      <div class="ghead" onclick="qnToggleGroup(${g.id})">
+        <span class="chev">▼</span>
+        <span class="gname">题组 · order ${g.order}</span>
+        <span class="gcount">${(g.questions||[]).length} 题</span>
+        ${g.hiddenByDefault?'<span class="pill hidden">默认隐藏</span>':''}
+        <span class="spacer"></span>
+        <span class="acts">
+          <button class="icobtn" title="编辑题组" onclick="event.stopPropagation();grpEditModal(${id},${g.id},${g.order},${g.hiddenByDefault})">✎</button>
+          <button class="icobtn danger" title="删除题组" onclick="event.stopPropagation();grpDelete(${id},${g.id})">🗑</button>
+        </span>
+      </div>
+      <div class="gbody">
+        ${ques}
+        <div class="addq" onclick="quNewModal(${id},${g.id})">＋ 添加问题</div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('content').innerHTML = `
+    <div class="qhead">
+      <span class="back" title="返回列表" onclick="renderQuestionnaireList()">←</span>
+      <div>
+        <div class="title">${esc(q.title)} <span class="pill ${q.category}" style="vertical-align:middle">${q.category==='main'?'主问卷':'附加'}</span> ${q.required?'<span class="pill req" style="vertical-align:middle">必填</span>':''}</div>
+        <div class="key">${esc(q.key)}</div>
+      </div>
+      <span class="spacer"></span>
+      <button class="btn ghost" onclick="qnMetaModal(${id})">⚙ 元数据</button>
+      <button class="btn primary" onclick="grpNewModal(${id})">＋ 题组</button>
+    </div>
+    ${groups}
+    <div class="addgroup" onclick="grpNewModal(${id})">＋ 添加题组</div>`;
+}
+
+function qnMetaModal(id) {
+  const q = _qnTree;
+  openModal(`
+    <div class="modal-head">问卷元数据</div>
+    <div class="modal-body">
+      <div class="field"><label>标识</label><input type="text" id="m-key" value="${esc(q.key)}" /></div>
+      <div class="field"><label>标题</label><input type="text" id="m-title" value="${esc(q.title||'')}" /></div>
+      <div class="field"><label>说明</label><input type="text" id="m-intro" value="${esc(q.introduction||'')}" /></div>
+      <div class="field"><label>分类</label><select id="m-cat"><option value="main"${q.category==='main'?' selected':''}>主问卷 (main)</option><option value="extra"${q.category==='extra'?' selected':''}>附加 (extra)</option></select></div>
+      <div class="field"><label class="check"><input type="checkbox" id="m-req"${q.required?' checked':''} /> 必填（计入投票门禁）</label></div>
+      <div class="field"><label>排序</label><input type="number" id="m-order" value="${q.order}" /></div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost" onclick="closeModal()">取消</button><button class="btn primary" onclick="qnMetaSave(${id})">保存</button></div>`);
+}
+
+async function qnMetaSave(id) {
+  const body = {
+    key: document.getElementById('m-key').value.trim(),
+    title: document.getElementById('m-title').value,
+    introduction: document.getElementById('m-intro').value,
+    category: document.getElementById('m-cat').value,
+    required: document.getElementById('m-req').checked,
+    order: parseInt(document.getElementById('m-order').value) || 0,
+  };
+  const r = await api('/admin/questionnaires/' + id, { method: 'PUT', body: JSON.stringify(body) });
+  if (r.status === 409) { toast('key 已存在'); return; }
+  toast('已保存'); closeModal(); renderQuestionnaireEditor(id);
+}
+
+// groups
+function grpNewModal(qid) { _grpModal(qid, null, 0, false); }
+function grpEditModal(qid, gid, order, hidden) { _grpModal(qid, gid, order, hidden); }
+function _grpModal(qid, gid, order, hidden) {
+  openModal(`
+    <div class="modal-head">${gid ? '编辑' : '新建'}题组</div>
+    <div class="modal-body">
+      <div class="field"><label>排序</label><input type="number" id="g-order" value="${order}" /></div>
+      <div class="field"><label class="check"><input type="checkbox" id="g-hidden"${hidden?' checked':''} /> 默认隐藏</label>
+        <div class="hint">默认隐藏的题组，需被某选项的「关联跳转」触发后才出现</div></div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost" onclick="closeModal()">取消</button><button class="btn primary" onclick="grpSave(${qid},${gid})">保存</button></div>`);
+}
+async function grpSave(qid, gid) {
+  const body = { order: parseInt(document.getElementById('g-order').value) || 0,
+                 hidden_by_default: document.getElementById('g-hidden').checked };
+  if (gid) { await api('/admin/question-groups/' + gid, { method: 'PUT', body: JSON.stringify(body) }); }
+  else { body.questionnaire_id = qid; await api('/admin/question-groups', { method: 'POST', body: JSON.stringify(body) }); }
+  toast('已保存'); closeModal(); renderQuestionnaireEditor(qid);
+}
+async function grpDelete(qid, gid) {
+  if (!confirm('删除此题组？将级联删除其问题/选项。')) return;
+  await api('/admin/question-groups/' + gid, { method: 'DELETE' });
+  toast('已删除'); renderQuestionnaireEditor(qid);
+}
+
+// questions
+function quNewModal(qid, gid) { _quModal(qid, gid, null, {type:'Single',content:'',introduction:'',maxInputLen:1000,order:0}); }
+function quEditModal(qid, qu) { _quModal(qid, qu.group_id || qu.groupId, qu.id, qu); }
+function _quModal(qid, gid, quid, qu) {
+  const t = qu.type||'Single';
+  openModal(`
+    <div class="modal-head">${quid ? '编辑' : '新建'}问题</div>
+    <div class="modal-body">
+      <div class="field"><label>类型</label><select id="q-type">
+        <option value="Single"${t==='Single'?' selected':''}>单选 Single</option>
+        <option value="Multiple"${t==='Multiple'?' selected':''}>多选 Multiple</option>
+        <option value="Input"${t==='Input'?' selected':''}>输入 Input</option></select></div>
+      <div class="field"><label>题面</label><input type="text" id="q-content" value="${esc(qu.content||'')}" /></div>
+      <div class="field"><label>说明</label><input type="text" id="q-intro" value="${esc(qu.introduction||'')}" /></div>
+      <div class="field"><label>最大输入长度</label><input type="number" id="q-maxlen" value="${qu.maxInputLen||1000}" /></div>
+      <div class="field"><label>排序</label><input type="number" id="q-order" value="${qu.order||0}" /></div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost" onclick="closeModal()">取消</button><button class="btn primary" onclick="quSave(${qid},${gid},${quid})">保存</button></div>`);
+}
+async function quSave(qid, gid, quid) {
+  const body = { type: document.getElementById('q-type').value,
+                 content: document.getElementById('q-content').value,
+                 introduction: document.getElementById('q-intro').value,
+                 max_input_len: parseInt(document.getElementById('q-maxlen').value) || 1000,
+                 order: parseInt(document.getElementById('q-order').value) || 0 };
+  if (quid) { await api('/admin/questions/' + quid, { method: 'PUT', body: JSON.stringify(body) }); }
+  else { body.group_id = gid; await api('/admin/questions', { method: 'POST', body: JSON.stringify(body) }); }
+  toast('已保存'); closeModal(); renderQuestionnaireEditor(qid);
+}
+async function quDelete(qid, quid) {
+  if (!confirm('删除此问题？将级联删除其选项。')) return;
+  await api('/admin/questions/' + quid, { method: 'DELETE' });
+  toast('已删除'); renderQuestionnaireEditor(qid);
+}
+
+// options
+function optNewModal(qid, quid) { _optModal(qid, quid, null, {content:'',relatedQuestionIds:[],mutexOptionIds:[],optionGroup:0,order:0}); }
+function optEditModal(qid, o) { _optModal(qid, o.question_id || o.questionId, o.id, o); }
+function _optModal(qid, quid, oid, o) {
+  const relChecks = _allQuestions().map(q =>
+    `<label><input type="checkbox" value="${q.id}"${(o.relatedQuestionIds||[]).includes(q.id)?' checked':''}> #${q.id} ${esc(q.content||'')}</label>`).join('') || '<div class="empty">—— 无问题可关联 ——</div>';
+  const mutChecks = _allOptions().map(x =>
+    `<label><input type="checkbox" value="${x.id}"${(o.mutexOptionIds||[]).includes(x.id)?' checked':''}> #${x.id} ${esc(x.content||'')}</label>`).join('') || '<div class="empty">—— 无选项可互斥 ——</div>';
+  openModal(`
+    <div class="modal-head">${oid ? '编辑' : '新建'}选项</div>
+    <div class="modal-body">
+      <div class="field"><label>内容</label><input type="text" id="o-content" value="${esc(o.content||'')}" /></div>
+      <div class="field"><label>选中后展示的问题（关联跳转 related）</label>
+        <div class="picklist" id="pl-related">${relChecks}</div>
+        <div class="hint">勾选的问题仅在本选项被选中时才展示给用户</div></div>
+      <div class="field"><label>互斥选项（mutex）</label>
+        <div class="picklist" id="pl-mutex">${mutChecks}</div>
+        <div class="hint">选中本项时自动取消勾选的互斥项</div></div>
+      <div class="field"><label>选项分组</label><input type="number" id="o-group" value="${o.optionGroup||0}" /></div>
+      <div class="field"><label>排序</label><input type="number" id="o-order" value="${o.order||0}" /></div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost" onclick="closeModal()">取消</button><button class="btn primary" onclick="optSave(${qid},${quid},${oid})">保存</button></div>`);
+}
+function _checkedVals(id) {
+  return Array.from(document.querySelectorAll('#'+id+' input[type=checkbox]:checked')).map(cb => parseInt(cb.value));
+}
+async function optSave(qid, quid, oid) {
+  const body = { content: document.getElementById('o-content').value,
+                 related_question_ids: _checkedVals('pl-related'),
+                 mutex_option_ids: _checkedVals('pl-mutex'),
+                 option_group: parseInt(document.getElementById('o-group').value) || 0,
+                 order: parseInt(document.getElementById('o-order').value) || 0 };
+  if (oid) { await api('/admin/options/' + oid, { method: 'PUT', body: JSON.stringify(body) }); }
+  else { body.question_id = quid; await api('/admin/options', { method: 'POST', body: JSON.stringify(body) }); }
+  toast('已保存'); closeModal(); renderQuestionnaireEditor(qid);
+}
+async function optDelete(qid, oid) {
+  if (!confirm('删除此选项？')) return;
+  await api('/admin/options/' + oid, { method: 'DELETE' });
+  toast('已删除'); renderQuestionnaireEditor(qid);
+}
+
+// ── logs ──────────────────────────────────────────────────────────────────────
+
+async function logs() {
+  document.getElementById('content').innerHTML = `
+    <div class="card">
+      <div class="search-row">
+        <input type="text" id="l-uid" placeholder="user_id" style="width:200px" />
+        <input type="text" id="l-action" placeholder="event_type" style="width:160px" />
+        <input type="text" id="l-since" placeholder="since (ISO)" style="width:180px" />
+        <button class="btn" onclick="searchLogs(1)">搜索</button>
+      </div>
+      <div id="logs-table"></div>
+    </div>`;
+}
+
+async function searchLogs(page) {
+  let url = '/admin/activity-logs?page=' + page + '&page_size=50';
+  const uid = document.getElementById('l-uid').value;
+  const action = document.getElementById('l-action').value;
+  const since = document.getElementById('l-since').value;
+  if (uid) url += '&user_id=' + encodeURIComponent(uid);
+  if (action) url += '&action=' + encodeURIComponent(action);
+  if (since) url += '&since=' + encodeURIComponent(since);
+  const r = await api(url);
+  const d = await r.json();
+  const rows = d.items.map(i => `<tr>
+    <td>${i.created_at.slice(0,19)}</td><td>${i.event_type}</td>
+    <td style="font-family:monospace;font-size:.8rem">${(i.user_id||'-').slice(0,16)}</td>
+    <td>${i.requester_ip||'-'}</td>
+  </tr>`).join('');
+  document.getElementById('logs-table').innerHTML = `
+    <table><thead><tr><th>时间</th><th>事件</th><th>用户ID</th><th>IP</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="4" style="color:var(--muted);text-align:center">无结果</td></tr>'}</tbody></table>
+    <div style="margin-top:.8rem;color:var(--muted)">共 ${d.total} 条</div>`;
+}
+
+// ── export ────────────────────────────────────────────────────────────────────
+
+function exportTab() {
+  document.getElementById('content').innerHTML = `
+    <div class="card" style="max-width:400px">
+      <h3 style="margin-bottom:1rem">导出投票数据 CSV</h3>
+      <div style="display:flex;flex-direction:column;gap:.8rem">
+        <label>年份：<input type="number" id="exp-year" value="${new Date().getFullYear()}" style="width:100px;margin-left:.5rem" /></label>
+        <label>类别：
+          <select id="exp-cat" style="margin-left:.5rem">
+            <option value="character">角色</option><option value="music">音乐</option>
+            <option value="cp">CP</option><option value="paper">问卷</option>
+            <option value="dojin">同人</option>
+          </select>
+        </label>
+        <button class="btn" onclick="downloadCSV()">Download CSV</button>
+      </div>
+    </div>`;
+}
+
+function downloadCSV() {
+  const year = document.getElementById('exp-year').value;
+  const cat = document.getElementById('exp-cat').value;
+  api('/admin/export/votes?vote_year=' + year + '&category=' + cat)
+    .then(r => r.blob())
+    .then(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'votes_' + year + '_' + cat + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+}
+
+// ── init ──────────────────────────────────────────────────────────────────────
+
+window.addEventListener('load', () => {
+  const saved = sessionStorage.getItem('adminSecret');
+  if (saved) {
+    SECRET = saved;
+    document.getElementById('login-overlay').style.display = 'none';
+    document.getElementById('main-nav').style.display = 'flex';
+    document.getElementById('content').style.display = 'block';
+    showTab('dashboard');
+  }
+  document.getElementById('secret-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+});
+</script>
+</body>
+</html>
