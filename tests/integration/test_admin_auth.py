@@ -123,3 +123,40 @@ async def test_questionnaire_admin_403_when_secret_unset(app, monkeypatch):
         resp = await ac.get("/api/v1/admin/questionnaires")
 
     assert resp.status_code == 403
+
+
+# B-042: the bare /admin/* ops endpoints (config reload + Nacos discovery) live
+# on the app, not the /api/v1/admin routers, so they must be gated individually.
+# require_admin fires before the handler, so the 403 path never reloads config
+# or calls Nacos — safe to assert without side effects.
+_OPS_ENDPOINTS = [
+    ("POST", "/admin/reload-config"),
+    ("GET", "/admin/discover/thvote-be"),
+    ("GET", "/admin/discover-self"),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method,path", _OPS_ENDPOINTS)
+async def test_ops_endpoints_403_when_secret_unset(app, monkeypatch, method, path):
+    monkeypatch.delenv("ADMIN_SECRET", raising=False)
+    import src.common.config as cfg
+    monkeypatch.setattr(cfg, "_settings_instance", None)
+
+    async with _client(app) as ac:
+        resp = await ac.request(method, path)
+
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method,path", _OPS_ENDPOINTS)
+async def test_ops_endpoints_403_wrong_secret(app, monkeypatch, method, path):
+    monkeypatch.setenv("ADMIN_SECRET", "right")
+    import src.common.config as cfg
+    monkeypatch.setattr(cfg, "_settings_instance", None)
+
+    async with _client(app) as ac:
+        resp = await ac.request(method, path, headers={"X-Admin-Secret": "wrong"})
+
+    assert resp.status_code == 403
