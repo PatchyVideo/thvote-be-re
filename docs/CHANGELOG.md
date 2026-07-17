@@ -4,7 +4,24 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-17（B-045 提交耗时 + 服务端改票计数）
+> 最后更新：2026-07-17（B-046 UA + 浏览器环境指纹）
+
+## [2026-07-17] B-046 User-Agent + 浏览器环境指纹（每票取证）
+
+> 每票记录客户端环境指纹作反刷票特征。只取证不拦截。前端在 Touhou-Vote `4b89a23`。
+
+### Added
+- `raw_*.client_env`(新列 **migration 0013**,6 张表,单个 JSON 列):`{ua, tz, screen, lang}`。
+  - `ua` 服务端在 `_server_meta` 从请求头取(连纯 API 机器人也跑不掉:headless/`python-requests`/缺 UA 皆信号)。
+  - `tz/screen/lang` 前端 `clientEnv.ts` 采集、以 JSON 字符串上报;服务端**只白名单取这三键、值截断、限总长**(不做 PII grab-bag)。浏览器时区 vs IP 地理不符=经典代理信号。
+  - 单个 JSON 列,以后加环境信号无需改表。
+- 5 个 `*SubmitGQL` 加可选 `clientEnv`(SDL 向后兼容);sync mapper 透传(历史 NULL)。测试 +7。
+
+### 兼容性 / 部署
+- 需 `alembic upgrade head`(**0013**,依赖 0012;`ADD COLUMN IF NOT EXISTS`,幂等)。**本 PR 叠在 B-045(#11)之上,须先合 #11**。
+- 只取证、不拦截。
+
+## [2026-07-17] B-045 提交耗时 + 服务端改票计数（反机器人时序特征）
 
 ## [2026-07-17] B-045 提交耗时 + 服务端改票计数（反机器人时序特征）
 

@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -97,6 +98,7 @@ class CharacterSubmitGQL:
     characters: list[CharacterSubmitInput]
     device_id: Optional[str] = None
     fill_duration_ms: Optional[int] = None
+    client_env: Optional[str] = None
 
 
 @strawberry.input(name="MusicSubmitGQL")
@@ -105,6 +107,7 @@ class MusicSubmitGQL:
     musics: list[MusicSubmitInput]  # 提交字段是复数;回读结果字段是单数 music(旧契约怪癖)
     device_id: Optional[str] = None
     fill_duration_ms: Optional[int] = None
+    client_env: Optional[str] = None
 
 
 @strawberry.input(name="CPSubmitGQL")
@@ -113,6 +116,7 @@ class CPSubmitGQL:
     cps: list[CPSubmitInput]
     device_id: Optional[str] = None
     fill_duration_ms: Optional[int] = None
+    client_env: Optional[str] = None
 
 
 @strawberry.input(name="PaperSubmitGQL")
@@ -121,6 +125,7 @@ class PaperSubmitGQL:
     paper_json: str
     device_id: Optional[str] = None
     fill_duration_ms: Optional[int] = None
+    client_env: Optional[str] = None
 
 
 @strawberry.input(name="DojinSubmitGQL")
@@ -129,6 +134,7 @@ class DojinSubmitGQL:
     dojins: list[DojinSubmitItemGQL]
     device_id: Optional[str] = None
     fill_duration_ms: Optional[int] = None
+    client_env: Optional[str] = None
 
 
 @strawberry.type
@@ -186,21 +192,57 @@ def _vote_user_id(vote_token: str) -> str:
         raise UnauthorizedError("INVALID_TOKEN", details=401) from exc
 
 
+def _request_from_info(info: "strawberry.Info"):
+    ctx = info.context
+    return ctx["request"] if isinstance(ctx, dict) else getattr(ctx, "request", None)
+
+
+# 客户端只允许上报这几个环境键;其余一律丢弃(防塞垃圾/PII)
+_CLIENT_ENV_KEYS = ("tz", "screen", "lang")
+
+
+def _build_client_env(
+    info: "strawberry.Info", client_env_raw: str | None
+) -> dict | None:
+    """组装环境指纹 {ua(服务端从请求头取), tz, screen, lang}。
+    ua 服务端读取(连纯 API 机器人也跑不掉);tz/screen/lang 由前端 JSON 上报,
+    只白名单取键、值截断,防塞垃圾。反刷票取证,不作拦截门。"""
+    env: dict[str, str] = {}
+    request = _request_from_info(info)
+    if request is not None:
+        ua = request.headers.get("user-agent")
+        if ua:
+            env["ua"] = ua[:512]
+    if client_env_raw and len(client_env_raw) <= 2048:
+        try:
+            obj = json.loads(client_env_raw)
+        except (ValueError, TypeError):
+            obj = None
+        if isinstance(obj, dict):
+            for k in _CLIENT_ENV_KEYS:
+                v = obj.get(k)
+                if v is not None:
+                    env[k] = str(v)[:128]
+    return env or None
+
+
 def _server_meta(
     user_id: str,
     info: "strawberry.Info",
     device_id: str | None = None,
     fill_duration_ms: int | None = None,
+    client_env_raw: str | None = None,
 ) -> SubmitMetadata:
     """meta 由服务端生成:vote_id 取自 token,时间与 IP 不信任客户端。
-    device_id / fill_duration_ms 是客户端反刷票取证信号,仅记录不作拦截门。
-    attempt(第几次提交)由 DAO 服务端计算,此处不设。"""
+    device_id / fill_duration_ms / client_env 是客户端反刷票取证信号,仅记录不作
+    拦截门。attempt(第几次提交)由 DAO 服务端计算,此处不设。"""
     return SubmitMetadata(
         vote_id=user_id,
         created_at=_utcnow(),
         user_ip=_client_ip_from_info(info) or "<unknown>",
         additional_fingreprint=device_id or None,
         fill_duration_ms=fill_duration_ms,
+        client_env=_build_client_env(info, client_env_raw),
     )
 
 
@@ -291,7 +333,8 @@ class SubmitBridgeMutation:
                         for c in content.characters
                     ],
                     meta=_server_meta(
-                        user_id, info, content.device_id, content.fill_duration_ms
+                        user_id, info, content.device_id, content.fill_duration_ms,
+                        content.client_env,
                     ),
                 )
                 return await _run_submit(body, "submit_character")
@@ -311,7 +354,8 @@ class SubmitBridgeMutation:
                         for m in content.musics
                     ],
                     meta=_server_meta(
-                        user_id, info, content.device_id, content.fill_duration_ms
+                        user_id, info, content.device_id, content.fill_duration_ms,
+                        content.client_env,
                     ),
                 )
                 return await _run_submit(body, "submit_music")
@@ -334,7 +378,8 @@ class SubmitBridgeMutation:
                         for c in content.cps
                     ],
                     meta=_server_meta(
-                        user_id, info, content.device_id, content.fill_duration_ms
+                        user_id, info, content.device_id, content.fill_duration_ms,
+                        content.client_env,
                     ),
                 )
                 return await _run_submit(body, "submit_cp")
@@ -351,7 +396,8 @@ class SubmitBridgeMutation:
                 body = PaperSubmitRest(
                     papers_json=content.paper_json,
                     meta=_server_meta(
-                        user_id, info, content.device_id, content.fill_duration_ms
+                        user_id, info, content.device_id, content.fill_duration_ms,
+                        content.client_env,
                     ),
                 )
                 return await _run_submit(body, "submit_paper")
@@ -375,7 +421,8 @@ class SubmitBridgeMutation:
                         for d in content.dojins
                     ],
                     meta=_server_meta(
-                        user_id, info, content.device_id, content.fill_duration_ms
+                        user_id, info, content.device_id, content.fill_duration_ms,
+                        content.client_env,
                     ),
                 )
                 return await _run_dojin_nominations(body)

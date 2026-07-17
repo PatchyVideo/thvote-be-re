@@ -18,6 +18,7 @@ class SubmitMetadata(BaseModel):
     user_ip: str = "<unknown>"
     additional_fingreprint: str | None = None
     fill_duration_ms: int | None = None
+    client_env: dict | None = None
 
 
 class CharacterSubmit(BaseModel):
