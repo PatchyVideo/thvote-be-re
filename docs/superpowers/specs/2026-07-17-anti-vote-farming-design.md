@@ -55,6 +55,14 @@
 - 值是 JSON 字符串数组，元素可为**具体 IP 或 CIDR 网段**。填 nginx 所在 docker 网段即可（`thvote-net` 是 `external:true`，子网由创建时定；私有网段整段信任最省事且抗容器 IP 变化——后端只被 nginx 私网访问或公网直连 :18000，私网来源必是 nginx，公网直连对端本就是真实客户端）。
 - ⚠️ 改后需重启容器（B-017）。配好后 per-IP 证据与限流才有意义。
 
+## 四点五、端到端验证（2026-07-17 测试机实测）
+
+真人登录+投票后直连测试库核对同一票的 `raw_*` 行：
+- **可信 IP ✓**：新票 `user_ip` = 真实公网 IP（对照修复前的旧票记的是 nginx 内网 `172.18.0.7`——印证"未修前所有票记成 nginx IP"）。`TRUSTED_PROXY_IPS`(172.16/12) 正确识别 nginx 为可信代理并读 `X-Real-IP`。
+- **设备指纹 ✓**：`raw_character` 与 `raw_paper` 同票带同一 `additional_fingreprint`。
+- `register_device_id` 需**新注册账号**才写入（老账号注册早于本功能，值为空）——路径同 `Meta→落库`，单测已覆盖。
+- ⚠️ **HTTP 测试机走兜底 id**：`crypto.randomUUID()` 仅安全上下文(HTTPS/localhost)可用,`http://…:8082` 下 `deviceId.ts` 回退到 `Date.now()+Math.random()` 前缀 `dev-`。生产站(HTTPS)会用标准 UUID。可选硬化：兜底改 `crypto.getRandomValues`(HTTP 下亦可用、密码学随机)。
+
 ## 五、Follow-up
 
 - **Phase 1**：deviceId.ts 升级 FingerprintJS `visitorId`（跨无痕更稳）。
