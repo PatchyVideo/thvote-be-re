@@ -19,21 +19,41 @@ class SubmitDAO:
         self.session = session
 
     async def _upsert(self, model, data: dict) -> int:
-        """Replace any rows for this vote_id with one new row, bumping ``attempt``.
+        """Replace any rows for this vote_id with one new row (B-045).
 
-        ``attempt = previous max + 1`` — so a first submit is 1 and each
-        re-submit (edit) is 2, 3, ...  Server-authoritative (the client never
-        sets it); repurposes the long-dead ``attempt`` column as a re-submit
-        counter for anti-abuse analysis, so a "filled too fast" heuristic can
-        apply to first submits only and never flags a legitimate edit (B-045).
+        Two server-authoritative anti-abuse fields survive the overwrite, so a
+        bot can't launder them by re-submitting:
+
+        - ``attempt`` = previous count + 1 (first submit = 1, each edit = 2, 3…).
+        - ``fill_duration_ms`` = the **first** submit's reported fill time,
+          **preserved** on every re-submit. The client sends this session's
+          duration, but on an edit we keep the original: the "filled too fast"
+          signal lives on the first fill and a later slow/fast edit cannot
+          overwrite it. A human's first fill is genuinely slow → never flagged;
+          a bot's first fill is ~0 → stays flagged no matter how many times it
+          re-submits. Judge on this value directly (no per-attempt exemption).
         """
         vote_id = data["vote_id"]
-        prev = await self.session.scalar(
-            select(func.coalesce(func.max(model.attempt), 0)).where(
-                model.vote_id == vote_id
+        # The surviving row for this vote_id (real-time path keeps exactly one;
+        # legacy-synced rows carry attempt=NULL). Highest attempt = newest.
+        prev = (
+            await self.session.execute(
+                select(model.attempt, model.fill_duration_ms)
+                .where(model.vote_id == vote_id)
+                .order_by(func.coalesce(model.attempt, 0).desc())
+                .limit(1)
             )
-        )
-        row_data = {**data, "attempt": (prev or 0) + 1}
+        ).first()
+
+        if prev is None or prev.attempt is None:
+            # No prior submit (or only legacy rows) → this IS the first submit.
+            attempt = 1
+            fill_duration_ms = data.get("fill_duration_ms")
+        else:
+            attempt = prev.attempt + 1
+            fill_duration_ms = prev.fill_duration_ms  # preserve first (even NULL)
+
+        row_data = {**data, "attempt": attempt, "fill_duration_ms": fill_duration_ms}
         await self.session.execute(delete(model).where(model.vote_id == vote_id))
         row = model(**row_data)
         self.session.add(row)

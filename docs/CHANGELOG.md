@@ -12,7 +12,8 @@
 
 ### Added
 - `raw_*.fill_duration_ms`(新列,**migration 0012** 覆盖 6 张 raw_* 表):客户端上报的"页面挂载→提交"墙钟毫秒数。5 个 `*SubmitGQL` 加可选 `fillDurationMs` → `_server_meta` → `SubmitMetadata` → 落库。前端 `fillTimer.ts` + 5 类投票/问卷埋点。机器人直接打 GraphQL 不跑前端 → 值为 null(本身即信号)。
-- `attempt` 计数**改由服务端计算**(复用此前恒 NULL 的死列,无需迁移):`SubmitDAO._upsert`(5 个 create_* 收敛到它)覆盖写前 `MAX(attempt)+1`,首次=1、改票=2/3…。→ 让"耗时短=可疑"只对首次(attempt=1)生效,改票豁免,根治用户提出的改票假阳性。
+  - **落库语义 = 首次提交耗时,改票时服务端保留不覆盖**(`_upsert` 逻辑)。防机器人"投一次快、再重提一次"洗掉首投证据(覆盖式提交会物理删掉 attempt=1 那行)。判据直接看这个保留值(快/为空=可疑),重提多少次改不了它;不再按 attempt 豁免。
+- `attempt` 计数**改由服务端计算**(复用此前恒 NULL 的死列,无需迁移):`SubmitDAO._upsert`(5 个 create_* 收敛到它)覆盖写前 `MAX(attempt)+1`,首次=1、改票=2/3…,作辅助信息(改了几次)。
 - 测试 +2(attempt 1→2→3、只留一行、fill_duration 落库)。
 
 ### 兼容性 / 部署

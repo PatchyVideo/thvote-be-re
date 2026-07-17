@@ -21,7 +21,8 @@ class RawCharacterSubmit(Base):
     additional_fingreprint: Mapped[str | None] = mapped_column(
         String(1024), nullable=True
     )
-    # 客户端上报的本次填写活跃耗时(毫秒);反刷票取证,仅记录不拦截(B-045)
+    # 首次提交的填写活跃耗时(毫秒);改票时服务端保留不覆盖,防机器人靠重提洗掉
+    # 首投的"太快"取证信号。反刷票取证,仅记录不拦截(B-045)。
     fill_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     payload: Mapped[list] = mapped_column(JSON, nullable=False)
     legacy_mongo_id: Mapped[str | None] = mapped_column(
@@ -43,7 +44,8 @@ class RawMusicSubmit(Base):
     additional_fingreprint: Mapped[str | None] = mapped_column(
         String(1024), nullable=True
     )
-    # 客户端上报的本次填写活跃耗时(毫秒);反刷票取证,仅记录不拦截(B-045)
+    # 首次提交的填写活跃耗时(毫秒);改票时服务端保留不覆盖,防机器人靠重提洗掉
+    # 首投的"太快"取证信号。反刷票取证,仅记录不拦截(B-045)。
     fill_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     payload: Mapped[list] = mapped_column(JSON, nullable=False)
     legacy_mongo_id: Mapped[str | None] = mapped_column(
@@ -65,7 +67,8 @@ class RawCPSubmit(Base):
     additional_fingreprint: Mapped[str | None] = mapped_column(
         String(1024), nullable=True
     )
-    # 客户端上报的本次填写活跃耗时(毫秒);反刷票取证,仅记录不拦截(B-045)
+    # 首次提交的填写活跃耗时(毫秒);改票时服务端保留不覆盖,防机器人靠重提洗掉
+    # 首投的"太快"取证信号。反刷票取证,仅记录不拦截(B-045)。
     fill_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     payload: Mapped[list] = mapped_column(JSON, nullable=False)
     legacy_mongo_id: Mapped[str | None] = mapped_column(
@@ -87,7 +90,8 @@ class RawPaperSubmit(Base):
     additional_fingreprint: Mapped[str | None] = mapped_column(
         String(1024), nullable=True
     )
-    # 客户端上报的本次填写活跃耗时(毫秒);反刷票取证,仅记录不拦截(B-045)
+    # 首次提交的填写活跃耗时(毫秒);改票时服务端保留不覆盖,防机器人靠重提洗掉
+    # 首投的"太快"取证信号。反刷票取证,仅记录不拦截(B-045)。
     fill_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     papers_json: Mapped[str] = mapped_column(Text, nullable=False)
     legacy_mongo_id: Mapped[str | None] = mapped_column(
@@ -109,7 +113,8 @@ class RawDojinSubmit(Base):
     additional_fingreprint: Mapped[str | None] = mapped_column(
         String(1024), nullable=True
     )
-    # 客户端上报的本次填写活跃耗时(毫秒);反刷票取证,仅记录不拦截(B-045)
+    # 首次提交的填写活跃耗时(毫秒);改票时服务端保留不覆盖,防机器人靠重提洗掉
+    # 首投的"太快"取证信号。反刷票取证,仅记录不拦截(B-045)。
     fill_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     payload: Mapped[list] = mapped_column(JSON, nullable=False)
     legacy_mongo_id: Mapped[str | None] = mapped_column(
@@ -154,7 +159,8 @@ class RawWorkSubmit(Base):
     additional_fingreprint: Mapped[str | None] = mapped_column(
         String(1024), nullable=True
     )
-    # 客户端上报的本次填写活跃耗时(毫秒);反刷票取证,仅记录不拦截(B-045)
+    # 首次提交的填写活跃耗时(毫秒);改票时服务端保留不覆盖,防机器人靠重提洗掉
+    # 首投的"太快"取证信号。反刷票取证,仅记录不拦截(B-045)。
     fill_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     payload: Mapped[list] = mapped_column(JSON, nullable=False)
     legacy_mongo_id: Mapped[str | None] = mapped_column(

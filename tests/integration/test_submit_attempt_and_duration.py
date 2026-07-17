@@ -38,7 +38,7 @@ async def _current(session, vote_id: str) -> RawCharacterSubmit:
 
 
 @pytest.mark.asyncio
-async def test_attempt_increments_on_resubmit_and_keeps_one_row(session):
+async def test_attempt_increments_and_first_fill_is_preserved(session):
     dao = SubmitDAO(session)
 
     await dao.create_character_submit(_row("v1", duration=45000))
@@ -46,7 +46,8 @@ async def test_attempt_increments_on_resubmit_and_keeps_one_row(session):
     assert row.attempt == 1  # first submit
     assert row.fill_duration_ms == 45000
 
-    # re-submit (edit): only one row remains, attempt bumped, new duration stored
+    # re-submit (edit): only one row, attempt bumped, but the FIRST fill is
+    # PRESERVED — a fast re-submit cannot launder the first-fill signal.
     await dao.create_character_submit(_row("v1", duration=800))
     rows = (
         await session.execute(
@@ -54,11 +55,27 @@ async def test_attempt_increments_on_resubmit_and_keeps_one_row(session):
         )
     ).scalars().all()
     assert len(rows) == 1  # delete-then-insert keeps a single row
-    assert rows[0].attempt == 2  # edit — so a "too fast" heuristic can skip it
-    assert rows[0].fill_duration_ms == 800
+    assert rows[0].attempt == 2
+    assert rows[0].fill_duration_ms == 45000  # preserved, NOT overwritten with 800
 
+    # a later null-duration re-submit still keeps the original first fill
     await dao.create_character_submit(_row("v1", duration=None))
-    assert (await _current(session, "v1")).attempt == 3
+    final = await _current(session, "v1")
+    assert final.attempt == 3
+    assert final.fill_duration_ms == 45000
+
+
+@pytest.mark.asyncio
+async def test_null_first_fill_stays_null_across_resubmits(session):
+    """A bot whose first submit reports no duration (null) stays null — the
+    absence itself is the signal and a later valued edit can't erase it."""
+    dao = SubmitDAO(session)
+    await dao.create_character_submit(_row("vn", duration=None))
+    assert (await _current(session, "vn")).fill_duration_ms is None
+    await dao.create_character_submit(_row("vn", duration=5000))
+    row = await _current(session, "vn")
+    assert row.attempt == 2
+    assert row.fill_duration_ms is None  # first was null → preserved null
 
 
 @pytest.mark.asyncio
