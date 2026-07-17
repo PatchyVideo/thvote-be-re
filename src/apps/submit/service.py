@@ -162,6 +162,7 @@ class SubmitService:
             "created_at": validated.meta.created_at,
             "user_ip": validated.meta.user_ip,
             "additional_fingreprint": validated.meta.additional_fingreprint,
+            "fill_duration_ms": validated.meta.fill_duration_ms,
             "payload": [x.model_dump() for x in validated.characters],
         }
         return await self.submit_dao.create_character_submit(row_data)
@@ -194,6 +195,7 @@ class SubmitService:
             "created_at": validated.meta.created_at,
             "user_ip": validated.meta.user_ip,
             "additional_fingreprint": validated.meta.additional_fingreprint,
+            "fill_duration_ms": validated.meta.fill_duration_ms,
             "payload": [x.model_dump() for x in validated.music],
         }
         return await self.submit_dao.create_music_submit(row_data)
@@ -226,6 +228,7 @@ class SubmitService:
             "created_at": validated.meta.created_at,
             "user_ip": validated.meta.user_ip,
             "additional_fingreprint": validated.meta.additional_fingreprint,
+            "fill_duration_ms": validated.meta.fill_duration_ms,
             "payload": [x.model_dump() for x in validated.cps],
         }
         return await self.submit_dao.create_cp_submit(row_data)
@@ -257,6 +260,7 @@ class SubmitService:
             "created_at": validated.meta.created_at,
             "user_ip": validated.meta.user_ip,
             "additional_fingreprint": validated.meta.additional_fingreprint,
+            "fill_duration_ms": validated.meta.fill_duration_ms,
             "papers_json": validated.papers_json,
         }
         return await self.submit_dao.create_paper_submit(row_data)
@@ -288,6 +292,7 @@ class SubmitService:
             "created_at": validated.meta.created_at,
             "user_ip": validated.meta.user_ip,
             "additional_fingreprint": validated.meta.additional_fingreprint,
+            "fill_duration_ms": validated.meta.fill_duration_ms,
             "payload": [x.model_dump() for x in validated.dojins],
         }
         return await self.submit_dao.create_dojin_submit(row_data)

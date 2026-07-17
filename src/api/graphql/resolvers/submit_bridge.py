@@ -88,13 +88,15 @@ class DojinSubmitItemGQL:
     image_url: Optional[str] = None
 
 
-# device_id: 客户端设备指纹(localStorage UUID),仅作反刷票取证记录,不作拦截门
-# (客户端可控)。落库到 raw_*.additional_fingreprint。可空,老客户端不传。
+# device_id: 客户端设备指纹(localStorage UUID);fill_duration_ms: 本次填写活跃
+# 耗时(毫秒)。二者均仅作反刷票取证记录,不作拦截门(客户端可控)。落库到
+# raw_*.additional_fingreprint / fill_duration_ms。可空,老客户端不传。
 @strawberry.input(name="CharacterSubmitGQL")
 class CharacterSubmitGQL:
     vote_token: str
     characters: list[CharacterSubmitInput]
     device_id: Optional[str] = None
+    fill_duration_ms: Optional[int] = None
 
 
 @strawberry.input(name="MusicSubmitGQL")
@@ -102,6 +104,7 @@ class MusicSubmitGQL:
     vote_token: str
     musics: list[MusicSubmitInput]  # 提交字段是复数;回读结果字段是单数 music(旧契约怪癖)
     device_id: Optional[str] = None
+    fill_duration_ms: Optional[int] = None
 
 
 @strawberry.input(name="CPSubmitGQL")
@@ -109,6 +112,7 @@ class CPSubmitGQL:
     vote_token: str
     cps: list[CPSubmitInput]
     device_id: Optional[str] = None
+    fill_duration_ms: Optional[int] = None
 
 
 @strawberry.input(name="PaperSubmitGQL")
@@ -116,6 +120,7 @@ class PaperSubmitGQL:
     vote_token: str
     paper_json: str
     device_id: Optional[str] = None
+    fill_duration_ms: Optional[int] = None
 
 
 @strawberry.input(name="DojinSubmitGQL")
@@ -123,6 +128,7 @@ class DojinSubmitGQL:
     vote_token: str
     dojins: list[DojinSubmitItemGQL]
     device_id: Optional[str] = None
+    fill_duration_ms: Optional[int] = None
 
 
 @strawberry.type
@@ -181,15 +187,20 @@ def _vote_user_id(vote_token: str) -> str:
 
 
 def _server_meta(
-    user_id: str, info: "strawberry.Info", device_id: str | None = None
+    user_id: str,
+    info: "strawberry.Info",
+    device_id: str | None = None,
+    fill_duration_ms: int | None = None,
 ) -> SubmitMetadata:
     """meta 由服务端生成:vote_id 取自 token,时间与 IP 不信任客户端。
-    device_id 是客户端设备指纹,仅作反刷票取证记录(不作拦截门)。"""
+    device_id / fill_duration_ms 是客户端反刷票取证信号,仅记录不作拦截门。
+    attempt(第几次提交)由 DAO 服务端计算,此处不设。"""
     return SubmitMetadata(
         vote_id=user_id,
         created_at=_utcnow(),
         user_ip=_client_ip_from_info(info) or "<unknown>",
         additional_fingreprint=device_id or None,
+        fill_duration_ms=fill_duration_ms,
     )
 
 
@@ -279,7 +290,9 @@ class SubmitBridgeMutation:
                         CharacterSubmitPydantic(id=c.id, reason=c.reason, first=c.first)
                         for c in content.characters
                     ],
-                    meta=_server_meta(user_id, info, content.device_id),
+                    meta=_server_meta(
+                        user_id, info, content.device_id, content.fill_duration_ms
+                    ),
                 )
                 return await _run_submit(body, "submit_character")
         raise RuntimeError("unreachable")  # pragma: no cover
@@ -297,7 +310,9 @@ class SubmitBridgeMutation:
                         MusicSubmitPydantic(id=m.id, reason=m.reason, first=m.first)
                         for m in content.musics
                     ],
-                    meta=_server_meta(user_id, info, content.device_id),
+                    meta=_server_meta(
+                        user_id, info, content.device_id, content.fill_duration_ms
+                    ),
                 )
                 return await _run_submit(body, "submit_music")
         raise RuntimeError("unreachable")  # pragma: no cover
@@ -318,7 +333,9 @@ class SubmitBridgeMutation:
                         )
                         for c in content.cps
                     ],
-                    meta=_server_meta(user_id, info, content.device_id),
+                    meta=_server_meta(
+                        user_id, info, content.device_id, content.fill_duration_ms
+                    ),
                 )
                 return await _run_submit(body, "submit_cp")
         raise RuntimeError("unreachable")  # pragma: no cover
@@ -333,7 +350,9 @@ class SubmitBridgeMutation:
             async with _submit_lock(user_id):
                 body = PaperSubmitRest(
                     papers_json=content.paper_json,
-                    meta=_server_meta(user_id, info, content.device_id),
+                    meta=_server_meta(
+                        user_id, info, content.device_id, content.fill_duration_ms
+                    ),
                 )
                 return await _run_submit(body, "submit_paper")
         raise RuntimeError("unreachable")  # pragma: no cover
@@ -355,7 +374,9 @@ class SubmitBridgeMutation:
                         )
                         for d in content.dojins
                     ],
-                    meta=_server_meta(user_id, info, content.device_id),
+                    meta=_server_meta(
+                        user_id, info, content.device_id, content.fill_duration_ms
+                    ),
                 )
                 return await _run_dojin_nominations(body)
         raise RuntimeError("unreachable")  # pragma: no cover
