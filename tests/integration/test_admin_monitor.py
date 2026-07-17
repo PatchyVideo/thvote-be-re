@@ -99,3 +99,82 @@ async def test_list_votes_filters_and_pagination(db_session):
     assert total == 1
     assert rows[0]["vote_id"] == "u1"
     assert rows[0]["fill_duration_ms"] == 500
+
+
+@pytest.mark.asyncio
+async def test_max_ip_group_size_is_max_not_union(db_session):
+    from src.apps.admin.monitor.dao import MonitorDAO
+    # IP group A = {u1, u2, u3} on 1.1.1.1 (size 3)
+    await _seed_char(db_session, "u1", "1.1.1.1", fill=1500)
+    await _seed_char(db_session, "u2", "1.1.1.1")
+    await _seed_char(db_session, "u3", "1.1.1.1")
+    # IP group B = {u1, u4, u5, u6} on 2.2.2.2 (size 4) -- u1 is in BOTH groups
+    await _seed_char(db_session, "u1", "2.2.2.2", fill=900)
+    await _seed_char(db_session, "u4", "2.2.2.2")
+    await _seed_char(db_session, "u5", "2.2.2.2")
+    await _seed_char(db_session, "u6", "2.2.2.2")
+
+    dao = MonitorDAO(db_session)
+    features = await dao.account_features("u1")
+    # the larger single group (B, size 4), NOT the union of A and B (6)
+    assert features.max_ip_group_size == 4
+    # happy-path: min_fill_duration_ms reflects the smallest seeded fill for u1
+    assert features.min_fill_duration_ms == 900
+    # u1 was seeded with no client_env at all
+    assert features.has_client_env is False
+
+
+@pytest.mark.asyncio
+async def test_ip_groups_excludes_unknown_sentinel(db_session):
+    from src.apps.admin.monitor.dao import MonitorDAO
+    await _seed_char(db_session, "u1", "<unknown>")
+    await _seed_char(db_session, "u2", "<unknown>")
+    await _seed_char(db_session, "u3", "<unknown>")
+    await _seed_char(db_session, "u4", "5.5.5.5")
+    await _seed_char(db_session, "u5", "5.5.5.5")
+
+    dao = MonitorDAO(db_session)
+    groups = await dao.ip_groups(min_size=2, limit=10)
+    assert groups == [{"key": "5.5.5.5", "voter_count": 2}]
+
+
+@pytest.mark.asyncio
+async def test_submissions_by_day_buckets(db_session):
+    from src.apps.admin.monitor.dao import MonitorDAO
+    await _seed_char(db_session, "u1", "1.1.1.1")
+    await _seed_char(db_session, "u2", "2.2.2.2")
+
+    dao = MonitorDAO(db_session)
+    rows = await dao.submissions_by_day()
+    assert sum(r["count"] for r in rows) == 2
+    for r in rows:
+        assert isinstance(r["date"], str)
+        assert len(r["date"]) == 10  # YYYY-MM-DD, not a bare year
+
+
+@pytest.mark.asyncio
+async def test_candidate_vote_ids_selects_suspicious(db_session):
+    from src.apps.admin.monitor.dao import MonitorDAO
+    await _seed_char(db_session, "u1", "1.1.1.1", fill=200, env=None)
+    await _seed_char(
+        db_session, "u2", "2.2.2.2", fill=9000, env={"ua": "Mozilla/5.0"}
+    )
+
+    dao = MonitorDAO(db_session)
+    candidates = await dao.candidate_vote_ids(
+        cluster_min=5, fast_fill_ms=2000, cap=100
+    )
+    assert "u1" in candidates
+    assert "u2" not in candidates
+
+
+@pytest.mark.asyncio
+async def test_distinct_ip_and_device_counts(db_session):
+    from src.apps.admin.monitor.dao import MonitorDAO
+    await _seed_char(db_session, "u1", "1.1.1.1", device="dev-a")
+    await _seed_char(db_session, "u2", "1.1.1.1", device="dev-a")
+    await _seed_char(db_session, "u3", "2.2.2.2", device="dev-b")
+
+    dao = MonitorDAO(db_session)
+    assert await dao.distinct_ip_count() == 2
+    assert await dao.distinct_device_count() == 2

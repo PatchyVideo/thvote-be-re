@@ -83,9 +83,14 @@ class MonitorDAO:
             for m in _MODELS
         ]).subquery()
         cnt = func.count(func.distinct(sub.c.vote_id)).label("voter_count")
+        conds = [sub.c.key.isnot(None)]
+        if col_name == "user_ip":
+            # "<unknown>" 是抓取失败的兜底值(NOT NULL default),不是真实 IP,
+            # 混进分组会伪造出一个假的巨型 IP 簇。
+            conds.append(sub.c.key != "<unknown>")
         stmt = (
             select(sub.c.key, cnt)
-            .where(sub.c.key.isnot(None))
+            .where(*conds)
             .group_by(sub.c.key)
             .having(cnt >= min_size)
             .order_by(cnt.desc())
@@ -253,13 +258,22 @@ class MonitorDAO:
         )
 
     async def _max_group_size(self, col: str, vote_id: str) -> int:
-        """该账号所在的 IP/设备组里,最大有多少不同账号(取此账号出现的各 key 的最大组规模)。"""
+        """该账号所在的各 IP/设备组各自的规模(不同账号数),取其中最大的一个。
+
+        注意:不能把该账号所在的所有 key 合并成一个 IN(...) 后一次性数 distinct
+        vote_id —— 那样数出来的是这些组的 UNION(并集),会把账号自己"跨组搭桥"
+        的规模也算进去,虚高。必须按 key 分别 GROUP BY 计数,再取 max()。
+        """
         keys_sub = union_all(*[
             select(getattr(m, col).label("key")).where(m.vote_id == vote_id)
             for m in _MODELS
         ]).subquery()
+        key_conds = [keys_sub.c.key.isnot(None)]
+        if col == "user_ip":
+            # 同 _groups:"<unknown>" 是抓取失败兜底值,不是真实分组依据。
+            key_conds.append(keys_sub.c.key != "<unknown>")
         keys = [r[0] for r in (await self.session.execute(
-            select(func.distinct(keys_sub.c.key)).where(keys_sub.c.key.isnot(None))
+            select(func.distinct(keys_sub.c.key)).where(*key_conds)
         )).all()]
         if not keys:
             return 0
@@ -267,7 +281,10 @@ class MonitorDAO:
             select(getattr(m, col).label("key"), m.vote_id.label("vote_id"))
             for m in _MODELS
         ]).subquery()
-        stmt = select(func.count(func.distinct(all_sub.c.vote_id))).where(
-            all_sub.c.key.in_(keys)
+        stmt = (
+            select(func.count(func.distinct(all_sub.c.vote_id)).label("n"))
+            .where(all_sub.c.key.in_(keys))
+            .group_by(all_sub.c.key)
         )
-        return (await self.session.execute(stmt)).scalar_one()
+        sizes = [r.n for r in (await self.session.execute(stmt)).all()]
+        return max(sizes) if sizes else 0
