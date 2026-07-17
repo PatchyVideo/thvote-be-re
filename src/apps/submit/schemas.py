@@ -17,6 +17,7 @@ class SubmitMetadata(BaseModel):
     created_at: datetime = Field(default_factory=utcnow)
     user_ip: str = "<unknown>"
     additional_fingreprint: str | None = None
+    fill_duration_ms: int | None = None
 
 
 class CharacterSubmit(BaseModel):

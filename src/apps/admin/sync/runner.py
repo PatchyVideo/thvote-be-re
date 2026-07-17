@@ -56,6 +56,7 @@ def map_raw_submit(doc: dict[str, Any], payload_key: str) -> dict[str, Any]:
         "created_at": _coerce_datetime(meta.get("created_at")),
         "user_ip": meta.get("user_ip") or "<unknown>",
         "additional_fingreprint": meta.get("additional_fingreprint"),
+        "fill_duration_ms": meta.get("fill_duration_ms"),
         "payload": doc.get(payload_key) or [],
     }
 
@@ -69,6 +70,7 @@ def map_raw_paper(doc: dict[str, Any]) -> dict[str, Any]:
         "created_at": _coerce_datetime(meta.get("created_at")),
         "user_ip": meta.get("user_ip") or "<unknown>",
         "additional_fingreprint": meta.get("additional_fingreprint"),
+        "fill_duration_ms": meta.get("fill_duration_ms"),
         "papers_json": doc.get("papers_json") or "{}",
     }
 

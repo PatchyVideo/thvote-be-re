@@ -18,18 +18,52 @@ class SubmitDAO:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create_character_submit(self, data: dict) -> int:
-        """Upsert a character submit record (replace existing for same vote_id)."""
-        await self.session.execute(
-            delete(RawCharacterSubmit).where(
-                RawCharacterSubmit.vote_id == data["vote_id"]
+    async def _upsert(self, model, data: dict) -> int:
+        """Replace any rows for this vote_id with one new row (B-045).
+
+        Two server-authoritative anti-abuse fields survive the overwrite, so a
+        bot can't launder them by re-submitting:
+
+        - ``attempt`` = previous count + 1 (first submit = 1, each edit = 2, 3…).
+        - ``fill_duration_ms`` = the **first** submit's reported fill time,
+          **preserved** on every re-submit. The client sends this session's
+          duration, but on an edit we keep the original: the "filled too fast"
+          signal lives on the first fill and a later slow/fast edit cannot
+          overwrite it. A human's first fill is genuinely slow → never flagged;
+          a bot's first fill is ~0 → stays flagged no matter how many times it
+          re-submits. Judge on this value directly (no per-attempt exemption).
+        """
+        vote_id = data["vote_id"]
+        # The surviving row for this vote_id (real-time path keeps exactly one;
+        # legacy-synced rows carry attempt=NULL). Highest attempt = newest.
+        prev = (
+            await self.session.execute(
+                select(model.attempt, model.fill_duration_ms)
+                .where(model.vote_id == vote_id)
+                .order_by(func.coalesce(model.attempt, 0).desc())
+                .limit(1)
             )
-        )
-        row = RawCharacterSubmit(**data)
+        ).first()
+
+        if prev is None or prev.attempt is None:
+            # No prior submit (or only legacy rows) → this IS the first submit.
+            attempt = 1
+            fill_duration_ms = data.get("fill_duration_ms")
+        else:
+            attempt = prev.attempt + 1
+            fill_duration_ms = prev.fill_duration_ms  # preserve first (even NULL)
+
+        row_data = {**data, "attempt": attempt, "fill_duration_ms": fill_duration_ms}
+        await self.session.execute(delete(model).where(model.vote_id == vote_id))
+        row = model(**row_data)
         self.session.add(row)
         await self.session.commit()
         await self.session.refresh(row)
         return row.id
+
+    async def create_character_submit(self, data: dict) -> int:
+        """Upsert a character submit (replace existing for same vote_id)."""
+        return await self._upsert(RawCharacterSubmit, data)
 
     async def get_character_submit(self, vote_id: str) -> dict | None:
         """Get the latest character submit for a vote ID."""
@@ -52,17 +86,8 @@ class SubmitDAO:
         return None
 
     async def create_music_submit(self, data: dict) -> int:
-        """Upsert a music submit record (replace existing for same vote_id)."""
-        await self.session.execute(
-            delete(RawMusicSubmit).where(
-                RawMusicSubmit.vote_id == data["vote_id"]
-            )
-        )
-        row = RawMusicSubmit(**data)
-        self.session.add(row)
-        await self.session.commit()
-        await self.session.refresh(row)
-        return row.id
+        """Upsert a music submit (replace existing for same vote_id)."""
+        return await self._upsert(RawMusicSubmit, data)
 
     async def get_music_submit(self, vote_id: str) -> dict | None:
         """Get the latest music submit for a vote ID."""
@@ -85,17 +110,8 @@ class SubmitDAO:
         return None
 
     async def create_cp_submit(self, data: dict) -> int:
-        """Upsert a CP submit record (replace existing for same vote_id)."""
-        await self.session.execute(
-            delete(RawCPSubmit).where(
-                RawCPSubmit.vote_id == data["vote_id"]
-            )
-        )
-        row = RawCPSubmit(**data)
-        self.session.add(row)
-        await self.session.commit()
-        await self.session.refresh(row)
-        return row.id
+        """Upsert a CP submit (replace existing for same vote_id)."""
+        return await self._upsert(RawCPSubmit, data)
 
     async def get_cp_submit(self, vote_id: str) -> dict | None:
         """Get the latest CP submit for a vote ID."""
@@ -118,17 +134,8 @@ class SubmitDAO:
         return None
 
     async def create_paper_submit(self, data: dict) -> int:
-        """Upsert a paper submit record (replace existing for same vote_id)."""
-        await self.session.execute(
-            delete(RawPaperSubmit).where(
-                RawPaperSubmit.vote_id == data["vote_id"]
-            )
-        )
-        row = RawPaperSubmit(**data)
-        self.session.add(row)
-        await self.session.commit()
-        await self.session.refresh(row)
-        return row.id
+        """Upsert a paper submit (replace existing for same vote_id)."""
+        return await self._upsert(RawPaperSubmit, data)
 
     async def get_paper_submit(self, vote_id: str) -> dict | None:
         """Get the latest paper submit for a vote ID."""
@@ -151,17 +158,8 @@ class SubmitDAO:
         return None
 
     async def create_dojin_submit(self, data: dict) -> int:
-        """Upsert a dojin submit record (replace existing for same vote_id)."""
-        await self.session.execute(
-            delete(RawDojinSubmit).where(
-                RawDojinSubmit.vote_id == data["vote_id"]
-            )
-        )
-        row = RawDojinSubmit(**data)
-        self.session.add(row)
-        await self.session.commit()
-        await self.session.refresh(row)
-        return row.id
+        """Upsert a dojin submit (replace existing for same vote_id)."""
+        return await self._upsert(RawDojinSubmit, data)
 
     async def get_dojin_submit(self, vote_id: str) -> dict | None:
         """Get the latest dojin submit for a vote ID."""
