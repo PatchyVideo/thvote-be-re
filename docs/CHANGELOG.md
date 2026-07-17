@@ -4,7 +4,20 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-17（B-044 反刷票证据采集:设备 UUID + 可信 IP）
+> 最后更新：2026-07-17（B-043 发码端点限流补齐）
+
+## [2026-07-17] B-043 发码端点限流（此前完全无限流）
+
+### Added / Security
+- `UserService.send_email_code/send_sms_code` 加两层限流（service 层单一收口,GraphQL `request*Code` + REST `send-*-code` 双入口一并覆盖）：
+  - **per-IP 洪泛限流 30/60s**,放在 captcha **之前**——挡洪泛并保护每次验证码校验对阿里云的付费调用(0.005 元/次)。额度取宽松值:captcha 已逐次拦每次发码,per-IP 只作洪泛/成本兜底;共用出口 IP(校园/小区 NAT)一分钟内可能几十真实用户同时注册,30/60s 给足余量避免误伤。依赖 X-Real-IP 可信(B-044)才有意义。
+  - **per-号码重发间隔 1/60s(短信)**,放在 captcha **之后**——只对真正发出的码计数,避免过验证码前失败也占额度。邮箱沿用 EmailCodeService 既有 120s guard。
+- `rate_limit` 的 `HTTPException(429)` 经 `map_app_errors`(GraphQL)/FastAPI(REST) 出 `REQUEST_TOO_FREQUENT`。测试 +4(限流顺序:IP 在 captcha 前、洪泛在 captcha/发送前被拦)。
+
+### 兼容性
+- 纯后端,无 schema/契约变更。撞线为 `REQUEST_TOO_FREQUENT` 软提示,60s 后可重试。
+
+## [2026-07-17] B-044 反刷票证据采集:设备 UUID + 可信 IP
 
 ## [2026-07-17] B-044 反刷票证据采集：设备 UUID + 可信客户端 IP
 
