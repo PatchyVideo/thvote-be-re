@@ -236,6 +236,10 @@ class Settings(BaseSettings):
     # 安全配置
     cors_allowed_origins: list[str] = Field(default_factory=lambda: ["*"])
     trusted_proxy_ips: list[str] = Field(default_factory=list)
+    # 管理端 IP 白名单(B-049)。Nacos 里写 JSON 数组字符串,
+    # 如 "ADMIN_ALLOWED_IPS": "[\"1.2.3.4\", \"10.0.0.0/8\"]"。
+    # 空 = 不限 IP(仍需 X-Admin-Secret);pydantic-settings 自动 JSON 解码 list[str]。
+    admin_allowed_ips: list[str] = Field(default_factory=list)
     # 拦裸脚本(B-048):对变更类请求(GraphQL mutation + REST 提交/登录/发码)要求
     # 带浏览器自动附加的 Origin/Referer 头;curl/python 默认不带→403。默认关,
     # 经 Nacos 灰度开启(REQUIRE_BROWSER_ORIGIN=true)。不拦 query(codegen 免受影响)。
