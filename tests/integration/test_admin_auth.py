@@ -3,6 +3,7 @@
 Covers the core gap the review flagged: unset ADMIN_SECRET must 403 (fail-closed),
 wrong secret must 403, an IP not in a non-empty ADMIN_ALLOWED_IPS must 403, and an
 empty allowlist must not block a request that already carries the right secret.
+Also covers the second router gated by require_admin (questionnaire admin CRUD).
 """
 from __future__ import annotations
 
@@ -54,21 +55,19 @@ def _client(app):
 async def test_admin_403_when_secret_unset(app, monkeypatch):
     monkeypatch.delenv("ADMIN_SECRET", raising=False)
     import src.common.config as cfg
-    cfg._settings_instance = None
+    monkeypatch.setattr(cfg, "_settings_instance", None)
 
     async with _client(app) as ac:
         resp = await ac.get("/api/v1/admin/users")
 
     assert resp.status_code == 403
 
-    cfg._settings_instance = None
-
 
 @pytest.mark.asyncio
 async def test_admin_403_wrong_secret(app, monkeypatch):
     monkeypatch.setenv("ADMIN_SECRET", "right")
     import src.common.config as cfg
-    cfg._settings_instance = None
+    monkeypatch.setattr(cfg, "_settings_instance", None)
 
     async with _client(app) as ac:
         resp = await ac.get(
@@ -78,15 +77,13 @@ async def test_admin_403_wrong_secret(app, monkeypatch):
 
     assert resp.status_code == 403
 
-    cfg._settings_instance = None
-
 
 @pytest.mark.asyncio
 async def test_admin_403_ip_not_in_allowlist(app, monkeypatch):
     monkeypatch.setenv("ADMIN_SECRET", "s")
     monkeypatch.setenv("ADMIN_ALLOWED_IPS", '["9.9.9.9"]')
     import src.common.config as cfg
-    cfg._settings_instance = None
+    monkeypatch.setattr(cfg, "_settings_instance", None)
 
     async with _client(app) as ac:
         resp = await ac.get(
@@ -97,15 +94,13 @@ async def test_admin_403_ip_not_in_allowlist(app, monkeypatch):
     # httpx's ASGITransport client IP is 127.0.0.1, which is not in the allowlist.
     assert resp.status_code == 403
 
-    cfg._settings_instance = None
-
 
 @pytest.mark.asyncio
 async def test_admin_200ish_with_secret_empty_allowlist(app, monkeypatch):
     monkeypatch.setenv("ADMIN_SECRET", "s")
     monkeypatch.delenv("ADMIN_ALLOWED_IPS", raising=False)
     import src.common.config as cfg
-    cfg._settings_instance = None
+    monkeypatch.setattr(cfg, "_settings_instance", None)
 
     async with _client(app) as ac:
         resp = await ac.get(
@@ -113,7 +108,18 @@ async def test_admin_200ish_with_secret_empty_allowlist(app, monkeypatch):
             headers={"X-Admin-Secret": "s"},
         )
 
-    # Empty allowlist -> IP check skipped; correct secret -> not blocked by auth.
-    assert resp.status_code != 403
+    # Empty allowlist -> IP check skipped; correct secret -> clean 200 from a
+    # fresh in-memory DB (empty user list), not blocked by auth.
+    assert resp.status_code == 200
 
-    cfg._settings_instance = None
+
+@pytest.mark.asyncio
+async def test_questionnaire_admin_403_when_secret_unset(app, monkeypatch):
+    monkeypatch.delenv("ADMIN_SECRET", raising=False)
+    import src.common.config as cfg
+    monkeypatch.setattr(cfg, "_settings_instance", None)
+
+    async with _client(app) as ac:
+        resp = await ac.get("/api/v1/admin/questionnaires")
+
+    assert resp.status_code == 403
