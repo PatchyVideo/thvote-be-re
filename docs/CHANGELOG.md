@@ -4,7 +4,26 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-17（B-043 人机验证全链路上线:后端壳+前端 widget+配置）
+> 最后更新：2026-07-17（B-044 反刷票证据采集:设备 UUID + 可信 IP）
+
+## [2026-07-17] B-044 反刷票证据采集：设备 UUID + 可信客户端 IP
+
+> 目标:为"一人多小号"刷票留可事后聚类的可信证据(现在就记,投票期一开补不回来)。指纹与 IP **只取证不拦截**。设计见 `docs/superpowers/specs/2026-07-17-anti-vote-farming-design.md`。前端改动在 Touhou-Vote `4b9f4c5`。
+
+### Added
+- 设备指纹(Phase 0,localStorage UUID):5 个 `*SubmitGQL` 加可选 `deviceId` → `_server_meta` 写入已有的 `raw_*.additional_fingreprint` 列(投票表无需迁移);`loginPhone/loginEmail` 加可选 `deviceId` → `Meta` → 新列 `user.register_device_id`(**migration 0011**)。前端 `deviceId.ts` 生成/持久化 UUID,随投票与登录上报。
+- 单测 +12(X-Real-IP/CIDR 解析)。
+
+### Fixed / Security
+- `get_client_ip`:对端为可信代理(`trusted_proxy_ips`,**支持 CIDR**)时读 nginx 覆盖写的、不可伪造的 `X-Real-IP`(旧实现读可伪造的 `X-Forwarded-For[0]`);无该头则取 XFF 最右一跳。修复"未配 `TRUSTED_PROXY_IPS` 时所有请求记成 nginx 内网 IP"→ 之前 IP 限流与聚类均失效。
+- REST 提交 5 端点服务端强制覆盖 `meta.user_ip`(旧实现信客户端 body 自报,可伪造)。
+
+### 兼容性 / 部署
+- SDL:5 个 submit input 各加**可选** `deviceId`(向后兼容,老客户端不传);契约测试同步更新。
+- 需 `alembic upgrade head`(0011,`ADD COLUMN IF NOT EXISTS`,幂等)。
+- 需 Nacos 配 `TRUSTED_PROXY_IPS`(nginx 网段/私有网段,JSON 字符串数组,改后重启)——否则 IP 仍不可信。
+
+## [2026-07-17] B-043 人机验证全链路上线:后端壳+前端 widget+配置
 
 ## [2026-07-17] B-043 人机验证前端接入 + 测试机全链路生效（Touhou-Vote 仓库改动,此处记录以便追溯）
 

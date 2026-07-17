@@ -320,6 +320,7 @@ class UserService:
             email_verified=True,
             nickname=nickname,
             register_ip_address=meta.user_ip or "",
+            register_device_id=meta.additional_fingureprint or "",
         )
         created = await self.user_dao.create(user)
         await self._safe_log(
@@ -341,6 +342,7 @@ class UserService:
             phone_verified=True,
             nickname=nickname,
             register_ip_address=meta.user_ip or "",
+            register_device_id=meta.additional_fingureprint or "",
         )
         created = await self.user_dao.create(user)
         await self._safe_log(

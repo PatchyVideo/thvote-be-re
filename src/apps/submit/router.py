@@ -18,6 +18,7 @@ from src.apps.submit.schemas import (
     VotingStatus,
 )
 from src.apps.submit.service import SubmitService
+from src.apps.user.deps import get_client_ip
 from src.common.database import get_db_session
 from src.common.middleware.rate_limit import get_redis_client, rate_limit
 from src.common.security.jwt import (
@@ -68,8 +69,10 @@ async def _release_vote_lock(lock_key: str, lock_value: str) -> None:
 async def submit_character_v1(
     body: CharacterSubmitRest,
     service: SubmitService = Depends(get_submit_service),
+    client_ip: str = Depends(get_client_ip),
 ) -> EmptyJSON:
     payload = _verify_vote_token(body.meta.vote_token)
+    body.meta.user_ip = client_ip  # trust the peer over any client-supplied IP
     redis_client = await get_redis_client()
     await rate_limit(payload.user_id, redis_client)
     lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
@@ -86,8 +89,10 @@ async def submit_character_v1(
 async def submit_music_v1(
     body: MusicSubmitRest,
     service: SubmitService = Depends(get_submit_service),
+    client_ip: str = Depends(get_client_ip),
 ) -> EmptyJSON:
     payload = _verify_vote_token(body.meta.vote_token)
+    body.meta.user_ip = client_ip  # trust the peer over any client-supplied IP
     redis_client = await get_redis_client()
     await rate_limit(payload.user_id, redis_client)
     lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
@@ -104,8 +109,10 @@ async def submit_music_v1(
 async def submit_cp_v1(
     body: CPSubmitRest,
     service: SubmitService = Depends(get_submit_service),
+    client_ip: str = Depends(get_client_ip),
 ) -> EmptyJSON:
     payload = _verify_vote_token(body.meta.vote_token)
+    body.meta.user_ip = client_ip  # trust the peer over any client-supplied IP
     redis_client = await get_redis_client()
     await rate_limit(payload.user_id, redis_client)
     lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
@@ -122,8 +129,10 @@ async def submit_cp_v1(
 async def submit_paper_v1(
     body: PaperSubmitRest,
     service: SubmitService = Depends(get_submit_service),
+    client_ip: str = Depends(get_client_ip),
 ) -> EmptyJSON:
     payload = _verify_vote_token(body.meta.vote_token)
+    body.meta.user_ip = client_ip  # trust the peer over any client-supplied IP
     redis_client = await get_redis_client()
     await rate_limit(payload.user_id, redis_client)
     lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
@@ -140,8 +149,10 @@ async def submit_paper_v1(
 async def submit_dojin_v1(
     body: DojinSubmitRest,
     service: SubmitService = Depends(get_submit_service),
+    client_ip: str = Depends(get_client_ip),
 ) -> EmptyJSON:
     payload = _verify_vote_token(body.meta.vote_token)
+    body.meta.user_ip = client_ip  # trust the peer over any client-supplied IP
     redis_client = await get_redis_client()
     await rate_limit(payload.user_id, redis_client)
     lock_key, lock_value = await _acquire_vote_lock(payload.user_id)

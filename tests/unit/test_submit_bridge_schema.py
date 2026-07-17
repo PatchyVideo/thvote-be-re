@@ -24,34 +24,40 @@ EXPECTED_SIGNATURES = [
     "getSubmitDojinVote(voteToken: String!): DojinSubmitRestQuery!",
     "getSubmitPaperVote(voteToken: String!): PaperSubmitRestQuery!",
     # 顶层输入类型字段(camelCase + 复数 musics 怪癖)
+    # deviceId 为可选(String,无 !):设备指纹取证字段,老客户端不传(B-044)
     (
         "input CharacterSubmitGQL {\n"
         "  voteToken: String!\n"
         "  characters: [CharacterSubmitInput!]!\n"
+        "  deviceId: String = null\n"
         "}"
     ),
     (
         "input MusicSubmitGQL {\n"
         "  voteToken: String!\n"
         "  musics: [MusicSubmitInput!]!\n"
+        "  deviceId: String = null\n"
         "}"
     ),
     (
         "input CPSubmitGQL {\n"
         "  voteToken: String!\n"
         "  cps: [CPSubmitInput!]!\n"
+        "  deviceId: String = null\n"
         "}"
     ),
     (
         "input PaperSubmitGQL {\n"
         "  voteToken: String!\n"
         "  paperJson: String!\n"
+        "  deviceId: String = null\n"
         "}"
     ),
     (
         "input DojinSubmitGQL {\n"
         "  voteToken: String!\n"
         "  dojins: [DojinSubmitItemGQL!]!\n"
+        "  deviceId: String = null\n"
         "}"
     ),
     # 回读结果字段(music 单数怪癖 + papersJson)
