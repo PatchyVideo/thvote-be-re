@@ -12,8 +12,10 @@ from src.apps.admin.deps import require_admin
 from src.apps.admin.monitor.dao import CATEGORY_MODELS, MonitorDAO
 from src.apps.admin.monitor.schemas import (
     AccountDetail,
+    ActionResult,
     GroupsResponse,
     OverviewResponse,
+    ReviewRequest,
     SuspectsResponse,
     VotesPage,
 )
@@ -112,3 +114,45 @@ async def account(
         vote_id=vote_id, votes=votes_map, review=review,
         ip_groups=own_ips, device_groups=own_devs,
     )
+
+
+# ── 处置动作(仅记录;影响排名属 B-050)────────────────────────────────────
+
+_B050_NOTE = "已记录;影响排名需 B-050 计票重写落地后生效"
+
+
+async def _set_invalidated(category: str, row_id: int, value: bool,
+                           session: AsyncSession) -> ActionResult:
+    if category not in CATEGORY_MODELS:
+        raise HTTPException(status_code=422, detail="unknown category")
+    ok = await MonitorDAO(session).set_invalidated(category, row_id, value)
+    if not ok:
+        raise HTTPException(status_code=404, detail="vote row not found")
+    return ActionResult(ok=True, detail=_B050_NOTE)
+
+
+@monitor_router.patch(
+    "/vote/{category}/{row_id}/invalidate", response_model=ActionResult)
+async def invalidate_vote(
+    category: str, row_id: int,
+    session: AsyncSession = Depends(get_db_session),
+) -> ActionResult:
+    return await _set_invalidated(category, row_id, True, session)
+
+
+@monitor_router.patch(
+    "/vote/{category}/{row_id}/restore", response_model=ActionResult)
+async def restore_vote(
+    category: str, row_id: int,
+    session: AsyncSession = Depends(get_db_session),
+) -> ActionResult:
+    return await _set_invalidated(category, row_id, False, session)
+
+
+@monitor_router.patch("/account/{vote_id}/review", response_model=ActionResult)
+async def review_account(
+    vote_id: str, body: ReviewRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> ActionResult:
+    await MonitorDAO(session).upsert_review(vote_id, body.status, body.note)
+    return ActionResult(ok=True, detail="review recorded")

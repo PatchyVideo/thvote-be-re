@@ -288,3 +288,28 @@ class MonitorDAO:
         )
         sizes = [r.n for r in (await self.session.execute(stmt)).all()]
         return max(sizes) if sizes else 0
+
+    # ── 处置动作(仅记录;影响排名属 B-050)──────────────────────────────────
+    async def set_invalidated(
+        self, category: str, row_id: int, value: bool
+    ) -> bool:
+        model = CATEGORY_MODELS[category]
+        obj = await self.session.get(model, row_id)
+        if obj is None:
+            return False
+        obj.invalidated = value
+        await self.session.commit()
+        return True
+
+    async def upsert_review(self, user_id: str, status: str, note: str) -> None:
+        from src.db_model.voter_review import VoterReview
+
+        obj = await self.session.get(VoterReview, user_id)
+        if obj is None:
+            self.session.add(
+                VoterReview(user_id=user_id, status=status, note=note)
+            )
+        else:
+            obj.status = status
+            obj.note = note
+        await self.session.commit()

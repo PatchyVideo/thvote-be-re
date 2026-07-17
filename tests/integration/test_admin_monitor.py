@@ -248,3 +248,60 @@ async def test_votes_endpoint_rejects_bad_category(app, admin_secret):
             headers={"X-Admin-Secret": admin_secret},
         )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_invalidate_and_restore_vote(app, db_session, admin_secret):
+    from src.db_model.raw_submit import RawCharacterSubmit
+    row = RawCharacterSubmit(vote_id="u1", user_ip="1.1.1.1", payload=[1], attempt=1)
+    db_session.add(row)
+    await db_session.commit()
+    await db_session.refresh(row)
+    rid = row.id
+
+    async with AsyncClient(transport=ASGITransport(app=app),
+                           base_url="http://test") as ac:
+        h = {"X-Admin-Secret": admin_secret}
+        r1 = await ac.patch(
+            f"/api/v1/admin/monitor/vote/character/{rid}/invalidate", headers=h)
+        assert r1.status_code == 200 and r1.json()["ok"] is True
+        # verify flag via the votes listing
+        r2 = await ac.get(
+            "/api/v1/admin/monitor/votes?category=character&invalidated=true",
+            headers=h)
+        assert r2.json()["total"] == 1
+        r3 = await ac.patch(
+            f"/api/v1/admin/monitor/vote/character/{rid}/restore", headers=h)
+        assert r3.status_code == 200
+        r4 = await ac.get(
+            "/api/v1/admin/monitor/votes?category=character&invalidated=true",
+            headers=h)
+        assert r4.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_invalidate_unknown_row_404(app, admin_secret):
+    async with AsyncClient(transport=ASGITransport(app=app),
+                           base_url="http://test") as ac:
+        r = await ac.patch(
+            "/api/v1/admin/monitor/vote/character/999999/invalidate",
+            headers={"X-Admin-Secret": admin_secret})
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_review_upsert(app, db_session, admin_secret):
+    async with AsyncClient(transport=ASGITransport(app=app),
+                           base_url="http://test") as ac:
+        h = {"X-Admin-Secret": admin_secret}
+        r = await ac.patch(
+            "/api/v1/admin/monitor/account/u1/review",
+            headers=h, json={"status": "suspicious", "note": "shared IP"})
+        assert r.status_code == 200 and r.json()["ok"] is True
+        # second upsert overwrites, still one row, reflected in account detail
+        await ac.patch(
+            "/api/v1/admin/monitor/account/u1/review",
+            headers=h, json={"status": "cleared", "note": ""})
+        detail = await ac.get(
+            "/api/v1/admin/monitor/account/u1", headers=h)
+    assert detail.json()["review"]["status"] == "cleared"
