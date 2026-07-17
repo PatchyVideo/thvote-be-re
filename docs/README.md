@@ -56,6 +56,7 @@
 | [`superpowers/specs/2026-07-16-captcha-anti-abuse-design.md`](./superpowers/specs/2026-07-16-captcha-anti-abuse-design.md) | 注册防刷人机验证**调研+构思**（B-043，阿里云验证码 2.0：闸发码、双入口收口、fail-closed、成本/排期/待拍板项） |
 | [`superpowers/specs/2026-07-17-anti-vote-farming-design.md`](./superpowers/specs/2026-07-17-anti-vote-farming-design.md) | 反刷票（一人多小号）**证据采集设计**（B-044，设备 UUID + 可信 IP，只取证不拦截；Phase 0 已实现，Phase 1/2 follow-up） |
 | [`superpowers/specs/2026-07-17-submit-timing-signal-design.md`](./superpowers/specs/2026-07-17-submit-timing-signal-design.md) | 提交耗时 + 服务端改票计数**反机器人时序特征设计**（B-045，fill_duration_ms + attempt；改票假阳性由 attempt 兜底，只取证不拦截） |
+| [`superpowers/specs/2026-07-17-block-scripts-design.md`](./superpowers/specs/2026-07-17-block-scripts-design.md) | 拦脚本设计（B-048，Origin/Referer 校验拦裸脚本 + 端口收口待办；只拦变更、query 放行；默认关灰度） |
 
 ### 跨前后端功能设计（Block 1-3，2026-06-08）
 

@@ -236,6 +236,12 @@ class Settings(BaseSettings):
     # 安全配置
     cors_allowed_origins: list[str] = Field(default_factory=lambda: ["*"])
     trusted_proxy_ips: list[str] = Field(default_factory=list)
+    # 拦裸脚本(B-048):对变更类请求(GraphQL mutation + REST 提交/登录/发码)要求
+    # 带浏览器自动附加的 Origin/Referer 头;curl/python 默认不带→403。默认关,
+    # 经 Nacos 灰度开启(REQUIRE_BROWSER_ORIGIN=true)。不拦 query(codegen 免受影响)。
+    require_browser_origin: bool = Field(
+        False, validation_alias="REQUIRE_BROWSER_ORIGIN"
+    )
 
     # SSO 配置（通过 Nacos 下发，与 ALIYUN_* 字段同等对待）
     qq_app_id: Optional[str] = Field(None, validation_alias="QQ_APP_ID")

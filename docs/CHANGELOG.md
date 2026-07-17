@@ -4,7 +4,23 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-17（B-046 UA + 浏览器环境指纹）
+> 最后更新：2026-07-17（B-048 拦脚本:Origin/Referer 校验）
+
+## [2026-07-17] B-048 拦脚本：服务端 Origin/Referer 校验（默认关）
+
+> 让变更请求尽量来自真人浏览器,拦掉裸脚本(curl/python 直连)。设计见 `docs/superpowers/specs/2026-07-17-block-scripts-design.md`。
+
+### Added / Security
+- `BrowserOriginGuardMiddleware`(`src/common/middleware/origin_guard.py`):对**变更类请求**要求带浏览器自动附加的 `Origin`/`Referer`,不带→403(`FORBIDDEN_ORIGIN`)。范围:`POST /graphql` 且 body 含 `mutation`(正则 `\bmutation\b`,**不匹配 introspection 的 `mutationType`**→前端 codegen 不受影响)、REST 提交/发码/登录端点。`CORS_ALLOWED_ORIGINS` 配了具体域名时还需 host 匹配。
+- 开关 `REQUIRE_BROWSER_ORIGIN`(Nacos,默认 **false**),安全灰度;改后重启容器(B-017)。
+- 测试 +6,含钉死 BaseHTTPMiddleware 读 body 后能回放给下游 GraphQL(带 Origin 的 mutation 真的执行)。
+
+### 兼容性 / 局限
+- **默认关,零行为变化**。CORS 拦不住脚本(浏览器端执行),故本项在服务端主动校验。
+- 少数隐私插件剥离 Referer/Origin 的用户,开启后投票会被拦——故可随时关。伪造头能过(刻意接受,成本已抬高)。
+- **端口收口(`:18000` 直连)列为后续项**:前端 codegen 直连 :18000 拉 schema,直接关端口会断前端 CI,收口前须先把 codegen 改走 nginx 代理。
+
+## [2026-07-17] B-046 UA + 浏览器环境指纹（每票取证）
 
 ## [2026-07-17] B-046 User-Agent + 浏览器环境指纹（每票取证）
 
