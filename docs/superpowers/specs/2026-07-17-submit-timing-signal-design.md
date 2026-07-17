@@ -1,0 +1,48 @@
+# 提交耗时 + 改票计数：反机器人时序特征（B-045）
+
+> 状态：**已实现**（2026-07-17）。前端改动在 Touhou-Vote `f59585a`。
+> 目标：记录用户完成投票/问卷的耗时作为反机器人特征（机器人"刷刷刷瞎点"耗时≈0），**但不误伤改票的人**。
+> 与 B-044 同性质：**只取证、不作拦截门**。关联 [反刷票证据采集](./2026-07-17-anti-vote-farming-design.md)。
+
+## 一、要解决的假阳性（用户提出）
+
+"如果我先投一次、后来改结果再提交一次" —— 改票天然耗时短（表单已预填、只微调）。若 naive 地"耗时短=机器人"，合法改票会被误判。
+
+**勘探发现（现状使这个顾虑更严重）**：
+- 提交是 **delete-then-insert**（覆盖、不留历史），首次与改票的 GraphQL content **结构完全相同**，后端无法区分。
+- `attempt` 列从旧 Rust 到新 Python **从未被赋值**（恒 NULL），不能用它区分次数。
+- 投票/问卷数据 **跨会话持久化在 localStorage**，改票时优先用本地缓存回填——用户可能几天前填好、今天秒提交，完全合法。
+
+## 二、方案（两个信号，都只取证）
+
+### 2.1 服务端权威的"第几次提交" `attempt`（复用死列，无迁移）
+`SubmitDAO._upsert`（5 个 `create_*` 收敛到它）在覆盖写前 `SELECT COALESCE(MAX(attempt),0)+1`，落进 `attempt`。于是**首次=1、改票=2/3…**。服务端算、客户端伪造不了。
+→ **分析时"耗时短=可疑"只对 `attempt=1`（首次）生效，改票(≥2)一律豁免**。这是假阳性的根本解法。
+
+### 2.2 客户端"本次填写耗时" `fill_duration_ms`（新列 migration 0012）
+前端 `fillTimer.ts`：投票类别页面**挂载→点提交**的墙钟毫秒数，随提交上报，落 `raw_*.fill_duration_ms`。
+- 机器人直接打 GraphQL 不跑前端 → 值为 **null**（本身即信号）。
+- 真人从打开到提交至少若干秒。
+- **为何取"挂载→提交"而非"首次交互→提交"**：前者含用户读题/斟酌时间，值更大、更像真人，**误报更少**（读题慢的人不会被误判为快）；唯一弱点是"预填秒交"，而那正好被 §2.1 的 attempt 兜底。
+- 上报相对量（时长差），不传绝对时间戳（客户端时间不可信）。
+
+### 2.3 组合判据（供将来分析/管理端用）
+**`attempt=1` 且 (`fill_duration_ms` 为 null 或极小)** = 强机器人特征。其余（改票、耗时正常）不触发。
+
+## 三、落地范围
+
+| 层 | 改动 |
+|---|---|
+| DB | migration 0012:6 张 raw_* 加 `fill_duration_ms INTEGER`(幂等);`attempt` 列复用,无需迁移 |
+| model/pydantic | `raw_submit.py` 6 表 + `SubmitMetadata` 加 `fill_duration_ms` |
+| DAO | `_upsert` 计算 attempt(+1);5 个 create_* 收敛 |
+| GraphQL | 5 个 `*SubmitGQL` 加可选 `fillDurationMs`;`_server_meta` 透传;attempt 不由客户端传 |
+| service/sync | row_data 加 fill_duration_ms;sync mapper 透传(历史无此 key→NULL) |
+| 前端 | `fillTimer.ts` + 5 类投票/问卷各 `startFillTimer`(挂载)/`readFillDuration`(提交) |
+
+## 四、边界与 follow-up
+
+- **仍是取证、不拦截**：不基于耗时/attempt 做任何拒绝(误伤+给攻击者"补个假耗时就过"的激励)。
+- 残余弱点(记录在案)：① 无痕/换设备下 fill_duration 仍会记(墙钟没问题),但配合的 device_id 会变;② 极少数"上次会话填好未提交、本次秒交"的 attempt=1 会显短——forensic-only,人工复核可清;③ 问卷是整份一次性提交,fill_duration 反映"本次进入问卷页到提交"的时长,跨多次会话编辑只记最后一段。
+- **Phase 2(与 B-044 共用)**：管理端聚类/可疑名单视图届时纳入 attempt + fill_duration + device_id + IP 多信号。
+- 精细化(可选)：问卷逐题耗时(当前只记每类总耗时,用户已选"每类一个总耗时")。

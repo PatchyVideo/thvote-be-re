@@ -4,7 +4,23 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-17（B-043 发码端点限流补齐）
+> 最后更新：2026-07-17（B-045 提交耗时 + 服务端改票计数）
+
+## [2026-07-17] B-045 提交耗时 + 服务端改票计数（反机器人时序特征）
+
+> 记录投票/问卷填写耗时作为反机器人特征(瞎点耗时≈0),**不误伤改票的人**。只取证不拦截。设计见 `docs/superpowers/specs/2026-07-17-submit-timing-signal-design.md`;前端在 Touhou-Vote `f59585a`。
+
+### Added
+- `raw_*.fill_duration_ms`(新列,**migration 0012** 覆盖 6 张 raw_* 表):客户端上报的"页面挂载→提交"墙钟毫秒数。5 个 `*SubmitGQL` 加可选 `fillDurationMs` → `_server_meta` → `SubmitMetadata` → 落库。前端 `fillTimer.ts` + 5 类投票/问卷埋点。机器人直接打 GraphQL 不跑前端 → 值为 null(本身即信号)。
+- `attempt` 计数**改由服务端计算**(复用此前恒 NULL 的死列,无需迁移):`SubmitDAO._upsert`(5 个 create_* 收敛到它)覆盖写前 `MAX(attempt)+1`,首次=1、改票=2/3…。→ 让"耗时短=可疑"只对首次(attempt=1)生效,改票豁免,根治用户提出的改票假阳性。
+- 测试 +2(attempt 1→2→3、只留一行、fill_duration 落库)。
+
+### 兼容性 / 部署
+- SDL:5 个 submit input 各加**可选** `fillDurationMs`(向后兼容);契约测试同步更新。
+- 需 `alembic upgrade head`(0012,`ADD COLUMN IF NOT EXISTS`,幂等)。
+- 二者均**只取证、不拦截**。
+
+## [2026-07-17] B-043 发码端点限流补齐
 
 ## [2026-07-17] B-043 发码端点限流（此前完全无限流）
 
