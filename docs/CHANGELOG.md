@@ -4,6 +4,22 @@
 >
 > 创建日期：2026-04-27
 
+> 最后更新：2026-07-17（删除死代码 vote_data 模块 + 记录计票断链 B-050）
+
+## [2026-07-17] 删除死代码：vote_data 模块（路径 B 空壳）
+
+> 勘探(2026-07-17)发现投票有两套并行存储:**路径 A** `raw_*`(前端 GraphQL 提交的真实落库,提交/回读/CSV/统计全走这)与**路径 B** `character/music/cp/questionnaire`(由 `vote_data` 模块写,但**无任何调用方**、测试库 0 行、旧 Rust 侧本就是空壳 `fn main(){}`、项目文档 2026-05-12 已标"遗留不再写入")。二者**从未接线**。
+
+### Removed
+- 删除整个 `src/apps/vote_data/`(service/dao/router/models/schemas)——路径 B 的唯一写入方,其 REST `/api/v1/vote-data/*` 端点无任何调用者。
+- `src/api/rest/v1/__init__.py`:注销 `vote_data_router`。
+- `tests/integration/test_vote_data.py` 删除。
+
+### Fixed
+- `AdminService.get_user_detail` 的"投票状态"改读**真实提交表 raw_***(`SubmitDAO.has_submit`),此前读死表 Path B 永远显示"未投",不准。
+
+### 遗留（转 B-050 大重写）
+- `db_model/character.py`/`music.py`/`cp.py`/`questionnaire.py` 四个模型现只剩 `compute_dao` 在读——它们是 B-050 计票重写的对象,本次不动。
 > 最后更新：2026-07-17（B-048 拦脚本:Origin/Referer 校验）
 
 ## [2026-07-17] B-048 拦脚本：服务端 Origin/Referer 校验（默认关）
