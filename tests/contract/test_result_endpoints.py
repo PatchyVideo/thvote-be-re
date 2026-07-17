@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -50,6 +52,16 @@ async def client():
     await eng.dispose()
 
 
+@pytest.fixture
+def admin_secret():
+    secret = os.environ.get("ADMIN_SECRET", "test-admin-secret")
+    os.environ["ADMIN_SECRET"] = secret
+    import src.common.config as cfg
+    cfg._settings_instance = None
+    yield secret
+    cfg._settings_instance = None
+
+
 RESULT_ENDPOINTS = [
     ("POST", "/api/v1/result/ranking/",          {"category": "character"}),
     ("POST", "/api/v1/result/trends/",            {"category": "character", "name": "Alice"}),
@@ -72,8 +84,11 @@ async def test_result_endpoints_503_before_compute(client, method, path, body):
 
 
 @pytest.mark.asyncio
-async def test_admin_compute_results_endpoint_reachable(client):
-    resp = await client.post("/api/v1/admin/compute-results")
+async def test_admin_compute_results_endpoint_reachable(client, admin_secret):
+    resp = await client.post(
+        "/api/v1/admin/compute-results",
+        headers={"X-Admin-Secret": admin_secret},
+    )
     # Returns 200 with empty data (no votes seeded), not 404
     assert resp.status_code == 200
     data = resp.json()
@@ -81,11 +96,22 @@ async def test_admin_compute_results_endpoint_reachable(client):
 
 
 @pytest.mark.asyncio
-async def test_admin_import_candidates_endpoint_reachable(client):
-    resp = await client.post("/api/v1/admin/import-candidates", json={
-        "vote_year": 2026,
-        "category": "character",
-        "items": [{"name": "Alice", "name_jp": "アリス", "origin": "EoSD", "type": "旧作"}],
-    })
+async def test_admin_import_candidates_endpoint_reachable(client, admin_secret):
+    resp = await client.post(
+        "/api/v1/admin/import-candidates",
+        json={
+            "vote_year": 2026,
+            "category": "character",
+            "items": [
+                {
+                    "name": "Alice",
+                    "name_jp": "アリス",
+                    "origin": "EoSD",
+                    "type": "旧作",
+                }
+            ],
+        },
+        headers={"X-Admin-Secret": admin_secret},
+    )
     assert resp.status_code == 200
     assert resp.json()["ok"] is True
