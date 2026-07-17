@@ -199,3 +199,52 @@ async def test_service_suspects_ranks_fast_fill(db_session):
     assert top.vote_id == "bot"
     assert top.score >= 3
     assert top.reasons
+
+
+@pytest.mark.asyncio
+async def test_overview_endpoint_requires_secret(app):
+    async with AsyncClient(transport=ASGITransport(app=app),
+                           base_url="http://test") as ac:
+        resp = await ac.get("/api/v1/admin/monitor/overview")   # no header
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_overview_endpoint_returns_totals(app, db_session, admin_secret):
+    await _seed_char(db_session, "u1", "1.1.1.1")
+    await _seed_char(db_session, "u2", "1.1.1.1")
+    async with AsyncClient(transport=ASGITransport(app=app),
+                           base_url="http://test") as ac:
+        resp = await ac.get("/api/v1/admin/monitor/overview",
+                            headers={"X-Admin-Secret": admin_secret})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["category_totals"]["character"] == 2
+    assert body["distinct_ips"] == 1
+
+
+@pytest.mark.asyncio
+async def test_votes_endpoint_filter(app, db_session, admin_secret):
+    await _seed_char(db_session, "u1", "1.1.1.1", fill=500)
+    await _seed_char(db_session, "u2", "9.9.9.9")
+    async with AsyncClient(transport=ASGITransport(app=app),
+                           base_url="http://test") as ac:
+        resp = await ac.get(
+            "/api/v1/admin/monitor/votes?category=character&user_ip=1.1.1.1",
+            headers={"X-Admin-Secret": admin_secret},
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["vote_id"] == "u1"
+
+
+@pytest.mark.asyncio
+async def test_votes_endpoint_rejects_bad_category(app, admin_secret):
+    async with AsyncClient(transport=ASGITransport(app=app),
+                           base_url="http://test") as ac:
+        resp = await ac.get(
+            "/api/v1/admin/monitor/votes?category=bogus",
+            headers={"X-Admin-Secret": admin_secret},
+        )
+    assert resp.status_code == 422
