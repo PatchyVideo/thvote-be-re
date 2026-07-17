@@ -4,7 +4,19 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-17（B-049 安全监控管理端 API：概览/聚类/可疑名单/投票浏览器/账号钻取 + 处置动作）
+> 最后更新：2026-07-17（B-042：`main.py` 三个 admin ops 端点纳入 require_admin 闸门）
+
+## [2026-07-17] B-042 收口 admin ops 端点鉴权
+
+> B-049 的 `require_admin` 只覆盖到 `/api/v1/admin/*` 两个路由;`main.py` 上还有三个裸 `/admin/*` ops 端点未纳入闸门。本次补齐。
+
+### Security
+- `main.py` 的 `POST /admin/reload-config`、`GET /admin/discover/{service_name}`、`GET /admin/discover-self` 三个 ops 端点加 `dependencies=[Depends(require_admin)]`——此前**零鉴权**,`reload-config` 还会回显 DB host/port/name(信息泄露)。勘察确认这三个端点无内部/自动调用方(CI、健康检查、服务注册均不调),唯一调用方是携带 `X-Admin-Secret` 的 admin UI,故加闸门不影响运维。
+- 测试 +6(`tests/integration/test_admin_auth.py`:三端点 × 无 secret/错 secret 各 403;require_admin 在 handler 前短路,不触发真实 reload/Nacos 调用)。全量 407 passed。
+
+### 兼容性 / 部署
+- 需 `ADMIN_SECRET` 已配(B-049 已在 Nacos 配好)。调这三个端点现在必须带 `X-Admin-Secret` 头。
+- 纯后端,无 schema/迁移变更。B-042 的 admin 鉴权项就此关闭;仅剩 scraper Pixiv 凭据待配。
 
 ## [2026-07-17] B-049 安全监控管理端 API + 处置动作（record-only）
 

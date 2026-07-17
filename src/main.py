@@ -36,6 +36,7 @@ from .common.config import (
 from .common.database import get_db_session, get_session_maker, reload_engine
 from .common.middleware.logging import LoggingMiddleware
 from .apps.user.service import get_audit_log_failures
+from .apps.admin.deps import require_admin
 from .common.redis import close_redis
 
 
@@ -146,7 +147,12 @@ def create_app() -> FastAPI:
         return result
 
     # Reload settings endpoint (for hot reload testing)
-    @app.post("/admin/reload-config", tags=["admin"])
+    # B-042:回显 DB host/port,必须鉴权(fail-closed secret + IP 白名单)
+    @app.post(
+        "/admin/reload-config",
+        tags=["admin"],
+        dependencies=[Depends(require_admin)],
+    )
     async def reload_config() -> dict:
         """
         重新加载配置。
@@ -167,7 +173,12 @@ def create_app() -> FastAPI:
         }
 
     # Service discovery endpoint
-    @app.get("/admin/discover/{service_name}", tags=["admin"])
+    # B-042:暴露 Nacos 实例拓扑,必须鉴权
+    @app.get(
+        "/admin/discover/{service_name}",
+        tags=["admin"],
+        dependencies=[Depends(require_admin)],
+    )
     async def discover_service(
         service_name: str,
         group: str | None = None,
@@ -217,7 +228,12 @@ def create_app() -> FastAPI:
         }
 
     # Self service discovery endpoint (discover this service)
-    @app.get("/admin/discover-self", tags=["admin"])
+    # B-042:暴露自身实例信息,必须鉴权
+    @app.get(
+        "/admin/discover-self",
+        tags=["admin"],
+        dependencies=[Depends(require_admin)],
+    )
     async def discover_self(healthy_only: bool = False) -> dict:
         """
         发现当前服务的所有实例。
