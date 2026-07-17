@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, CheckConstraint, DateTime, String, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -54,3 +54,6 @@ class User(Base):
             name="at_least_one_identifier",
         ),
     )
+
+
+Index("idx_user_register_date", User.register_date)
