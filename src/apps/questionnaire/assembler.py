@@ -12,6 +12,7 @@ from typing import Any
 def _option_out(o: dict) -> dict:
     return {
         "id": o["id"],
+        "order": o.get("order", 0),
         "content": o.get("content", ""),
         "relatedQuestionIds": o.get("related_question_ids") or [],
         "mutexOptionIds": o.get("mutex_option_ids") or [],
@@ -25,6 +26,7 @@ def _question_out(q: dict, options_by_question: dict) -> dict:
     )
     return {
         "id": q["id"],
+        "order": q.get("order", 0),
         "type": q.get("type", "Single"),
         "content": q.get("content", ""),
         "introduction": q.get("introduction", ""),

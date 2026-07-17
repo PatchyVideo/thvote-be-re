@@ -16,13 +16,16 @@ def _model_for(category: str):
 def candidate_field_specs(category: str) -> list[dict]:
     """Derive editable fields + required flag from model columns.
 
-    Excludes ``id`` (autoincrement PK) and ``vote_year`` (chosen in UI).
+    Excludes ``id`` (autoincrement PK), ``vote_year`` (chosen in UI), and
+    ``merged_into`` (internal merge linkage — only the merge/unmerge endpoints
+    may touch it; exposing it as an editable text field made every candidate
+    edit resend ``merged_into=""``, corrupting/erroring the merge state).
     A column is required when it is NOT NULL and has no server_default.
     """
     model = _model_for(category)
     specs = []
     for c in model.__table__.columns:
-        if c.key in ("id", "vote_year"):
+        if c.key in ("id", "vote_year", "merged_into"):
             continue
         required = (not c.nullable) and (c.server_default is None)
         specs.append({"name": c.key, "required": required})

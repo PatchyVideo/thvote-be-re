@@ -313,7 +313,12 @@ async function dashboard() {
 async function quickAction(endpoint, method, confirm_msg) {
   if (!confirm(confirm_msg)) return;
   try {
-    const r = await api('/admin/' + endpoint, { method });
+    // reload-config 挂在裸 /admin(非 /api/v1),需绕过 api() 的前缀,但仍带 secret
+    const r = endpoint === 'reload-config'
+      ? await fetch('/admin/reload-config', { method, headers: { 'X-Admin-Secret': SECRET } })
+      : await api('/admin/' + endpoint, { method });
+    if (r.status === 403) { doLogout(); return; }
+    if (!r.ok) { toast('Error ' + r.status + ': ' + (await r.text()).slice(0, 120)); return; }
     const d = await r.json();
     toast(JSON.stringify(d).slice(0, 80));
   } catch (e) { toast('Error: ' + e.message); }
@@ -635,6 +640,7 @@ async function saveEdit(id, cat) {
   });
   if (r.status === 409) { toast('该名称在本年份已存在'); return; }
   if (r.status === 404) { toast('候选项不存在'); return; }
+  if (!r.ok) { toast('保存失败: ' + r.status); return; }
   toast('已保存');
   closeModal();
   searchCandidates(1);
@@ -736,7 +742,7 @@ async function renderQuestionnaireList() {
       <div class="intro">${esc(q.introduction||'—')}</div>
       <div class="meta">
         <span><b>${q.questionGroups? q.questionGroups.length : q.group_count||0}</b> 题组</span>
-        <span><b>${q.questionGroups? countQ(q) : 0}</b> 问题</span>
+        <span><b>${q.questionGroups? countQ(q) : (q.question_count||0)}</b> 问题</span>
         <span class="spacer"></span>
         <span style="color:var(--indigo);font-weight:600">编辑 →</span>
       </div>

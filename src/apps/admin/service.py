@@ -223,7 +223,13 @@ class AdminService:
         if action:
             query = query.where(ActivityLog.event_type == action)
         if since:
-            dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+            try:
+                dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+            except ValueError:
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=400, detail="INVALID_SINCE_FORMAT"
+                )
             query = query.where(ActivityLog.created_at >= dt)
 
         total = (await self._session.execute(
