@@ -10,7 +10,10 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from itertools import combinations
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from src.apps.result.whitelist import Whitelist
 
 KIND_MAPPING: dict[str, str] = {
     "old": "旧作",
@@ -68,24 +71,20 @@ def compute_gender_map(
 
 def compute_ranking(
     votes: list[tuple[str, datetime, list[dict]]],
-    candidates: dict[str, CandidateMeta],
+    whitelist: "Whitelist",
     gender_map: dict[str, str],
     historical: dict[str, dict],
     vote_start: datetime,
     total_hours: int,
-    name_remap: dict[str, str] | None = None,
 ) -> tuple[list[dict], dict]:
-    """Compute character or music ranking.
+    """按 id 归票的角色/音乐排名（B-050）。
 
-    votes: list of (user_id, submit_datetime, items)
-           each item: {"id": str, "first": bool, "reason": str|None}
-    historical: name → {"rank_1", "votes_1", "first_1", "rank_2", "votes_2", "first_2"}
-    name_remap: variant name → canonical name (B-040 merge); votes for a merged
-                variant are tallied under the canonical candidate.
-    Returns (ranking_list, global_stats_dict)
+    votes: (vote_id, submit_datetime, items)，item = {"id", "first", "reason"}
+    whitelist: id 白名单/展示注册表；不在白名单的 id 直接丢弃。
+    历史键仍按 name（final_ranking 是 name-keyed）；v1 传空 dict。
+    返回 (ranking_list, global_stats_dict)
     """
-    remap = name_remap or {}
-    vote_count: dict[str, int] = defaultdict(int)
+    vote_count: dict[str, int] = defaultdict(int)      # 按 oid
     first_count: dict[str, int] = defaultdict(int)
     reasons: dict[str, list[str]] = defaultdict(list)
     male_count: dict[str, int] = defaultdict(int)
@@ -96,145 +95,115 @@ def compute_ranking(
 
     for user_id, submit_dt, items in votes:
         gender = gender_map.get(user_id, "unknown")
-        # ensure submit_dt is timezone-aware for subtraction
         if submit_dt.tzinfo is None:
             submit_dt = submit_dt.replace(tzinfo=timezone.utc)
-        hour_bucket = max(
-            0,
-            min(
-                int((submit_dt - vote_start).total_seconds() / 3600),
-                total_hours - 1,
-            ),
-        )
+        hour_bucket = max(0, min(
+            int((submit_dt - vote_start).total_seconds() / 3600), total_hours - 1))
+        seen_in_vote: set[str] = set()
         for item in items:
-            name = item.get("id", "")
-            if not name:
+            oid = item.get("id", "")
+            if not oid or oid not in whitelist:
                 continue
-            name = remap.get(name, name)  # B-040: merge variant → canonical
+            if oid in seen_in_vote:  # 同一账号同一 id 只计一次
+                continue
+            seen_in_vote.add(oid)
             is_first = bool(item.get("first", False))
             reason = item.get("reason")
-            vote_count[name] += 1
+            vote_count[oid] += 1
             if is_first:
-                first_count[name] += 1
+                first_count[oid] += 1
             if reason:
-                reasons[name].append(reason)
+                reasons[oid].append(reason)
             if gender == "male":
-                male_count[name] += 1
+                male_count[oid] += 1
             elif gender == "female":
-                female_count[name] += 1
-            trend[name][hour_bucket] += 1
+                female_count[oid] += 1
+            trend[oid][hour_bucket] += 1
             if is_first:
-                trend_first[name][hour_bucket] += 1
+                trend_first[oid][hour_bucket] += 1
 
-    all_names = set(vote_count.keys())
+    all_ids = set(vote_count.keys())
     total_votes = sum(vote_count.values())
+    total_first = sum(first_count.values())
 
-    def weighted(name: str) -> int:
-        return first_count[name] * 3 + vote_count[name]
-
-    sorted_names = sorted(all_names, key=lambda n: (-weighted(n), -vote_count[n]))
+    # 名次：票数→本命数→系统ID
+    sorted_ids = sorted(
+        all_ids,
+        key=lambda o: (-vote_count[o], -first_count[o], whitelist.system_id_of(o)),
+    )
 
     ranking = []
-    prev_weighted = None
+    prev_key: tuple[int, int] | None = None
     prev_display_rank = 0
-    tied_count = 0
-    for i, name in enumerate(sorted_names):
-        w = weighted(name)
-        if w != prev_weighted:
+    for i, oid in enumerate(sorted_ids):
+        vc = vote_count[oid]
+        fc = first_count[oid]
+        if (vc, fc) != prev_key:     # 同票数同本命数同名次；不同则虚位递推
             prev_display_rank = i + 1
-            tied_count = 1
-            prev_weighted = w
-        else:
-            tied_count += 1
-
-        vc = vote_count[name]
-        fc = first_count[name]
+            prev_key = (vc, fc)
         vp = vc / total_voters if total_voters else 0.0
         fp = fc / vc if vc else 0.0
+        fpa = fc / total_first if total_first else 0.0
 
-        rank_snapshots = [
-            {
-                "rank": i + 1,
-                "vote_count": vc,
-                "favorite_vote_count": fc,
-                "favorite_percentage": int(fp * 100),
-                "vote_percentage": round(vp * 100, 2),
-            }
-        ]
-        hist = historical.get(name, {})
-        if hist.get("rank_1"):
-            h1_vc = hist["votes_1"]
-            h1_fc = hist["first_1"]
-            rank_snapshots.append(
-                {
-                    "rank": hist["rank_1"],
-                    "vote_count": h1_vc,
-                    "favorite_vote_count": h1_fc,
-                    "favorite_percentage": int(h1_fc / h1_vc * 100) if h1_vc else 0,
+        rank_snapshots = [{
+            "rank": i + 1,
+            "vote_count": vc,
+            "favorite_vote_count": fc,
+            "favorite_percentage": int(fp * 100),
+            "vote_percentage": round(vp * 100, 2),
+        }]
+        hist = historical.get(whitelist.name_of(oid), {})
+        for suffix in ("1", "2"):
+            if hist.get(f"rank_{suffix}"):
+                hvc = hist[f"votes_{suffix}"]
+                hfc = hist[f"first_{suffix}"]
+                rank_snapshots.append({
+                    "rank": hist[f"rank_{suffix}"],
+                    "vote_count": hvc,
+                    "favorite_vote_count": hfc,
+                    "favorite_percentage": int(hfc / hvc * 100) if hvc else 0,
                     "vote_percentage": 0.0,
-                }
-            )
-        if hist.get("rank_2"):
-            h2_vc = hist["votes_2"]
-            h2_fc = hist["first_2"]
-            rank_snapshots.append(
-                {
-                    "rank": hist["rank_2"],
-                    "vote_count": h2_vc,
-                    "favorite_vote_count": h2_fc,
-                    "favorite_percentage": int(h2_fc / h2_vc * 100) if h2_vc else 0,
-                    "vote_percentage": 0.0,
-                }
-            )
+                })
 
-        mc = male_count[name]
-        fc_gender = female_count[name]
-        meta = candidates.get(name, CandidateMeta(name, "", "未知", "未知", None))
+        mc = male_count[oid]
+        fc_gender = female_count[oid]
+        meta = whitelist.get(oid)
+        name = meta.name if meta else oid
 
-        ranking.append(
-            {
-                "rank": rank_snapshots,
-                "display_rank": prev_display_rank,
-                "name": name,
-                "favorite_vote_count_weighted": weighted(name),
-                "type": meta.type or "未知",
-                "origin": meta.origin or "未知",
-                "first_appearance": meta.first_appearance or "",
-                "album": meta.album or "",
-                "name_jp": meta.name_jp or "",
-                "favorite_percentage": round(fp * 100, 2),
-                "male_vote_count": {
-                    "vote_count": mc,
-                    "percentage_per_char": round(mc / vc, 4) if vc else 0.0,
-                    "percentage_per_total": (
-                        round(mc / total_voters, 4) if total_voters else 0.0
-                    ),
-                },
-                "female_vote_count": {
-                    "vote_count": fc_gender,
-                    "percentage_per_char": round(fc_gender / vc, 4) if vc else 0.0,
-                    "percentage_per_total": (
-                        round(fc_gender / total_voters, 4) if total_voters else 0.0
-                    ),
-                },
-                "reasons": reasons[name],
-                "reasons_count": len(reasons[name]),
-                "trend": [
-                    {"hrs": h, "cnt": c} for h, c in enumerate(trend[name]) if c > 0
-                ],
-                "trend_first": [
-                    {"hrs": h, "cnt": c}
-                    for h, c in enumerate(trend_first[name])
-                    if c > 0
-                ],
-            }
-        )
+        ranking.append({
+            "rank": rank_snapshots,
+            "display_rank": prev_display_rank,
+            "id": oid,
+            "name": name,
+            "favorite_vote_count_weighted": vc + fc,
+            "type": (meta.type if meta else "") or "未知",
+            "origin": (meta.origin if meta else "") or "未知",
+            "first_appearance": (meta.first_appearance if meta else "") or "",
+            "album": (meta.album if meta else "") or "",
+            "name_jp": (meta.name_jp if meta else "") or "",
+            "favorite_percentage": round(fp * 100, 2),
+            "favorite_percentage_of_all": round(fpa, 4),
+            "male_vote_count": {
+                "vote_count": mc,
+                "percentage_per_char": round(mc / vc, 4) if vc else 0.0,
+                "percentage_per_total": round(mc / total_voters, 4) if total_voters else 0.0,
+            },
+            "female_vote_count": {
+                "vote_count": fc_gender,
+                "percentage_per_char": round(fc_gender / vc, 4) if vc else 0.0,
+                "percentage_per_total": round(fc_gender / total_voters, 4) if total_voters else 0.0,
+            },
+            "reasons": reasons[oid],
+            "reasons_count": len(reasons[oid]),
+            "trend": [{"hrs": h, "cnt": c} for h, c in enumerate(trend[oid]) if c > 0],
+            "trend_first": [{"hrs": h, "cnt": c} for h, c in enumerate(trend_first[oid]) if c > 0],
+        })
 
     global_stats = {
-        "total_unique_items": len(all_names),
-        "total_first": sum(first_count.values()),
+        "total_unique_items": len(all_ids),
+        "total_first": total_first,
         "total_votes": total_votes,
-        "average_votes_per_item": total_votes / len(all_names) if all_names else 0.0,
+        "average_votes_per_item": total_votes / len(all_ids) if all_ids else 0.0,
         "median_votes_per_item": _median(list(vote_count.values())),
     }
     return ranking, global_stats
