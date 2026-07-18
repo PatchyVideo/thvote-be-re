@@ -53,10 +53,9 @@ def _to_entry(raw: dict) -> WhitelistEntry:
 class Whitelist:
     def __init__(self, entries: list[WhitelistEntry]):
         self._by_id: dict[str, WhitelistEntry] = {e.id: e for e in entries}
-        if len(self._by_id) != len(entries):
-            raise ValueError(
-                f"whitelist has duplicate ids: {len(entries) - len(self._by_id)} collision(s)"
-            )
+        dup = len(entries) - len(self._by_id)
+        if dup:
+            raise ValueError(f"whitelist has {dup} duplicate id(s)")
 
     @property
     def ids(self) -> set[str]:

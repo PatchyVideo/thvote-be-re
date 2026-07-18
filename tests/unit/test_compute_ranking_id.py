@@ -37,7 +37,11 @@ def test_drops_unknown_ids():
 def test_sort_by_votes_then_first_then_system_id():
     # 甲: 2票0本命; 乙: 2票1本命; 丙: 2票1本命 → 乙丙同票同本命，按系统ID(乙1<丙2)乙在前
     votes = [
-        _vote("u1", [{"id": "id_a"}, {"id": "id_b", "first": True}, {"id": "id_c", "first": True}]),
+        _vote("u1", [
+            {"id": "id_a"},
+            {"id": "id_b", "first": True},
+            {"id": "id_c", "first": True},
+        ]),
         _vote("u2", [{"id": "id_a"}, {"id": "id_b"}, {"id": "id_c"}]),
     ]
     ranking, _ = compute_ranking(votes, _wl(), {}, {}, VS, 1)
