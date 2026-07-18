@@ -6,12 +6,13 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apps.result.compute import CandidateMeta
 from src.db_model.candidate import CandidateCharacter, CandidateMusic, FinalRanking
-from src.db_model.character import Character
-from src.db_model.cp import Cp
-from src.db_model.music import Music
 from src.db_model.questionnaire import Questionnaire
+from src.db_model.raw_submit import (
+    RawCharacterSubmit,
+    RawCPSubmit,
+    RawMusicSubmit,
+)
 
 
 def _normalize_items(raw_list: list) -> list[dict]:
@@ -29,97 +30,40 @@ class ComputeDAO:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def load_char_votes(self) -> list[tuple[str, datetime, list[dict]]]:
-        rows = (await self.session.execute(select(Character))).scalars().all()
+    @staticmethod
+    def _latest_per_vote(rows) -> list[tuple[str, datetime, list[dict]]]:
+        """每个 vote_id 取最新一行(created_at desc, attempt desc)。
+        若该最新行被作废(invalidated),整个 vote_id 丢弃——作废=删除该账号当前投票,
+        而非回退到更旧的提交(legacy 多行选民才可能有多行)。sqlite/PG 通吃,不用 DISTINCT ON。
+        """
+        ordered = sorted(
+            rows, key=lambda r: (r.created_at, r.attempt or 0), reverse=True
+        )
+        latest: dict[str, object] = {}
+        for r in ordered:
+            if r.vote_id not in latest:
+                latest[r.vote_id] = r  # desc 排序后首次出现 = 最新行
         return [
-            (r.id, r.submit_datetime, _normalize_items(r.character_list)) for r in rows
+            (r.vote_id, r.created_at, _normalize_items(r.payload))
+            for r in latest.values()
+            if not r.invalidated  # 最新行被作废 → 丢弃整个 vote_id
         ]
 
+    async def load_char_votes(self) -> list[tuple[str, datetime, list[dict]]]:
+        rows = (await self.session.execute(select(RawCharacterSubmit))).scalars().all()
+        return self._latest_per_vote(rows)
+
     async def load_music_votes(self) -> list[tuple[str, datetime, list[dict]]]:
-        rows = (await self.session.execute(select(Music))).scalars().all()
-        return [(r.id, r.submit_datetime, _normalize_items(r.music_list)) for r in rows]
+        rows = (await self.session.execute(select(RawMusicSubmit))).scalars().all()
+        return self._latest_per_vote(rows)
 
     async def load_cp_votes(self) -> list[tuple[str, datetime, list[dict]]]:
-        rows = (await self.session.execute(select(Cp))).scalars().all()
-        return [(r.id, r.submit_datetime, _normalize_items(r.cp_list)) for r in rows]
+        rows = (await self.session.execute(select(RawCPSubmit))).scalars().all()
+        return self._latest_per_vote(rows)
 
     async def load_questionnaire_votes(self) -> list[tuple[str, list[dict]]]:
         rows = (await self.session.execute(select(Questionnaire))).scalars().all()
         return [(r.id, r.questionnaire_list or []) for r in rows]
-
-    async def load_char_candidates(self, vote_year: int) -> dict[str, CandidateMeta]:
-        rows = (
-            (
-                await self.session.execute(
-                    select(CandidateCharacter).where(
-                        CandidateCharacter.vote_year == vote_year,
-                        CandidateCharacter.merged_into.is_(None),
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        return {
-            r.name: CandidateMeta(
-                name=r.name,
-                name_jp=r.name_jp,
-                origin=r.origin,
-                type=r.type,
-                first_appearance=r.first_appearance,
-            )
-            for r in rows
-        }
-
-    async def load_music_candidates(self, vote_year: int) -> dict[str, CandidateMeta]:
-        rows = (
-            (
-                await self.session.execute(
-                    select(CandidateMusic).where(
-                        CandidateMusic.vote_year == vote_year,
-                        CandidateMusic.merged_into.is_(None),
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        return {
-            r.name: CandidateMeta(
-                name=r.name,
-                name_jp=r.name_jp,
-                origin="",
-                type=r.type,
-                first_appearance=r.first_appearance,
-                album=r.album,
-            )
-            for r in rows
-        }
-
-    async def load_historical(
-        self, vote_year: int, category: str
-    ) -> dict[str, dict]:
-        """Load rank_last_1 and rank_last_2 from final_ranking for historical."""
-        hist: dict[str, dict] = {}
-        for delta, suffix in [(1, "1"), (2, "2")]:
-            rows = (
-                (
-                    await self.session.execute(
-                        select(FinalRanking).where(
-                            FinalRanking.vote_year == vote_year - delta,
-                            FinalRanking.category == category,
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            for r in rows:
-                entry = hist.setdefault(r.name, {})
-                entry[f"rank_{suffix}"] = r.rank
-                entry[f"votes_{suffix}"] = r.vote_count
-                entry[f"first_{suffix}"] = r.first_vote_count
-        return hist
 
     async def upsert_candidates(
         self, vote_year: int, category: str, items: list[dict]
@@ -310,21 +254,6 @@ class ComputeDAO:
             {"id": r.id, "name": r.name, "merged_into": r.merged_into}
             for r in rows
         ]
-
-    async def load_merge_name_map(
-        self, category: str, vote_year: int
-    ) -> dict[str, str]:
-        """variant name → canonical name, for merged candidates of a year."""
-        model = self._candidate_model(category)
-        rows = (await self.session.execute(
-            select(model).where(model.vote_year == vote_year)
-        )).scalars().all()
-        by_id = {r.id: r.name for r in rows}
-        remap: dict[str, str] = {}
-        for r in rows:
-            if r.merged_into is not None and r.merged_into in by_id:
-                remap[r.name] = by_id[r.merged_into]
-        return remap
 
     async def auto_merge(self, category: str, vote_year: int) -> int:
         """Detect + apply name-based merges for a year. Returns merges applied.

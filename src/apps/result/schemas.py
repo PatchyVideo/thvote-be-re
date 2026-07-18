@@ -28,6 +28,7 @@ class RankingEntity(BaseModel):
 
     rank: list[RankingEntityData]
     display_rank: int
+    id: Optional[str] = None
     name: str
     favorite_vote_count_weighted: int
     type: str
@@ -36,6 +37,7 @@ class RankingEntity(BaseModel):
     album: str
     name_jp: str
     favorite_percentage: float
+    favorite_percentage_of_all: float = 0.0
     male_vote_count: VoteCountData
     female_vote_count: VoteCountData
     reasons: list[str]

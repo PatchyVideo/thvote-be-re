@@ -19,6 +19,7 @@ from src.apps.result.compute import (
     compute_ranking,
 )
 from src.apps.result.compute_dao import ComputeDAO
+from src.apps.result.whitelist import load_whitelist
 from src.common.config import Settings
 from src.common.exceptions import AppException
 
@@ -72,15 +73,9 @@ class ComputeService:
             cp_votes = await self.dao.load_cp_votes()
             q_votes = await self.dao.load_questionnaire_votes()
 
-            char_candidates = await self.dao.load_char_candidates(vote_year)
-            music_candidates = await self.dao.load_music_candidates(vote_year)
-
-            char_remap = await self.dao.load_merge_name_map("character", vote_year)
-            music_remap = await self.dao.load_merge_name_map("music", vote_year)
-
-            char_hist = await self.dao.load_historical(vote_year, "character")
-            music_hist = await self.dao.load_historical(vote_year, "music")
-            cp_hist = await self.dao.load_historical(vote_year, "cp")
+            # 白名单（id→名/系统ID）；CP 成员是角色 → 用角色白名单
+            char_wl = load_whitelist("character")
+            music_wl = load_whitelist("music")
 
             # Compute
             gender_map = compute_gender_map(
@@ -90,25 +85,13 @@ class ComputeService:
                 s.gender_female_value,
             )
             char_ranking, char_global = compute_ranking(
-                char_votes,
-                char_candidates,
-                gender_map,
-                char_hist,
-                vote_start,
-                total_hours,
-                char_remap,
+                char_votes, char_wl, gender_map, {}, vote_start, total_hours,
             )
             music_ranking, music_global = compute_ranking(
-                music_votes,
-                music_candidates,
-                gender_map,
-                music_hist,
-                vote_start,
-                total_hours,
-                music_remap,
+                music_votes, music_wl, gender_map, {}, vote_start, total_hours,
             )
             cp_ranking, cp_global = compute_cp_ranking(
-                cp_votes, gender_map, cp_hist, vote_start, total_hours
+                cp_votes, char_wl, gender_map, {}, vote_start, total_hours,
             )
 
             all_voters = (

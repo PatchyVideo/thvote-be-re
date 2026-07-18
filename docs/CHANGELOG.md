@@ -4,7 +4,65 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-18（fix:审计日志端点在真实库 500——只取所需列）
+> 最后更新：2026-07-18（B-050 v1 计票重写落地：读 raw_*、id 白名单、CP 无序 multiset、名次口径对齐）
+
+## [2026-07-18] B-050 v1：计票系统重写落地（读 raw_*、id 白名单、CP 无序、名次口径对齐）
+
+> 承接 2026-07-18 的 B-050 设计稿(id-based 记票重写)与权威需求对齐,本次完成 v1 全部 6 个实现任务:计票数据源切换、id 归票、CP 无序 multiset、名次口径、schema 补字段、设计稿/BACKLOG 收尾。详见 [设计稿](./superpowers/specs/2026-07-18-result-recount-id-based-design.md) §九"v1 实现落地"。
+
+### Added
+- `src/apps/result/whitelist.py` + 快照 `src/apps/result/data/whitelist_{character,music}.json`(角色 244 / 音乐 612 条,从前端 `character.ts`/`music.ts` 提取,含 `system_id` = 列表位置序号)。`scripts/extract_whitelist.mjs`:前端列表变更时的重新提取脚本(`node scripts/extract_whitelist.mjs <前端仓库根> <后端仓库根>`,覆盖写两份 JSON,需手动提交)。
+- `RankingEntity`(`src/apps/result/schemas.py`)新增 `id: Optional[str] = None`、`favorite_percentage_of_all: float = 0.0`,与新 compute 输出对齐。
+
+### Changed
+- **计票改读真实提交表 `raw_*`**(`ComputeDAO.load_char_votes`/`load_music_votes`/`load_cp_votes`):取每个 `vote_id` 最新一条(按 `created_at`/`attempt` 兜底去重)、排除 `invalidated=true`(接 B-049 管理端作废标记)。不再读死表 `character`/`music`/`cp`(此前这些死表永远空,计票产出恒为空/零排名)。
+- **按角色 id 归票**(`compute_ranking`):角色/音乐票的 `item.id` 不在对应白名单 → 直接丢弃(不计入任何统计);白名单同时提供展示元数据(name/name_jp/origin/album/type)与 `system_id`。
+- **CP 记票改无序 multiset**(`compute_cp_ranking`):key = `tuple(sorted([id_a,id_b,id_c 去 None]))`(保留重复元素,允许 2 人自 CP);顺序/主动方不进 key;`active` 作为属性,产出 `active_a/active_b/active_c/active_none` 四个占比;任一成员不在白名单 → 整条 CP 丢弃;**组合票数 == 1 不计入**排名与统计。
+- **名次口径对齐权威文档**:票数(desc)→本命数(desc)→系统 ID(asc)三级排序;**同票数即同名次(虚位)**——`display_rank` 只在票数变化时递推。`favorite_vote_count_weighted`(本命加权)= 票数 + 本命数。
+- 离线批量计算沿用既有管理台 `POST /admin/compute-results` 按钮,未新增触发入口。
+
+### 兼容性
+- **发榜条目新增字段**:`id`、`favorite_percentage_of_all`(均有默认值,向后兼容,GraphQL/REST 走无类型 JSON 不受影响)。
+- **名次排序口径变化**:此前(死表路径)按加权值排序,现改为票数优先(见上"名次口径"),同票数视为并列——依赖旧排序口径的下游(如有)需核对。
+- **计票数据源变更**:由死表 `character`/`music`/`cp` 改为 `raw_*`——死表此前恒为空,故本变更实为"从零排名修复为真实排名",非破坏性回退。
+- 无需数据库迁移(不改表结构)。
+
+### Fixed（fix-wave 补丁,同分支）
+- **作废语义修正**(`ComputeDAO._latest_per_vote`):此前逻辑先剔除 `invalidated` 行、再取剩余行里最新的一条——legacy 多行选民(Mongo 同步一 doc 一行)若最新行被作废,会**错误回退到更旧的合法行**,导致该票仍被计入。改为:先按 `created_at`/`attempt` 取每个 `vote_id` 最新一行,若该最新行本身被作废,**整个 `vote_id` 丢弃**,不回退旧提交——即"作废当前投票 = 删除这一票",而非"作废当前投票 = 恢复上一票"。已补回归测试 `test_invalidated_latest_row_drops_vote_no_fallback`。
+- **清理接线后的死代码**:`compute_dao.py` 删除 `load_char_candidates`/`load_music_candidates`/`load_merge_name_map`/`load_historical`(id 白名单管线接线后零调用方);`compute.py` 删除 `CandidateMeta`/`KIND_MAPPING`(与 `whitelist.py::_KIND_MAPPING` 重复维护)。grep 确认 `src/`+`tests/` 无残留引用。
+
+## [2026-07-18] Docs：入官方需求文档 + B-050 设计稿对齐权威口径
+
+> 用户上传两份 VoileLabs 官方需求文档,作为投票/记票的权威依据入 `docs/`,并把 B-050 结果/记票设计稿(`docs/superpowers/specs/2026-07-18-result-recount-id-based-design.md`)与之对齐。**纯文档,无代码/schema 变更。**
+
+### Added
+- `docs/VoileLabs-人气投票项目-需求文档 (2).docx`(投票系统需求,输入侧;4.2MB)+ 自动转换文本版 `...-投票系统.md`(供 grep/diff,权威以 docx 为准)。
+- `docs/VoileLabs-人气投票项目-需求文档-投票结果页面 (1).docx`(结果页面需求 v2.0,输出侧;15MB)+ 已有 `...-投票结果页面.md`。
+
+### Changed
+- B-050 设计稿新增 **§八 权威需求对齐**:①票位数(角色8/音乐12/CP4/提名5)、本命≤1 加权2、有效票=各部门≥1 无空位;②白名单=官方策展名单(角色截至 2024/12/22 按作品分类、音乐按专辑);③**CP 相同组合**权威去重("顺序不同、主动方不同也视为同组合");④问卷 7 位 ID 体系、性别题取后端配置 `q11011`;⑤结果页完整指标全集(名次 tie-break=票数→本命→系统ID、本命加权、trend、上届对比、高级搜索);⑥trend 需全提交历史 vs 终榜各自取最新。
+- **修正**:CP key 由 `sorted({A,B,C})`(set)改为 `tuple(sorted([A,B,C]))`(**multiset**)——2 人 CP 允许自 CP(如 灵梦×灵梦),set 会误去重;3 人 CP 禁重复角色。
+
+### 兼容性
+- 无接口/数据影响(设计阶段文档)。⚠️ 两份 docx 合计约 19MB 二进制入库,后续如需瘦身可转 git-lfs。
+
+## [2026-07-18] Ops：测试库全量重建（全流程 alembic）—— 修复 B-051
+
+> 诊断 B-051 时确认测试库 `activity_log` 表**根本不存在**却 `alembic_version=0014`(stamp 未真跑,init_db/stamp 漂移)。经用户授权,对测试库(临时凭据)做**从头到尾的 alembic 重建**,确保 schema 与迁移一致、以后安全。**纯运维操作,无代码变更。**
+
+### 操作(保留数据式重建)
+1. `pg_dump` 无(用 asyncpg COPY)导出有数据的 10 张表(候选 244+612、问卷结构 8/24/32/40、user 2、raw_character/raw_paper/paper_answer)。
+2. `DROP TABLE ... CASCADE` 清空全部 23 表(含错误 stamp 的 `alembic_version`)。
+3. `alembic upgrade head` 从空库跑通 **0001→0014 全 14 步无错**(验证全链路迁移健康)。
+4. COPY 回灌数据 + 重置各表 id 序列;`reload-config` 刷后端连接池。
+5. 验证:`activity_log` 表已建、`activity-logs` 端点 200、全部行数一致、`alembic_version=0014`(真跑)。PII 转储文件用后 shred 清除。
+
+### 结论 / 遗留
+- **B-051 已解决**;`login_session` 缺失是误报(SSO 会话在 Redis)。
+- 根因预防仍属 **B-026**(CI `alembic check` + 去 init_db):本次重建修好了当前漂移,但要防复发需补 DB 治理门禁。
+- 候选数据 `vote_year=12`(测试导入值,非日历年);查候选端点需带 `vote_year=12`。
+
+## [2026-07-18] Fixed：审计日志端点真实库 500
 
 ## [2026-07-18] Fixed：审计日志端点真实库 500
 

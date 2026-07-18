@@ -60,6 +60,7 @@
 | [`superpowers/specs/2026-07-17-admin-console-vue-security-monitoring-design.md`](./superpowers/specs/2026-07-17-admin-console-vue-security-monitoring-design.md) | 管理后台 **Vue 重写 + 安全监控设计**（B-049：流量概览/IP·设备聚类/可疑名单/可过滤投票浏览器/账号钻取+处置；X-Admin-Secret 强制+IP白名单；作废/封号**仅记录**,影响排名依赖 B-050） |
 | [`superpowers/plans/2026-07-17-admin-console-security-monitoring-backend.md`](./superpowers/plans/2026-07-17-admin-console-security-monitoring-backend.md) | B-049 **后端实施计划(Plan 1/2)**：7 任务 TDD——fail-closed 鉴权+IP白名单 / migration 0014 / MonitorDAO 聚合 / 固定加权评分 / service+轻缓存 / 只读端点 / 只记录处置。前端 Vue 为 Plan 2 |
 | [`superpowers/specs/2026-07-18-admin-console-vue-frontend-design.md`](./superpowers/specs/2026-07-18-admin-console-vue-frontend-design.md) | B-049 **前端(Plan 2)设计**：拆掉 1115 行单文件 admin_ui,重写为 Vue3+Vite+TS 模块化(api client/composable/共享组件/view)。commit-dist 构建、hash 路由、旧面板 `/admin-ui-legacy` 兜底。Phase 1=骨架+5 监控页+Users 打样 |
+| [`superpowers/specs/2026-07-18-result-recount-id-based-design.md`](./superpowers/specs/2026-07-18-result-recount-id-based-design.md) | **记票/结果模块重写设计**（B-050）：纯 id 贯穿(选票/计票/排名按 id,name 只展示)、candidate 白名单制(计票时丢未知 id)、CP 无序 key+active 分离、merged_into 黑掉、离线批量算(管理台按钮)。含 candidate 两段身世 + 旧 name-based 流程脆弱性 + id 稳定性/CP 两处 explore 结论 |
 
 ### 跨前后端功能设计（Block 1-3，2026-06-08）
 
