@@ -69,6 +69,11 @@ export async function apiBare<T>(path: string, method: string): Promise<T> {
   return (await r.json()) as T
 }
 
+// 原始响应(用于 blob 下载等非 JSON 场景),仍走统一 403/!ok 处理。
+export async function apiRaw(path: string): Promise<Response> {
+  return handle(await fetch(BASE + path, { headers: headers() }))
+}
+
 // 登录探测:用给定 secret 打一个受保护端点,返回 HTTP 状态码(不改全局态)。
 export async function probeLogin(secret: string): Promise<number> {
   const r = await fetch(BASE + '/admin/stats', {
