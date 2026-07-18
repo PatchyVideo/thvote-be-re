@@ -432,7 +432,7 @@ async def list_activity_logs(
         {
             "id": r.id, "event_type": r.event_type,
             "user_id": r.user_id, "requester_ip": r.requester_ip,
-            "created_at": r.created_at.isoformat(),
+            "created_at": r.created_at.isoformat() if r.created_at else None,
         }
         for r in data["items"]
     ]

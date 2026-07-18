@@ -4,7 +4,18 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-18（B-049 Plan 2 Phase 2:6 个旧工具全部迁到 Vue,拆巨大 HTML 收官）
+> 最后更新：2026-07-18（fix:审计日志端点在真实库 500——只取所需列）
+
+## [2026-07-18] Fixed：审计日志端点真实库 500
+
+> 迁移后 smoke 测试发现 `/api/v1/admin/activity-logs` 在测试机真实库返回 500(sqlite 测试库正常,故此前未暴露)。旧/新面板的"审计日志"页均受影响(纯后端问题,非前端迁移引入)。
+
+### Fixed
+- `AdminService.list_activity_logs` 由 `select(ActivityLog)`(取全部映射列)改为**只 SELECT 端点用到的 5 列**(id/event_type/user_id/requester_ip/created_at)。真实 `activity_log` 表疑由早期 init_db/stamp 路径建成、缺后加的审计列(target_email/old_value/additional_fingerprint 等),整实体 SELECT 遇缺列即 500;只取所需列规避,也更省。
+- router 序列化 `created_at` 加空值兜底(`... if r.created_at else None`)。
+- 全量 411 passed;经测试机重新部署 smoke 验证端点恢复 200。
+
+## [2026-07-18] B-049 Plan 2 Phase 2：迁移全部旧工具到 Vue
 
 ## [2026-07-18] B-049 Plan 2 Phase 2：迁移全部旧工具到 Vue
 

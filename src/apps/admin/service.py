@@ -217,7 +217,17 @@ class AdminService:
         from sqlalchemy import desc
         from src.db_model.activity_log import ActivityLog
 
-        query = select(ActivityLog)
+        # 只 SELECT 端点实际用到的 5 列,而非整个 ORM 实体。真实测试库的
+        # activity_log 表由早期 init_db/stamp 路径建成,可能缺后加的审计列
+        # (target_email/old_value/additional_fingerprint 等);`select(ActivityLog)`
+        # 会 SELECT 全部映射列 → 缺列即 500。只取所需列可规避,也更省。
+        query = select(
+            ActivityLog.id,
+            ActivityLog.event_type,
+            ActivityLog.user_id,
+            ActivityLog.requester_ip,
+            ActivityLog.created_at,
+        )
         if user_id:
             query = query.where(ActivityLog.user_id == user_id)
         if action:
@@ -238,7 +248,7 @@ class AdminService:
         rows = (await self._session.execute(
             query.order_by(desc(ActivityLog.created_at))
             .offset((page - 1) * page_size).limit(page_size)
-        )).scalars().all()
+        )).all()  # Row 对象(非 ORM 实体);router 按列名属性访问
         return {"items": rows, "total": total}
 
     async def export_votes_csv(self, vote_year: int, category: str):
