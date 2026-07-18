@@ -13,7 +13,7 @@
 ### Fixed
 - `AdminService.list_activity_logs` 由 `select(ActivityLog)`(取全部映射列)改为**只 SELECT 端点用到的 5 列**(id/event_type/user_id/requester_ip/created_at)。真实 `activity_log` 表疑由早期 init_db/stamp 路径建成、缺后加的审计列(target_email/old_value/additional_fingerprint 等),整实体 SELECT 遇缺列即 500;只取所需列规避,也更省。
 - router 序列化 `created_at` 加空值兜底(`... if r.created_at else None`)。
-- 全量 411 passed;经测试机重新部署 smoke 验证端点恢复 200。
+- 全量 411 passed。**⚠️ 更正:此改动是有效改进(不过取无用列/更省),但部署后 smoke 显示端点仍 500**——进一步诊断:空结果查询(不存在的 user_id / 超尾页)也 500,即**查询层失败**,非行数据、非被移除的审计列、非 null created_at。真因是**真实测试库 `activity_log` 表 schema 问题**(疑缺某核心列或表本身异常,init_db/stamp 遗留),需 DB 直连 `\d activity_log` 或容器 traceback 才能定位。**转 B-051 跟踪**(本机无 DB 密码、无 SSH,无法进一步诊断)。写入侧因 `_safe_log` 吞异常而静默失败,故一直未暴露。
 
 ## [2026-07-18] B-049 Plan 2 Phase 2：迁移全部旧工具到 Vue
 
