@@ -133,14 +133,14 @@ def compute_ranking(
     )
 
     ranking = []
-    prev_key: tuple[int, int] | None = None
+    prev_vc = None
     prev_display_rank = 0
     for i, oid in enumerate(sorted_ids):
         vc = vote_count[oid]
         fc = first_count[oid]
-        if (vc, fc) != prev_key:     # 同票数同本命数同名次；不同则虚位递推
+        if vc != prev_vc:            # 同票数同名次；不同则虚位递推
             prev_display_rank = i + 1
-            prev_key = (vc, fc)
+            prev_vc = vc
         vp = vc / total_voters if total_voters else 0.0
         fp = fc / vc if vc else 0.0
         fpa = fc / total_first if total_first else 0.0
@@ -182,7 +182,7 @@ def compute_ranking(
             "album": (meta.album if meta else "") or "",
             "name_jp": (meta.name_jp if meta else "") or "",
             "favorite_percentage": round(fp * 100, 2),
-            "favorite_percentage_of_all": round(fpa, 4),
+            "favorite_percentage_of_all": round(fpa * 100, 2),
             "male_vote_count": {
                 "vote_count": mc,
                 "percentage_per_char": round(mc / vc, 4) if vc else 0.0,
