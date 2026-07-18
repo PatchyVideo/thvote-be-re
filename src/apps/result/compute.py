@@ -223,43 +223,46 @@ def _median(values: list[int]) -> float:
 
 def compute_cp_ranking(
     cp_votes: list[tuple[str, datetime, list[dict]]],
+    whitelist: "Whitelist",
     gender_map: dict[str, str],
     historical: dict[str, dict],
     vote_start: datetime,
     total_hours: int,
 ) -> tuple[list[dict], dict]:
-    """Compute CP ranking.
+    """按无序 multiset 归票的 CP 排名（B-050）。
 
-    Each item: {"id_a", "id_b", "id_c", "active", "first", "reason"}
-    CP key: "A×B" or "A×B×C"
+    item: {"id_a","id_b","id_c","active","first","reason"}
+    key = tuple(sorted([id_a,id_b,id_c?去None]))；顺序/主动方/first 不进 key。
+    任一成员不在白名单 → 整条 CP 丢弃；组合票数==1 不计入。
     """
-    vote_count: dict[str, int] = defaultdict(int)
-    first_count: dict[str, int] = defaultdict(int)
-    reasons: dict[str, list[str]] = defaultdict(list)
-    active_count: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    cp_meta: dict[str, dict] = {}
-    trend: dict[str, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
-    trend_first: dict[str, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
+    vote_count: dict[tuple, int] = defaultdict(int)
+    first_count: dict[tuple, int] = defaultdict(int)
+    reasons: dict[tuple, list[str]] = defaultdict(list)
+    active_count: dict[tuple, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    members_of: dict[tuple, list[str]] = {}
+    trend: dict[tuple, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
+    trend_first: dict[tuple, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
     total_voters = len(cp_votes)
 
     for user_id, submit_dt, items in cp_votes:
         if submit_dt.tzinfo is None:
             submit_dt = submit_dt.replace(tzinfo=timezone.utc)
-        hour_bucket = max(
-            0,
-            min(
-                int((submit_dt - vote_start).total_seconds() / 3600),
-                total_hours - 1,
-            ),
-        )
+        hour_bucket = max(0, min(
+            int((submit_dt - vote_start).total_seconds() / 3600), total_hours - 1))
+        seen_in_vote: set[tuple] = set()
         for item in items:
-            a = item.get("id_a", "")
-            b = item.get("id_b", "")
-            c = item.get("id_c")
-            key = f"{a}×{b}×{c}" if c else f"{a}×{b}"
-            active = item.get("active") or "none"
+            raw_members = [item.get("id_a", ""), item.get("id_b", "")]
+            if item.get("id_c"):
+                raw_members.append(item["id_c"])
+            if any((not m) or (m not in whitelist) for m in raw_members):
+                continue  # 未知成员 → 整条丢
+            key = tuple(sorted(raw_members))  # multiset，保留重复
+            if key in seen_in_vote:
+                continue
+            seen_in_vote.add(key)
             is_first = bool(item.get("first", False))
             reason = item.get("reason")
+            active = item.get("active") or "none"
 
             vote_count[key] += 1
             if is_first:
@@ -270,81 +273,75 @@ def compute_cp_ranking(
             trend[key][hour_bucket] += 1
             if is_first:
                 trend_first[key][hour_bucket] += 1
-            if key not in cp_meta:
-                cp_meta[key] = {"id_a": a, "id_b": b, "id_c": c}
+            members_of.setdefault(key, list(key))
 
-    all_keys = set(vote_count.keys())
-    total_votes = sum(vote_count.values())
+    # 组合票数==1 不计入
+    all_keys = [k for k in vote_count if vote_count[k] >= 2]
+    total_votes = sum(vote_count[k] for k in all_keys)
+    # 提示：sum(first_count[k] for k in all_keys) 在 favorite_percentage_of_all
+    # 与 global_stats 中重复用到；一次性算好复用，避免 O(n^2)（brief 原文是逐条重算）。
+    total_first_cp = sum(first_count[k] for k in all_keys)
 
-    def weighted(k: str) -> int:
-        return first_count[k] * 3 + vote_count[k]
+    def system_id_a(k: tuple) -> int:
+        return whitelist.system_id_of(members_of[k][0])
 
-    sorted_keys = sorted(all_keys, key=lambda k: (-weighted(k), -vote_count[k]))
+    sorted_keys = sorted(
+        all_keys,
+        key=lambda k: (-vote_count[k], -first_count[k], system_id_a(k)),
+    )
 
     ranking = []
-    prev_w = None
-    prev_dr = 0
-    tied_count = 0
+    prev_vc = None
+    prev_display_rank = 0
     for i, key in enumerate(sorted_keys):
-        w = weighted(key)
-        if w != prev_w:
-            prev_dr = i + 1
-            tied_count = 1
-            prev_w = w
-        else:
-            tied_count += 1
-
         vc = vote_count[key]
         fc = first_count[key]
+        if vc != prev_vc:
+            prev_display_rank = i + 1
+            prev_vc = vc
+        members = members_of[key]
+        a = members[0]
+        b = members[1] if len(members) > 1 else ""
+        c = members[2] if len(members) > 2 else None
         ac = active_count[key]
-        meta = cp_meta[key]
 
-        def _rate(who: str) -> float:
-            return round(ac.get(who, 0) / vc, 4) if vc else 0.0
+        def _rate(mid: str) -> float:
+            return round(ac.get(mid, 0) / vc, 4) if vc else 0.0
 
-        ranking.append(
-            {
-                "rank": [
-                    {
-                        "rank": i + 1,
-                        "vote_count": vc,
-                        "favorite_vote_count": fc,
-                        "favorite_percentage": int(fc / vc * 100) if vc else 0,
-                        "vote_percentage": (
-                            round(vc / total_voters * 100, 2) if total_voters else 0.0
-                        ),
-                    }
-                ],
-                "display_rank": prev_dr,
-                "name": key,
-                "id_a": meta["id_a"],
-                "id_b": meta["id_b"],
-                "id_c": meta["id_c"],
-                "favorite_vote_count_weighted": w,
-                "favorite_percentage": round(fc / vc * 100, 2) if vc else 0.0,
-                "active_a": _rate(meta["id_a"]),
-                "active_b": _rate(meta["id_b"]),
-                "active_c": _rate(meta["id_c"]) if meta["id_c"] else 0.0,
-                "active_none": _rate("none"),
-                "reasons": reasons[key],
-                "reasons_count": len(reasons[key]),
-                "trend": [
-                    {"hrs": h, "cnt": c} for h, c in enumerate(trend[key]) if c > 0
-                ],
-                "trend_first": [
-                    {"hrs": h, "cnt": c}
-                    for h, c in enumerate(trend_first[key])
-                    if c > 0
-                ],
-            }
-        )
+        ranking.append({
+            "rank": [{
+                "rank": i + 1,
+                "vote_count": vc,
+                "favorite_vote_count": fc,
+                "favorite_percentage": int(fc / vc * 100) if vc else 0,
+                "vote_percentage": round(vc / total_voters * 100, 2) if total_voters else 0.0,
+            }],
+            "display_rank": prev_display_rank,
+            "name": "×".join(whitelist.name_of(m) for m in members),
+            "id_a": a,
+            "id_b": b,
+            "id_c": c,
+            "favorite_vote_count_weighted": vc + fc,
+            "favorite_percentage": round(fc / vc * 100, 2) if vc else 0.0,
+            "favorite_percentage_of_all": (
+                round(fc / total_first_cp * 100, 2) if total_first_cp else 0.0
+            ),
+            "active_a": _rate(a),
+            "active_b": _rate(b) if b else 0.0,
+            "active_c": _rate(c) if c else 0.0,
+            "active_none": _rate("none"),
+            "reasons": reasons[key],
+            "reasons_count": len(reasons[key]),
+            "trend": [{"hrs": h, "cnt": cc} for h, cc in enumerate(trend[key]) if cc > 0],
+            "trend_first": [{"hrs": h, "cnt": cc} for h, cc in enumerate(trend_first[key]) if cc > 0],
+        })
 
     global_stats = {
         "total_unique_items": len(all_keys),
-        "total_first": sum(first_count.values()),
+        "total_first": total_first_cp,
         "total_votes": total_votes,
         "average_votes_per_item": total_votes / len(all_keys) if all_keys else 0.0,
-        "median_votes_per_item": _median(list(vote_count.values())),
+        "median_votes_per_item": _median([vote_count[k] for k in all_keys]),
     }
     return ranking, global_stats
 
