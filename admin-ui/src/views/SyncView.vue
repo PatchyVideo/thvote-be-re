@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
-import { syncApi } from '@/api/sync'
+import { SYNC_COLLECTIONS, syncApi } from '@/api/sync'
 import { useAsync } from '@/composables/useAsync'
+import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
 import DataTable from '@/components/DataTable.vue'
 import StatCard from '@/components/StatCard.vue'
@@ -22,6 +23,7 @@ const historyCols: Column[] = [
 ]
 
 const batchSize = ref(500)
+const selected = ref<string[]>([])
 const status = ref<SyncStatus | null>(null)
 // 记录上一次的 run_id:status() 永远不返回 completed/failed,只能靠
 // run_id 从非空变回 null(running → idle)推断"本轮已结束"。
@@ -31,12 +33,23 @@ const {
   loading: historyLoading,
   run: runHistory,
 } = useAsync<Paged<SyncHistoryItem>>()
+const { page, size, total, pageCount, hasPrev, hasNext, setTotal, next, prev } =
+  usePagination(20)
 const { toast } = useToast()
 
 let timer: number | undefined
 
 async function loadHistory(): Promise<void> {
-  await runHistory(() => syncApi.history())
+  const r = await runHistory(() => syncApi.history(page.value, size.value))
+  if (r) setTotal(r.total)
+}
+function goPrev(): void {
+  prev()
+  loadHistory()
+}
+function goNext(): void {
+  next()
+  loadHistory()
 }
 
 async function pollStatus(): Promise<void> {
@@ -64,8 +77,9 @@ onUnmounted(() => {
 async function startSync(): Promise<void> {
   if (!confirm('开始全量同步？')) return
   try {
-    const r = await syncApi.start([], batchSize.value)
+    const r = await syncApi.start(selected.value, batchSize.value)
     toast('已启动: ' + r.run_id, 'success')
+    loadHistory()
   } catch (e) {
     toast((e as Error).message, 'error')
   }
@@ -96,6 +110,14 @@ function statusBadge(s: string): string {
   if (s === 'failed') return 'bad'
   return 'gray'
 }
+
+// LIVE 卡片:status() 永远不返回 completed/failed,只能靠 run_id 是否非空判断是否运行中。
+function liveBadgeClass(s: SyncStatus): string {
+  return s.run_id !== null ? 'upcoming' : 'gray'
+}
+function liveBadgeText(s: SyncStatus): string {
+  return s.run_id !== null ? '运行中' : '空闲'
+}
 </script>
 
 <template>
@@ -112,10 +134,18 @@ function statusBadge(s: string): string {
       <button class="btn danger" @click="cancelSync">取消</button>
     </div>
 
+    <div class="row" style="margin-top: 0.6rem">
+      <label v-for="c in SYNC_COLLECTIONS" :key="c">
+        <input type="checkbox" :value="c" v-model="selected" />
+        {{ c }}
+      </label>
+    </div>
+    <div class="muted small">不选=全部同步</div>
+
     <template v-if="status">
       <div class="row" style="margin-top: 1rem">
         <span>
-          状态: <span class="badge" :class="statusBadge(status.status)">{{ status.status }}</span>
+          状态: <span class="badge" :class="liveBadgeClass(status)">{{ liveBadgeText(status) }}</span>
         </span>
         <span class="muted small">当前集合: {{ status.current_collection || '—' }}</span>
       </div>
@@ -139,6 +169,13 @@ function statusBadge(s: string): string {
     :rows="history?.items || []"
     :loading="historyLoading"
     empty-text="暂无记录"
+    :page="page"
+    :page-count="pageCount"
+    :total="total"
+    :has-prev="hasPrev"
+    :has-next="hasNext"
+    @prev="goPrev"
+    @next="goNext"
   >
     <template #cell-run_id="{ value }"><span class="mono small">{{ value }}</span></template>
     <template #cell-started_at="{ value }">

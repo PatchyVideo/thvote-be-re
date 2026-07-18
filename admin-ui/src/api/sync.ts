@@ -1,4 +1,4 @@
-import { apiGet, apiSend } from './client'
+import { apiGet, apiSend, qs } from './client'
 import type { Paged, SyncHistoryItem, SyncStartResult, SyncStatus } from './types'
 
 // 合法 collection 名(runner COLLECTION_CONFIG);start 传 [] = 全部。
@@ -20,7 +20,8 @@ export const syncApi = {
   start: (collections: string[], batch_size: number) =>
     apiSend<SyncStartResult>('/admin/sync/start', 'POST', { collections, batch_size }),
   status: () => apiGet<SyncStatus>('/admin/sync/status'),
-  history: () => apiGet<Paged<SyncHistoryItem>>('/admin/sync/history'),
+  history: (page: number, page_size: number) =>
+    apiGet<Paged<SyncHistoryItem>>('/admin/sync/history' + qs({ page, page_size })),
   cancel: () => apiSend<{ ok: boolean }>('/admin/sync/cancel', 'POST'),
   retry: (runId: string) =>
     apiSend<SyncStartResult>(
