@@ -33,23 +33,22 @@ class ComputeDAO:
 
     @staticmethod
     def _latest_per_vote(rows) -> list[tuple[str, datetime, list[dict]]]:
-        """按 vote_id 取最新一行（created_at desc, attempt desc 兜底），排除 invalidated。
-        Python 侧 dedup（sqlite/PG 通吃，不用 DISTINCT ON）。
+        """每个 vote_id 取最新一行(created_at desc, attempt desc)。
+        若该最新行被作废(invalidated),整个 vote_id 丢弃——作废=删除该账号当前投票,
+        而非回退到更旧的提交(legacy 多行选民才可能有多行)。sqlite/PG 通吃,不用 DISTINCT ON。
         """
-        # created_at desc, coalesce(attempt,0) desc → 先出现的即最新
         ordered = sorted(
-            rows,
-            key=lambda r: (r.created_at, r.attempt or 0),
-            reverse=True,
+            rows, key=lambda r: (r.created_at, r.attempt or 0), reverse=True
         )
-        seen: dict[str, tuple[str, datetime, list[dict]]] = {}
+        latest: dict[str, object] = {}
         for r in ordered:
-            if r.invalidated:
-                continue
-            if r.vote_id in seen:
-                continue
-            seen[r.vote_id] = (r.vote_id, r.created_at, _normalize_items(r.payload))
-        return list(seen.values())
+            if r.vote_id not in latest:
+                latest[r.vote_id] = r  # desc 排序后首次出现 = 最新行
+        return [
+            (r.vote_id, r.created_at, _normalize_items(r.payload))
+            for r in latest.values()
+            if not r.invalidated  # 最新行被作废 → 丢弃整个 vote_id
+        ]
 
     async def load_char_votes(self) -> list[tuple[str, datetime, list[dict]]]:
         rows = (await self.session.execute(select(RawCharacterSubmit))).scalars().all()

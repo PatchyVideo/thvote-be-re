@@ -68,3 +68,19 @@ async def test_load_char_votes_latest_only_and_excludes_invalidated(session):
     assert "voteB" not in by_vote  # invalidated 排除
     assert by_vote["voteA"] == [{"id": "bbbb2222", "first": True}]  # 只取最新
     assert by_vote["voteC"] == [{"id": "aaaa1111", "first": False, "reason": None}]  # 归一化
+
+
+@pytest.mark.asyncio
+async def test_invalidated_latest_row_drops_vote_no_fallback(session):
+    """legacy 选民多行:最新行被作废 → 整个 vote_id 丢弃,不回退到更旧的合法行。"""
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    session.add_all([
+        RawCharacterSubmit(vote_id="legacy", attempt=1, created_at=base,
+                           user_ip="x", payload=[{"id": "old_id", "first": False}]),
+        RawCharacterSubmit(vote_id="legacy", attempt=2, created_at=base + timedelta(hours=1),
+                           user_ip="x", invalidated=True, payload=[{"id": "new_id", "first": False}]),
+    ])
+    await session.commit()
+    dao = ComputeDAO(session)
+    votes = await dao.load_char_votes()
+    assert all(vid != "legacy" for vid, _, _ in votes)  # latest row invalidated → whole vote dropped, no fallback to old_id
