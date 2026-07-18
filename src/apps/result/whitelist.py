@@ -15,7 +15,7 @@ from typing import Literal
 _DATA_DIR = Path(__file__).parent / "data"
 _UNKNOWN_SYSTEM_ID = 10**9  # 未知 id 排最后（正常不该走到，白名单已先过滤）
 
-# 前端 kind → 展示用 type（与 compute.KIND_MAPPING 一致，避免循环 import 这里内联）
+# 前端 kind → 展示用 type（唯一来源；原 compute.KIND_MAPPING 已随死代码清理删除）
 _KIND_MAPPING: dict[str, str] = {
     "old": "旧作", "new": "新作", "CD": "专辑", "book": "出版物",
     "others": "其他", "other": "其他", "game": "游戏",
@@ -53,6 +53,10 @@ def _to_entry(raw: dict) -> WhitelistEntry:
 class Whitelist:
     def __init__(self, entries: list[WhitelistEntry]):
         self._by_id: dict[str, WhitelistEntry] = {e.id: e for e in entries}
+        if len(self._by_id) != len(entries):
+            raise ValueError(
+                f"whitelist has duplicate ids: {len(entries) - len(self._by_id)} collision(s)"
+            )
 
     @property
     def ids(self) -> set[str]:

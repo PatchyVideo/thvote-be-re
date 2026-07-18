@@ -7,33 +7,12 @@ return computed results. No database or Redis access.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from itertools import combinations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from src.apps.result.whitelist import Whitelist
-
-KIND_MAPPING: dict[str, str] = {
-    "old": "旧作",
-    "new": "新作",
-    "CD": "专辑",
-    "book": "出版物",
-    "others": "其他",
-    "other": "其他",
-    "game": "游戏",
-}
-
-
-@dataclass
-class CandidateMeta:
-    name: str
-    name_jp: str
-    origin: str
-    type: str
-    first_appearance: str | None
-    album: str | None = None
 
 
 # ── Gender ────────────────────────────────────────────────────────────
@@ -170,6 +149,8 @@ def compute_ranking(
         meta = whitelist.get(oid)
         name = meta.name if meta else oid
 
+        # rank_snapshots[0]["rank"] = i+1，原始 1-based 序号，永不并列；
+        # display_rank = 名次（同票数同名次、虚位递推），前端展示用这个。
         ranking.append({
             "rank": rank_snapshots,
             "display_rank": prev_display_rank,
@@ -308,6 +289,8 @@ def compute_cp_ranking(
         def _rate(mid: str) -> float:
             return round(ac.get(mid, 0) / vc, 4) if vc else 0.0
 
+        # "rank" 内的 rank = i+1，原始 1-based 序号，永不并列；
+        # display_rank = 名次（同票数同名次、虚位递推），前端展示用这个。
         ranking.append({
             "rank": [{
                 "rank": i + 1,

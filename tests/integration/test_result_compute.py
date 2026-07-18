@@ -70,7 +70,7 @@ def settings():
 async def _seed_data(session: AsyncSession) -> None:
     """Insert raw_* votes using real whitelist ids + a questionnaire row for gender."""
     wl = load_whitelist("character")
-    id1, id2 = sorted(wl.ids)[0], sorted(wl.ids)[1]
+    id1 = sorted(wl.ids)[0]
     session.add_all([
         RawCharacterSubmit(vote_id="user-1", attempt=1,
                            created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),

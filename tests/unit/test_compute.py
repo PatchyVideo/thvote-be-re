@@ -9,7 +9,6 @@ from src.apps.result.compute import (
     compute_covote,
     compute_gender_map,
     compute_global_stats,
-    compute_paper_results,
 )
 
 VOTE_START = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -52,7 +51,6 @@ CHAR_VOTES = [
     ("u2", _dt(2), [{"id": "Alice", "first": False, "reason": "cute"}]),
     ("u3", _dt(3), [{"id": "Bob",   "first": True,  "reason": None}]),
 ]
-GENDER_MAP = {"u1": "male", "u2": "female", "u3": "male"}
 
 
 # ── compute_global_stats ──────────────────────────────────────────────

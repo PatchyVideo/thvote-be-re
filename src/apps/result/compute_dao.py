@@ -6,7 +6,6 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apps.result.compute import CandidateMeta
 from src.db_model.candidate import CandidateCharacter, CandidateMusic, FinalRanking
 from src.db_model.questionnaire import Questionnaire
 from src.db_model.raw_submit import (
@@ -65,80 +64,6 @@ class ComputeDAO:
     async def load_questionnaire_votes(self) -> list[tuple[str, list[dict]]]:
         rows = (await self.session.execute(select(Questionnaire))).scalars().all()
         return [(r.id, r.questionnaire_list or []) for r in rows]
-
-    async def load_char_candidates(self, vote_year: int) -> dict[str, CandidateMeta]:
-        rows = (
-            (
-                await self.session.execute(
-                    select(CandidateCharacter).where(
-                        CandidateCharacter.vote_year == vote_year,
-                        CandidateCharacter.merged_into.is_(None),
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        return {
-            r.name: CandidateMeta(
-                name=r.name,
-                name_jp=r.name_jp,
-                origin=r.origin,
-                type=r.type,
-                first_appearance=r.first_appearance,
-            )
-            for r in rows
-        }
-
-    async def load_music_candidates(self, vote_year: int) -> dict[str, CandidateMeta]:
-        rows = (
-            (
-                await self.session.execute(
-                    select(CandidateMusic).where(
-                        CandidateMusic.vote_year == vote_year,
-                        CandidateMusic.merged_into.is_(None),
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        return {
-            r.name: CandidateMeta(
-                name=r.name,
-                name_jp=r.name_jp,
-                origin="",
-                type=r.type,
-                first_appearance=r.first_appearance,
-                album=r.album,
-            )
-            for r in rows
-        }
-
-    async def load_historical(
-        self, vote_year: int, category: str
-    ) -> dict[str, dict]:
-        """Load rank_last_1 and rank_last_2 from final_ranking for historical."""
-        hist: dict[str, dict] = {}
-        for delta, suffix in [(1, "1"), (2, "2")]:
-            rows = (
-                (
-                    await self.session.execute(
-                        select(FinalRanking).where(
-                            FinalRanking.vote_year == vote_year - delta,
-                            FinalRanking.category == category,
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            for r in rows:
-                entry = hist.setdefault(r.name, {})
-                entry[f"rank_{suffix}"] = r.rank
-                entry[f"votes_{suffix}"] = r.vote_count
-                entry[f"first_{suffix}"] = r.first_vote_count
-        return hist
 
     async def upsert_candidates(
         self, vote_year: int, category: str, items: list[dict]
@@ -329,21 +254,6 @@ class ComputeDAO:
             {"id": r.id, "name": r.name, "merged_into": r.merged_into}
             for r in rows
         ]
-
-    async def load_merge_name_map(
-        self, category: str, vote_year: int
-    ) -> dict[str, str]:
-        """variant name → canonical name, for merged candidates of a year."""
-        model = self._candidate_model(category)
-        rows = (await self.session.execute(
-            select(model).where(model.vote_year == vote_year)
-        )).scalars().all()
-        by_id = {r.id: r.name for r in rows}
-        remap: dict[str, str] = {}
-        for r in rows:
-            if r.merged_into is not None and r.merged_into in by_id:
-                remap[r.name] = by_id[r.merged_into]
-        return remap
 
     async def auto_merge(self, category: str, vote_year: int) -> int:
         """Detect + apply name-based merges for a year. Returns merges applied.
