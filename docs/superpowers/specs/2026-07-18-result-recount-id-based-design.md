@@ -131,7 +131,7 @@
 
 ## 九、v1 实现落地(2026-07-18)
 
-**决策已全部编码,6 个任务(读 raw_*、id 归票、CP multiset、名次口径、schema、本文档)均已完成并合并到 `docs/b050-result-design` 分支。**
+**决策已全部编码,6 个任务(读 raw_*、id 归票、CP multiset、名次口径、schema、本文档)均已提交在 `docs/b050-result-design` 分支,待合并到 main。**
 
 ### 9.1 最终文件清单
 

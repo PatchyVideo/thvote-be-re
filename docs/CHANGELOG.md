@@ -27,6 +27,10 @@
 - **计票数据源变更**:由死表 `character`/`music`/`cp` 改为 `raw_*`——死表此前恒为空,故本变更实为"从零排名修复为真实排名",非破坏性回退。
 - 无需数据库迁移(不改表结构)。
 
+### Fixed（fix-wave 补丁,同分支）
+- **作废语义修正**(`ComputeDAO._latest_per_vote`):此前逻辑先剔除 `invalidated` 行、再取剩余行里最新的一条——legacy 多行选民(Mongo 同步一 doc 一行)若最新行被作废,会**错误回退到更旧的合法行**,导致该票仍被计入。改为:先按 `created_at`/`attempt` 取每个 `vote_id` 最新一行,若该最新行本身被作废,**整个 `vote_id` 丢弃**,不回退旧提交——即"作废当前投票 = 删除这一票",而非"作废当前投票 = 恢复上一票"。已补回归测试 `test_invalidated_latest_row_drops_vote_no_fallback`。
+- **清理接线后的死代码**:`compute_dao.py` 删除 `load_char_candidates`/`load_music_candidates`/`load_merge_name_map`/`load_historical`(id 白名单管线接线后零调用方);`compute.py` 删除 `CandidateMeta`/`KIND_MAPPING`(与 `whitelist.py::_KIND_MAPPING` 重复维护)。grep 确认 `src/`+`tests/` 无残留引用。
+
 ## [2026-07-18] Docs：入官方需求文档 + B-050 设计稿对齐权威口径
 
 > 用户上传两份 VoileLabs 官方需求文档,作为投票/记票的权威依据入 `docs/`,并把 B-050 结果/记票设计稿(`docs/superpowers/specs/2026-07-18-result-recount-id-based-design.md`)与之对齐。**纯文档,无代码/schema 变更。**
