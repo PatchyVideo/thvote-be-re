@@ -128,3 +128,49 @@
 ### 8.4 v1 范围(据"先做核心闭环")
 - **v1**:角色/音乐/CP 核心排名(票数/本命/本命率/本命加权/占比)+ 名次规则(含系统 ID tie-break)+ CP 无序 multiset + 主动率 + 白名单丢未知 id + 离线批量(管理台按钮)。
 - **后补**:性别票(依赖问卷 join)、trend(需全历史)、上届对比、高级搜索、问卷结果页、作品提名。
+
+## 九、v1 实现落地(2026-07-18)
+
+**决策已全部编码,6 个任务(读 raw_*、id 归票、CP multiset、名次口径、schema、本文档)均已完成并合并到 `docs/b050-result-design` 分支。**
+
+### 9.1 最终文件清单
+
+- `src/apps/result/whitelist.py`(新):id 白名单 / 展示注册表。`Whitelist` 类按 id 索引,提供 `ids`/`__contains__`/`get`/`name_of`/`system_id_of`;`load_whitelist("character"|"music")` 用 `lru_cache` 读快照 JSON,运行时不依赖前端仓库。
+- `src/apps/result/data/whitelist_character.json`(244 条)、`src/apps/result/data/whitelist_music.json`(612 条):从前端 `character.ts`/`music.ts` 提取的冻结快照,每条含 `id/name/name_jp/work/kind/date/album/system_id`(`system_id` = 前端列表数组下标,即"系统ID tie-break"的依据)。**放在 `src/apps/result/data/` 下(不是仓库根 `data/`)**,随包分发、无需额外挂载路径。
+- `scripts/extract_whitelist.mjs`(新):Node 脚本,解析前端 TS 源里的 `characterList`/`musicList` 数组字面量(用赋值号定位、找 `=` 后第一个 `[` 而非按类型注解误匹配),写出上述两份 JSON。
+- `src/apps/result/compute_dao.py`:新增 `load_char_votes`/`load_music_votes`/`load_cp_votes`/`load_questionnaire_votes`,改读 `RawCharacterSubmit`/`RawMusicSubmit`/`RawCPSubmit`(路径 A 真表,不再读死表 `character`/`music`/`cp`)。`_latest_per_vote` 按 `(created_at desc, attempt desc)` 在 Python 侧去重取每个 `vote_id` 最新一条,并排除 `invalidated=true` 的行(接 B-049 处置动作)。`_normalize_items` 兼容旧 `list[str]` payload → `list[dict]`。
+- `src/apps/result/compute.py`:`compute_ranking`(角色/音乐通用)与 `compute_cp_ranking` 改为按 id 归票,产出含 `id`/`favorite_percentage_of_all` 的榜单字典;`compute_gender_map`/`compute_global_stats`/`compute_completion_rates` 等辅助函数保持 pure function 风格不变。
+- `src/apps/result/compute_service.py`:接线——`compute_all` 依次 `load_*_votes` → `load_whitelist("character"|"music")` → `compute_ranking`/`compute_cp_ranking` → 写 Redis,替换掉原先读死表 + 走 `CandidateMeta` 元数据的旧管线。
+- `src/apps/result/schemas.py`:`RankingEntity` 加 `id: Optional[str] = None`、`favorite_percentage_of_all: float = 0.0`,与上述 compute 输出对齐。
+
+### 9.2 白名单快照重新提取步骤(前端列表变更时)
+
+前端 `Touhou-Vote` 的 `character.ts`/`music.ts` 每次增删角色/曲目/改 `system_id` 顺序后,需要重新生成快照并提交:
+
+```bash
+node scripts/extract_whitelist.mjs /data/sunyunbo/www/Touhou-Vote /data/sunyunbo/www/Thvote-be/thvote-be-re
+```
+
+参数依次为前端仓库根、后端仓库根;脚本会覆盖写 `src/apps/result/data/whitelist_character.json` 与 `whitelist_music.json`。**生成后必须 `git add` 提交这两个 JSON**——它们是运行时唯一的白名单数据源(无数据库表兜底),忘记提交等于线上白名单没更新。
+
+### 9.3 已落地口径(与设计稿 §六/§八决策一一对应)
+
+- **系统 ID** = 前端列表(`characterList`/`musicList`)里的位置序号(数组下标),写入快照的 `system_id` 字段;名次并列时按它 tie-break(见下)。
+- **CP key** = 无序 multiset `tuple(sorted([id_a, id_b, id_c 去 None]))`——用有序 tuple(不是 set)保留重复元素,允许 2 人自 CP(如 A×A);`active`(主动方)不进 key,作为属性统计出 `active_a/active_b/active_c/active_none` 四个占比(和为 100%)。
+- **名次** = 票数(desc)→ 本命数(desc)→ 系统 ID(asc)三级排序;**同票数即同名次(虚位)**——`display_rank` 只在票数变化时才递推,票数相同则继承上一条的 `display_rank`(不看本命数/系统ID 差异,那两项只决定排列顺序、不决定"是否算并列")。
+- **本命加权** = `favorite_vote_count_weighted = 票数 + 本命数`。
+- **白名单丢未知 id**:角色/音乐票里 `item.id` 不在对应白名单 → 该票位直接跳过(不计入任何统计);CP 票任一成员(`id_a`/`id_b`/`id_c`)不在角色白名单 → **整条 CP 丢弃**(不是丢单个成员)。
+- **CP 组合票数 == 1 不计入**排名与 `global_stats`(`all_keys = [k for k in vote_count if vote_count[k] >= 2]`)。
+- **计票取每 vote_id 最新、排除 invalidated**:`ComputeDAO._latest_per_vote` 对同一账号的多次提交只留最新一条(`created_at` 为主、`attempt` 兜底),`invalidated=true`(B-049 管理端作废标记)的行在取最新之前就被过滤,不参与去重比较。
+
+### 9.4 v1 明确后补(未做)
+
+以下项目在设计稿 §8.4 已列为后补,v1 未实现,GraphQL/REST 对应字段暂不产出或喂空值:
+
+- **性别男女票**:`compute_ranking` 里 `male_vote_count`/`female_vote_count` 依赖 `compute_gender_map`,该函数需要 `raw_paper`(问卷)按性别题 `q11011` join 每个 `vote_id`;v1 的 `load_questionnaire_votes` 读的是旧 `Questionnaire` 死模型的空表,故性别恒为 `unknown`,统计结果恒 0。**需切到 `raw_paper` 才能出真实性别票**。
+- **trend 演进**:`raw_*` 各表当前是"改票即覆盖"式存储(`_upsert` 只留最新一条,详见 B-045 CHANGELOG),没有保留历史提交行;而 trend 需要画"随时间推移的新增/累计"曲线,要求**逐次提交都留痕(append-only)**。现有 `compute_ranking`/`compute_cp_ranking` 里的 `trend`/`trend_first` 字段基于的是"取最新那一条的 `created_at`"分桶,**不是**真实的历史演进(改票会让旧的 hour bucket 计数消失),这是已知的近似值而非目标口径——真正复刻需要先把 `raw_*` 改造成 append-only 存储,记入 B-050 后补项而非本次交付范围。
+- **上届对比**:需要历史 `final_ranking` 表(`FinalRanking` 模型,`compute_dao.load_historical`)有上一/上上届数据;测试库目前该表为空,且 `load_historical` 的 key 是 name(而非 id),与本次 id-based 归票路径尚未对齐,v1 未接线(`compute_ranking` 签名保留了 `historical: dict[str, dict]` 参数,但 `compute_service.py` 传入的是空 `{}`)。
+- **问卷结果页**:`compute_paper_results` 仍是占位实现,读的是死表 `Questionnaire`;真实问卷统计需要 B-039 结构化问卷表(`raw_paper`/`paper_answer`)接入,本次不动。
+- **高级搜索、candidate 表迁移 `object_id`**:均按设计稿 §四"非目标"/§8.4"后补"处理,v1 未涉及。
+
+

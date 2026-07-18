@@ -4,7 +4,28 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-18（docs:入两份 VoileLabs 官方需求文档,B-050 设计稿对齐权威口径）
+> 最后更新：2026-07-18（B-050 v1 计票重写落地：读 raw_*、id 白名单、CP 无序 multiset、名次口径对齐）
+
+## [2026-07-18] B-050 v1：计票系统重写落地（读 raw_*、id 白名单、CP 无序、名次口径对齐）
+
+> 承接 2026-07-18 的 B-050 设计稿(id-based 记票重写)与权威需求对齐,本次完成 v1 全部 6 个实现任务:计票数据源切换、id 归票、CP 无序 multiset、名次口径、schema 补字段、设计稿/BACKLOG 收尾。详见 [设计稿](./superpowers/specs/2026-07-18-result-recount-id-based-design.md) §九"v1 实现落地"。
+
+### Added
+- `src/apps/result/whitelist.py` + 快照 `src/apps/result/data/whitelist_{character,music}.json`(角色 244 / 音乐 612 条,从前端 `character.ts`/`music.ts` 提取,含 `system_id` = 列表位置序号)。`scripts/extract_whitelist.mjs`:前端列表变更时的重新提取脚本(`node scripts/extract_whitelist.mjs <前端仓库根> <后端仓库根>`,覆盖写两份 JSON,需手动提交)。
+- `RankingEntity`(`src/apps/result/schemas.py`)新增 `id: Optional[str] = None`、`favorite_percentage_of_all: float = 0.0`,与新 compute 输出对齐。
+
+### Changed
+- **计票改读真实提交表 `raw_*`**(`ComputeDAO.load_char_votes`/`load_music_votes`/`load_cp_votes`):取每个 `vote_id` 最新一条(按 `created_at`/`attempt` 兜底去重)、排除 `invalidated=true`(接 B-049 管理端作废标记)。不再读死表 `character`/`music`/`cp`(此前这些死表永远空,计票产出恒为空/零排名)。
+- **按角色 id 归票**(`compute_ranking`):角色/音乐票的 `item.id` 不在对应白名单 → 直接丢弃(不计入任何统计);白名单同时提供展示元数据(name/name_jp/origin/album/type)与 `system_id`。
+- **CP 记票改无序 multiset**(`compute_cp_ranking`):key = `tuple(sorted([id_a,id_b,id_c 去 None]))`(保留重复元素,允许 2 人自 CP);顺序/主动方不进 key;`active` 作为属性,产出 `active_a/active_b/active_c/active_none` 四个占比;任一成员不在白名单 → 整条 CP 丢弃;**组合票数 == 1 不计入**排名与统计。
+- **名次口径对齐权威文档**:票数(desc)→本命数(desc)→系统 ID(asc)三级排序;**同票数即同名次(虚位)**——`display_rank` 只在票数变化时递推。`favorite_vote_count_weighted`(本命加权)= 票数 + 本命数。
+- 离线批量计算沿用既有管理台 `POST /admin/compute-results` 按钮,未新增触发入口。
+
+### 兼容性
+- **发榜条目新增字段**:`id`、`favorite_percentage_of_all`(均有默认值,向后兼容,GraphQL/REST 走无类型 JSON 不受影响)。
+- **名次排序口径变化**:此前(死表路径)按加权值排序,现改为票数优先(见上"名次口径"),同票数视为并列——依赖旧排序口径的下游(如有)需核对。
+- **计票数据源变更**:由死表 `character`/`music`/`cp` 改为 `raw_*`——死表此前恒为空,故本变更实为"从零排名修复为真实排名",非破坏性回退。
+- 无需数据库迁移(不改表结构)。
 
 ## [2026-07-18] Docs：入官方需求文档 + B-050 设计稿对齐权威口径
 
