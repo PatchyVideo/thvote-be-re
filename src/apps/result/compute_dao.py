@@ -8,10 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.result.compute import CandidateMeta
 from src.db_model.candidate import CandidateCharacter, CandidateMusic, FinalRanking
-from src.db_model.character import Character
-from src.db_model.cp import Cp
-from src.db_model.music import Music
 from src.db_model.questionnaire import Questionnaire
+from src.db_model.raw_submit import (
+    RawCharacterSubmit,
+    RawCPSubmit,
+    RawMusicSubmit,
+)
 
 
 def _normalize_items(raw_list: list) -> list[dict]:
@@ -29,19 +31,37 @@ class ComputeDAO:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    @staticmethod
+    def _latest_per_vote(rows) -> list[tuple[str, datetime, list[dict]]]:
+        """按 vote_id 取最新一行（created_at desc, attempt desc 兜底），排除 invalidated。
+        Python 侧 dedup（sqlite/PG 通吃，不用 DISTINCT ON）。
+        """
+        # created_at desc, coalesce(attempt,0) desc → 先出现的即最新
+        ordered = sorted(
+            rows,
+            key=lambda r: (r.created_at, r.attempt or 0),
+            reverse=True,
+        )
+        seen: dict[str, tuple[str, datetime, list[dict]]] = {}
+        for r in ordered:
+            if r.invalidated:
+                continue
+            if r.vote_id in seen:
+                continue
+            seen[r.vote_id] = (r.vote_id, r.created_at, _normalize_items(r.payload))
+        return list(seen.values())
+
     async def load_char_votes(self) -> list[tuple[str, datetime, list[dict]]]:
-        rows = (await self.session.execute(select(Character))).scalars().all()
-        return [
-            (r.id, r.submit_datetime, _normalize_items(r.character_list)) for r in rows
-        ]
+        rows = (await self.session.execute(select(RawCharacterSubmit))).scalars().all()
+        return self._latest_per_vote(rows)
 
     async def load_music_votes(self) -> list[tuple[str, datetime, list[dict]]]:
-        rows = (await self.session.execute(select(Music))).scalars().all()
-        return [(r.id, r.submit_datetime, _normalize_items(r.music_list)) for r in rows]
+        rows = (await self.session.execute(select(RawMusicSubmit))).scalars().all()
+        return self._latest_per_vote(rows)
 
     async def load_cp_votes(self) -> list[tuple[str, datetime, list[dict]]]:
-        rows = (await self.session.execute(select(Cp))).scalars().all()
-        return [(r.id, r.submit_datetime, _normalize_items(r.cp_list)) for r in rows]
+        rows = (await self.session.execute(select(RawCPSubmit))).scalars().all()
+        return self._latest_per_vote(rows)
 
     async def load_questionnaire_votes(self) -> list[tuple[str, list[dict]]]:
         rows = (await self.session.execute(select(Questionnaire))).scalars().all()
