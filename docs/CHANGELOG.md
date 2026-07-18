@@ -4,7 +4,29 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-18（B-049 Plan 2 前端 Phase 1:Vue3+Vite+TS 模块化管理台,拆掉 1115 行单文件）
+> 最后更新：2026-07-18（B-049 Plan 2 Phase 2:6 个旧工具全部迁到 Vue,拆巨大 HTML 收官）
+
+## [2026-07-18] B-049 Plan 2 Phase 2：迁移全部旧工具到 Vue
+
+> 承接 Phase 1(骨架+监控页+Users),把旧单文件面板剩余 6 个工具全部迁到模块化 Vue view —— 拆巨大 HTML 收官。全部经 `vue-tsc` 类型检查 + 构建通过(81 模块,JS 54KB gzip)。
+
+### Added
+- 6 个 view + 对应类型化 api 模块(契约集中 `api/types.ts` + 各 api 模块):
+  - **CandidatesView**(候选项:搜索/字段规格驱动编辑/删除/合并查看+拆分/CSV·JSON 两步导入)+ `api/candidates.ts`
+  - **SyncView**(数据同步:开始/取消,2s 轮询状态+进度条,历史+重试;后端 status 永不返回 completed,以 run_id running→idle 判完成)+ `api/sync.ts`
+  - **NominationsView**(提名审核:状态过滤/通过/驳回)+ `api/nominations.ts`
+  - **QuestionnaireView**(问卷 4 层嵌套编辑器:问卷→题组→题→选项 全层 CRUD + 整树导入;父 id 由编辑态跟踪,改动后重拉树)+ `api/questionnaire.ts`
+  - **LogsView**(审计日志:user_id/event_type/since 过滤)+ `api/logs.ts`
+  - **ExportView**(导出投票 CSV,blob 下载)+ `api/exportVotes.ts`
+
+### Changed
+- AppShell 顶栏补齐 6 个工具入口;router 补 6 条路由。旧面板 `/admin-ui-legacy` 暂留作回退(标"旧版(备用)")。
+
+### 兼容性 / 部署
+- 纯前端;无后端变更。`pnpm build` 类型检查+构建均通过。
+- **全部工具已在新 Vue 台可用**;旧面板保留一轮供视觉验收,验收后可删 `src/admin_ui_legacy/` + 其 StaticFiles 挂载 + nav 入口。
+
+## [2026-07-18] B-049 Plan 2 Phase 1：管理台 Vue 模块化重写
 
 ## [2026-07-18] B-049 Plan 2 Phase 1：管理台 Vue 模块化重写
 
