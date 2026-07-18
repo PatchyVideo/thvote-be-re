@@ -18,6 +18,15 @@ def _vote(vid, items):
     return (vid, VS, items)
 
 
+def test_dedup_same_id_within_one_vote():
+    # 同一账号同一票内重复投同一 id 只计一次
+    votes = [_vote("u1", [{"id": "id_a"}, {"id": "id_a", "first": True}])]
+    ranking, _ = compute_ranking(votes, _wl(), {}, {}, VS, 1)
+    assert len(ranking) == 1
+    assert ranking[0]["id"] == "id_a"
+    assert ranking[0]["rank"][0]["vote_count"] == 1
+
+
 def test_drops_unknown_ids():
     votes = [_vote("u1", [{"id": "id_a"}, {"id": "UNKNOWN"}])]
     ranking, _ = compute_ranking(votes, _wl(), {}, {}, VS, 1)

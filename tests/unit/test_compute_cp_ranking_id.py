@@ -64,6 +64,20 @@ def test_active_rates_by_position_sum_100():
     assert round(e["active_a"] + e["active_b"] + e["active_c"] + e["active_none"], 4) == 1.0
 
 
+def test_three_member_cp():
+    # 3人 CP (A,B,C)，2票，其中1票 C 主动
+    votes = [
+        _v("u1", [{"id_a": "A", "id_b": "B", "id_c": "C", "active": "C"}]),
+        _v("u2", [{"id_a": "A", "id_b": "B", "id_c": "C"}]),
+    ]
+    ranking, _ = compute_cp_ranking(votes, _wl(), {}, {}, VS, 1)
+    assert len(ranking) == 1
+    e = ranking[0]
+    assert e["id_c"] == "C"
+    assert e["name"] == "甲×乙×丙"
+    assert e["active_c"] == 0.5  # 1/2 票 C 主动
+
+
 def test_self_cp_preserved():
     # (A,A) 自CP：multiset 保留重复，2票
     votes = [
