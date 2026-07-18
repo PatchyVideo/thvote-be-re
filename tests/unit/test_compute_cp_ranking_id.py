@@ -61,7 +61,8 @@ def test_active_rates_by_position_sum_100():
     assert e["active_b"] == 0.25   # 1/4
     assert e["active_c"] == 0.0    # 无C
     assert e["active_none"] == 0.25
-    assert round(e["active_a"] + e["active_b"] + e["active_c"] + e["active_none"], 4) == 1.0
+    total = e["active_a"] + e["active_b"] + e["active_c"] + e["active_none"]
+    assert round(total, 4) == 1.0
 
 
 def test_three_member_cp():
