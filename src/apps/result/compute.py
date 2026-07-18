@@ -167,17 +167,23 @@ def compute_ranking(
             "male_vote_count": {
                 "vote_count": mc,
                 "percentage_per_char": round(mc / vc, 4) if vc else 0.0,
-                "percentage_per_total": round(mc / total_voters, 4) if total_voters else 0.0,
+                "percentage_per_total": (
+                    round(mc / total_voters, 4) if total_voters else 0.0
+                ),
             },
             "female_vote_count": {
                 "vote_count": fc_gender,
                 "percentage_per_char": round(fc_gender / vc, 4) if vc else 0.0,
-                "percentage_per_total": round(fc_gender / total_voters, 4) if total_voters else 0.0,
+                "percentage_per_total": (
+                    round(fc_gender / total_voters, 4) if total_voters else 0.0
+                ),
             },
             "reasons": reasons[oid],
             "reasons_count": len(reasons[oid]),
             "trend": [{"hrs": h, "cnt": c} for h, c in enumerate(trend[oid]) if c > 0],
-            "trend_first": [{"hrs": h, "cnt": c} for h, c in enumerate(trend_first[oid]) if c > 0],
+            "trend_first": [
+                {"hrs": h, "cnt": c} for h, c in enumerate(trend_first[oid]) if c > 0
+            ],
         })
 
     global_stats = {
@@ -297,7 +303,9 @@ def compute_cp_ranking(
                 "vote_count": vc,
                 "favorite_vote_count": fc,
                 "favorite_percentage": int(fc / vc * 100) if vc else 0,
-                "vote_percentage": round(vc / total_voters * 100, 2) if total_voters else 0.0,
+                "vote_percentage": (
+                    round(vc / total_voters * 100, 2) if total_voters else 0.0
+                ),
             }],
             "display_rank": prev_display_rank,
             "name": "×".join(whitelist.name_of(m) for m in members),
@@ -315,8 +323,12 @@ def compute_cp_ranking(
             "active_none": _rate("none"),
             "reasons": reasons[key],
             "reasons_count": len(reasons[key]),
-            "trend": [{"hrs": h, "cnt": cc} for h, cc in enumerate(trend[key]) if cc > 0],
-            "trend_first": [{"hrs": h, "cnt": cc} for h, cc in enumerate(trend_first[key]) if cc > 0],
+            "trend": [
+                {"hrs": h, "cnt": cc} for h, cc in enumerate(trend[key]) if cc > 0
+            ],
+            "trend_first": [
+                {"hrs": h, "cnt": cc} for h, cc in enumerate(trend_first[key]) if cc > 0
+            ],
         })
 
     global_stats = {

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from datetime import datetime, timezone
 
@@ -74,12 +73,14 @@ async def _seed_data(session: AsyncSession) -> None:
     session.add_all([
         RawCharacterSubmit(vote_id="user-1", attempt=1,
                            created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
-                           user_ip="", payload=[{"id": id1, "first": True, "reason": "love"}]),
+                           user_ip="",
+                           payload=[{"id": id1, "first": True, "reason": "love"}]),
         RawCharacterSubmit(vote_id="user-2", attempt=1,
                            created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
-                           user_ip="", payload=[{"id": id1, "first": False, "reason": None}]),
+                           user_ip="",
+                           payload=[{"id": id1, "first": False, "reason": None}]),
     ])
-    # load_questionnaire_votes still reads the Questionnaire table (unchanged) → drives gender
+    # 问卷表仍被 load_questionnaire_votes 读取 → 驱动 gender_map
     session.add(Questionnaire(
         id="user-1", submit_datetime=datetime(2026, 1, 2, tzinfo=timezone.utc),
         questionnaire_list=[{"id": "q11011", "answer": ["male"], "answer_str": None}],
