@@ -4,7 +4,25 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-18（fix:审计日志端点在真实库 500——只取所需列）
+> 最后更新：2026-07-18（ops:测试库全量重建走通全流程 alembic,修复 B-051 schema 漂移）
+
+## [2026-07-18] Ops：测试库全量重建（全流程 alembic）—— 修复 B-051
+
+> 诊断 B-051 时确认测试库 `activity_log` 表**根本不存在**却 `alembic_version=0014`(stamp 未真跑,init_db/stamp 漂移)。经用户授权,对测试库(临时凭据)做**从头到尾的 alembic 重建**,确保 schema 与迁移一致、以后安全。**纯运维操作,无代码变更。**
+
+### 操作(保留数据式重建)
+1. `pg_dump` 无(用 asyncpg COPY)导出有数据的 10 张表(候选 244+612、问卷结构 8/24/32/40、user 2、raw_character/raw_paper/paper_answer)。
+2. `DROP TABLE ... CASCADE` 清空全部 23 表(含错误 stamp 的 `alembic_version`)。
+3. `alembic upgrade head` 从空库跑通 **0001→0014 全 14 步无错**(验证全链路迁移健康)。
+4. COPY 回灌数据 + 重置各表 id 序列;`reload-config` 刷后端连接池。
+5. 验证:`activity_log` 表已建、`activity-logs` 端点 200、全部行数一致、`alembic_version=0014`(真跑)。PII 转储文件用后 shred 清除。
+
+### 结论 / 遗留
+- **B-051 已解决**;`login_session` 缺失是误报(SSO 会话在 Redis)。
+- 根因预防仍属 **B-026**(CI `alembic check` + 去 init_db):本次重建修好了当前漂移,但要防复发需补 DB 治理门禁。
+- 候选数据 `vote_year=12`(测试导入值,非日历年);查候选端点需带 `vote_year=12`。
+
+## [2026-07-18] Fixed：审计日志端点真实库 500
 
 ## [2026-07-18] Fixed：审计日志端点真实库 500
 
