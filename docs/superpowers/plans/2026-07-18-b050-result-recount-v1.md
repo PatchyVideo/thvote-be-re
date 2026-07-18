@@ -454,9 +454,9 @@ def test_sort_by_votes_then_first_then_system_id():
     order = [e["name"] for e in ranking]
     # 乙(2票1本命) / 丙(2票1本命) 在 甲(2票0本命) 之前；乙丙同名次按系统ID
     assert order == ["角色乙", "角色丙", "角色甲"]
-    # 乙丙票数相同(2) → display_rank 相同(第1)，甲虚位到第3
+    # 甲乙丙票数都=2 → 同一名次(第1);顺序由本命数/系统ID决定(权威:同票数同名次)
     dr = {e["name"]: e["display_rank"] for e in ranking}
-    assert dr["角色乙"] == 1 and dr["角色丙"] == 1 and dr["角色甲"] == 3
+    assert dr["角色乙"] == 1 and dr["角色丙"] == 1 and dr["角色甲"] == 1
 
 
 def test_metrics_weighted_and_ratios():
@@ -485,7 +485,7 @@ def test_favorite_percentage_of_all():
     ]
     ranking, _ = compute_ranking(votes, _wl(), {}, {}, VS, 1)
     by = {e["name"]: e for e in ranking}
-    assert round(by["角色甲"]["favorite_percentage_of_all"], 4) == round(2 / 3, 4)
+    assert by["角色甲"]["favorite_percentage_of_all"] == 66.67  # 本命占比 2/3 → 百分数(与本命率同标度)
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
