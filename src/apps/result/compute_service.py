@@ -71,7 +71,7 @@ class ComputeService:
             char_votes = await self.dao.load_char_votes()
             music_votes = await self.dao.load_music_votes()
             cp_votes = await self.dao.load_cp_votes()
-            q_votes = await self.dao.load_questionnaire_votes()
+            q_votes = await self.dao.load_questionnaire_votes(vote_year)
 
             # 白名单（id→名/系统ID）；CP 成员是角色 → 用角色白名单
             char_wl = load_whitelist("character")

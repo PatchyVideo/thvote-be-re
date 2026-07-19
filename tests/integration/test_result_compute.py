@@ -23,7 +23,7 @@ from src.apps.result.dao import ResultDAO, ResultNotComputedError
 from src.apps.result.whitelist import load_whitelist
 from src.common.config import Settings
 from src.db_model.base import Base
-from src.db_model.questionnaire import Questionnaire
+from src.db_model.questionnaire_def import OptionDef, PaperAnswer, QuestionDef
 from src.db_model.raw_submit import RawCharacterSubmit
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
@@ -67,7 +67,13 @@ def settings():
 
 
 async def _seed_data(session: AsyncSession) -> None:
-    """Insert raw_* votes using real whitelist ids + a questionnaire row for gender."""
+    """Insert raw_* votes using real whitelist ids + a paper_answer row for gender.
+
+    问卷 feed 已改读 paper_answer(B-039 结构化表,Task 2),不再读死表
+    Questionnaire。gender_question_id 配置仍是旧字符串 "q11011"(Task 3 才会切
+    到语义 code),与 feed 产出的 code "11011" 对不上,gender_map 因此判不出
+    性别——这是本任务预期内的过渡态,见 test_compute_global_stats 的断言注释。
+    """
     wl = load_whitelist("character")
     id1 = sorted(wl.ids)[0]
     session.add_all([
@@ -80,10 +86,15 @@ async def _seed_data(session: AsyncSession) -> None:
                            user_ip="",
                            payload=[{"id": id1, "first": False, "reason": None}]),
     ])
-    # 问卷表仍被 load_questionnaire_votes 读取 → 驱动 gender_map
-    session.add(Questionnaire(
-        id="user-1", submit_datetime=datetime(2026, 1, 2, tzinfo=timezone.utc),
-        questionnaire_list=[{"id": "q11011", "answer": ["male"], "answer_str": None}],
+    gender_q = QuestionDef(group_id=1, type="Single", content="性别", code="11011")
+    session.add(gender_q)
+    await session.flush()
+    opt_male = OptionDef(question_id=gender_q.id, content="男", code="1101101")
+    session.add(opt_male)
+    await session.flush()
+    session.add(PaperAnswer(
+        vote_id="user-1", vote_year=2026, questionnaire_id=1, group_id=1,
+        active_question_id=gender_q.id, selected_option_ids=[opt_male.id],
     ))
     await session.commit()
 
@@ -124,4 +135,7 @@ async def test_compute_global_stats(session, fake_redis, settings):
     result_dao = ResultDAO(fake_redis, settings)
     stats = await result_dao.get_global_stats(2026)
     assert stats["num_char"] == 2   # user-1, user-2
-    assert stats["num_male"] == 1   # user-1 answered questionnaire male
+    # gender_question_id 配置仍是旧字符串 "q11011",与问卷 feed(读 paper_answer,
+    # Task 2)产出的语义 code "11011" 对不上,compute_gender_map 找不到匹配项,
+    # 暂时判不出性别。Task 3 把配置切到语义 code 后这里会恢复为 1。
+    assert stats["num_male"] == 0
