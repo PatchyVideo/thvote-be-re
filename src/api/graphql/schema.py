@@ -6,13 +6,14 @@ import strawberry
 
 from .resolvers.questionnaire_v2 import PaperV2Mutation, PaperV2Query
 from .resolvers.result import ResultQuery
+from .resolvers.result_compat import ResultCompatQuery
 from .resolvers.submit_bridge import SubmitBridgeMutation, SubmitBridgeQuery
 from .resolvers.user import UserMutation
 from .types import DateTimeUtc
 
 
 @strawberry.type
-class Query(ResultQuery, SubmitBridgeQuery, PaperV2Query):
+class Query(ResultQuery, ResultCompatQuery, SubmitBridgeQuery, PaperV2Query):
     """Root GraphQL Query."""
 
     pass
