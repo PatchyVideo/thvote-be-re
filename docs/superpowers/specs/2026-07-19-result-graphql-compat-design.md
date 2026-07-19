@@ -172,3 +172,79 @@ queryCharacterRanking → "Cannot query field 'queryCharacterRanking' on type 'Q
 - **更新 B-050-后补5（高级搜索）**：补记关键发现 —— DSL **不是"过滤已算好的榜"，而是"换一个投票子集重算榜"**，需按需子集重算能力；且与分段共用 `vote_id → 回答` 索引。
 - **新增**：通用"任意问卷题 × 投票结果"交叉分析 API + 前端（与 DSL 同组，共用索引）。
 - **新增（运营）**：录入真实问卷内容（可从前端 legacy `questionnaire.ts` 导入，含真实 7 位 id）。
+
+---
+
+## 十、v1 实现落地（2026-07-19，Task 7 收尾）
+
+> 状态：**七个任务全部完成，全量测试绿，`flake8 src/` 干净**。本节记录最终文件清单、`code` 写入路径、配置新名、以及与本设计稿的两处刻意偏差。
+
+### 10.1 最终文件清单
+
+**新增**：
+- `alembic/versions/0015_questionnaire_semantic_code.py`：`question_def`/`option_def` 各加 `code VARCHAR(16)` + 索引，幂等 `ADD COLUMN/INDEX IF NOT EXISTS`（Postgres-only，sqlite 测试库走 `create_all` 不经过迁移）。
+- `src/api/graphql/resolvers/result_compat.py`（677 行）：`ResultCompatQuery`，12 个 `query*` 字段 + dict→strawberry 类型的适配器函数 + 三个契约层公共助手（`_resolve_vote_year`/`_reject_query_dsl`/`_map_not_computed_error`）。
+- 测试：`tests/integration/test_questionnaire_code.py`、`tests/integration/test_questionnaire_feed.py`、`tests/integration/test_result_compat_ranking.py`、`tests/integration/test_result_compat_rest.py`、`tests/unit/test_compute_gaps.py`、`tests/unit/test_result_compat_schema.py`、`tests/unit/test_segment_stats.py`。
+
+**修改**：
+- `src/api/graphql/schema.py`：`Query` 多继承基类列表追加 `ResultCompatQuery`。
+- `src/db_model/questionnaire_def.py`：`QuestionDef`/`OptionDef` 各加 `code: Mapped[str | None]`（`String(16)`, `nullable=True`, `index=True`）。
+- `src/apps/questionnaire/importer.py`、`src/apps/questionnaire/dao.py`：整树导入 / 单条编辑各自的行构造字典加 `"code": q.get("code")` / `o.get("code")`。
+- `src/apps/questionnaire/assembler.py`：`_question_out`/`_option_out` 输出加 `"code"` 键（结构查询回显）。
+- `src/apps/questionnaire/admin_service.py`：`create_question`/`update_question`/`create_option`/`update_option` 改为先经显式白名单 `_pick_writable(fields, _QUESTION_WRITABLE_FIELDS | _OPTION_WRITABLE_FIELDS)` 过滤请求体，`code` 加入两个白名单。
+- `src/apps/result/compute_dao.py`：`load_questionnaire_votes` 从死表 `Questionnaire` 改读 `paper_answer`（新增 `vote_year` 参数），经 `question_def.id→code`/`option_def.id→code` 两张映射表翻译成语义码；缺 code 的问题行/选项分别计数，汇总成一条 debug 日志。
+- `src/apps/result/compute.py`：`compute_gender_map`→`build_segment_map`；`compute_ranking`/`compute_cp_ranking` 新增 `segments` 输出（`_segment_breakdown`/`_legacy_gender_projection` 两个新 helper）；`compute_completion_rates` 返回 `{category: {rate, num_complete, total}}`；`compute_paper_results` 签名简化并新增性别交叉字段；`compute_covote` 新增 `whitelist` 参数、置零 `cs`/`mi`。
+- `src/apps/result/compute_service.py`：接线以上签名变化（`build_segment_map` 用 `settings.gender_*_code` 构造 `label_by_option`；`load_questionnaire_votes(vote_year)`；`compute_paper_results(q_votes, segment_map)`；`compute_covote(votes, whitelist, top_k=100)`）。
+- `src/common/config.py`：新增 `gender_question_code`/`gender_male_option_code`/`gender_female_option_code`；旧三项 `gender_question_id`/`gender_male_value`/`gender_female_value` 保留但标 deprecated，`compute_service` 不再读取。
+
+### 10.2 `code` 的写入路径
+
+```
+运营录题 / 导入 JSON 里的 "code" 字段
+        │
+        ├─ 整树导入  importer.parse_structure_tree()  → qn_row["code"] / o_row["code"]
+        ├─ 单条编辑  QuestionnaireDAO.create_question/update_question/
+        │            create_option/update_option()    → q_kwargs["code"] / o_kwargs["code"]
+        └─ admin API  QuestionnaireAdminService.*      → _pick_writable() 白名单放行 "code"
+                        │
+                        ▼
+              db_model.QuestionDef.code / OptionDef.code
+              （String(16)，nullable，索引；migration 0015）
+                        │
+              ┌─────────┴─────────┐
+              ▼                   ▼
+   assembler._question_out/    ComputeDAO.load_questionnaire_votes()：
+   _option_out → 结构查询回显    QuestionDef.id→code / OptionDef.id→code
+   （admin 编辑器读回）           两张映射表，把 paper_answer 的
+                                 active_question_id/selected_option_ids
+                                 翻译成语义 code，喂给 compute 层
+```
+
+关键约束：主键（自增 id）永远不承载语义；`code` 独立可空列，缺失时该题/选项在问卷统计里被跳过并计入调试日志（不是静默丢弃、也不报错），运营录入真题后自然补全。
+
+### 10.3 新配置项
+
+| 新字段 | 默认值 | 用途 |
+|---|---|---|
+| `gender_question_code` | `"11011"` | 性别题的语义码（裸码，无 `q` 前缀） |
+| `gender_male_option_code` | `"1101101"` | "男"选项的语义码 |
+| `gender_female_option_code` | `"1101102"` | "女"选项的语义码 |
+
+旧三项 `gender_question_id`（`"q11011"`）/`gender_male_value`（`"male"`）/`gender_female_value`（`"female"`）**标记 deprecated、保留一个发布周期**，`compute_service.py` 不再读取；下个发布周期确认无遗留读取方后可删除。
+
+### 10.4 与设计稿的两处偏差
+
+**偏差一：问卷聚合按答案形状分派，不按 `question_def.type` 分派。**
+
+设计稿 §五「C1.2」原文写"问卷聚合按定义驱动：依 `question_def.type`（`Single`/`Multi`/`Input`）分派"。实现改为按**答案形状**分派（`compute_paper_results`：`answer` 是非空 list → 按选项计数；`answer_str` 非空 → 收字符串）。理由：`paper_answer` 产出的 `answer`/`answer_str` 形状本身已经完全区分单选/多选（list）与填空（字符串）——单选多选在这一层的处理逻辑其实相同（都是"对 list 里每个选项计数"，多选自然贡献多个计数，无需额外分支）；引入 `question_def.type` 映射不会改变任何分支行为，只会多一次 DB 往返换取一个从未被用到的判断依据。保留至今没有反例：三种题型在 `paper_answer` 里的形状互斥且稳定。
+
+**偏差二（计划纠错）：`queryQuestionnaireTrend` 返回 `[Trends!]!`，不是设计稿/计划写的 `QueryQuestionnaireResponse`。**
+
+设计稿与其后的实施计划都称 `queryQuestionnaireTrend` 是 `queryQuestionnaire` 的"趋势版别名"，字面推导其返回类型也应是 `QueryQuestionnaireResponse`。Task 7 用真实前端源码核对（`Touhou-Vote/packages/result/src/pages/QuestionnaireDetail.vue`）发现前端实际读取 `result.value.queryQuestionnaireTrend[0].trend`/`[0].trendFirst`——按**数组下标**取值，形状是 `[Trends!]!`，与 `queryCharacterTrend`/`queryMusicTrend` 同构；旧 Rust 网关的 schema 定义与此一致。若按计划字面实现 `QueryQuestionnaireResponse`（`{entries: [...]}`），前端会因形状不匹配直接 schema 校验失败，整个"调查问卷"页面挂掉。已按真实前端契约实现为 `[Trends!]!`，长度与入参 `questionIds` 一致、内容全部为空序列（问卷没有真正的时间维度，见 §七「已知限制」第 3 条），并在 resolver docstring 里记录了这次纠错。详见 CHANGELOG。
+
+### 10.5 端到端验收结果
+
+- `python3 -m pytest tests/ -q` → **462 passed, 1 skipped**（skip 项依赖可选 `pymongo`，与本轮无关）。
+- `python3 -m flake8 src/` → exit 0。
+- Schema 里 12 个 `query*` 字段的 SDL 与前端 `.vue` 源码逐个字段/参数核对（14 个前端文件、12 个查询名），**零漂移**：字段名、参数、`queryCharacterTrend`/`queryMusicTrend`/`queryQuestionnaireTrend` 的数组下标消费模式全部对齐。
+- 实际执行前端原文 `queryCharacterRanking` 查询（`characterCompare.vue` 版本）against 内存 sqlite + 真实 compute 管线种子数据，验证 `voteYear: 11`（前端硬编码）正确回落到 `settings.vote_year`（测试用 2026）并返回真实 `global`/`entries` 数据，schema 校验通过、无 error。

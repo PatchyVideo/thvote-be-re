@@ -4,7 +4,37 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-18（B-050 v1 计票重写落地：读 raw_*、id 白名单、CP 无序 multiset、名次口径对齐）
+> 最后更新：2026-07-19（result 前端 GraphQL 契约层落地：12 个 query* + 问卷语义 code + 分段统计）
+
+## [2026-07-19] result 前端 GraphQL 契约层落地（12 个 query* + 问卷语义 code + 分段统计）
+
+> 承接 2026-07-19 设计稿《Result 前端契约层 + 问卷语义 code + 分段统计》，7 个任务全部完成：`code` 列地基、问卷 feed 换数据源、性别泛化为分段统计、compute 缺口补齐、GraphQL 契约层（12 个新查询）、端到端验收。详见 [设计稿](./superpowers/specs/2026-07-19-result-graphql-compat-design.md) §十"v1 实现落地"。**这是本轮 result 页面从"一个都跑不起来"（`Cannot query field 'queryCharacterRanking'`）到"能过 schema 校验并返回真实数据"的核心变更。**
+
+### Added
+- `question_def`/`option_def` 新增 `code` 列（`String(16)`，可空，索引；migration `0015`，Postgres-only 幂等 `ADD COLUMN/INDEX IF NOT EXISTS`）：独立于自增主键的语义码（题 5 位如 `11011`，选项 7 位如 `1101101`），导入接口与 admin 编辑器（`create_question`/`update_question`/`create_option`/`update_option`，经显式白名单 `_pick_writable`）均可携带/设置。
+- `src/api/graphql/resolvers/result_compat.py`：新增 `ResultCompatQuery`，挂进根 `Query`，新增 **12 个** GraphQL 查询：`queryCharacterRanking`/`queryMusicRanking`/`queryCPRanking`/`queryCharacterTrend`/`queryMusicTrend`/`queryCharacterSingle`/`queryMusicSingle`/`queryCPSingle`/`queryGlobalStats`/`queryQuestionnaire`/`queryQuestionnaireTrend`/`queryCompletionRates`。返回类型全部复用 `types.py` 里此前零引用的 typed strawberry 类型（`RankingEntry`/`CPRankingEntry`/`CharacterOrMusicRanking`/`Trends`/`ResultGlobalStats`/`CompletionRate`/`CachedQuestionItem`/`CovoteItem` 等）。
+- 新配置 `gender_question_code`（默认 `"11011"`）/`gender_male_option_code`（`"1101101"`）/`gender_female_option_code`（`"1101102"`），按语义 `code` 定位性别题与选项。
+
+### Changed
+- **性别泛化为分段统计**：`compute_gender_map` → `build_segment_map(votes, question_code, label_by_option)`；`compute_ranking`/`compute_cp_ranking` 参数 `gender_map`→`segment_map`，新增 `segments` 输出，**同时仍产出 legacy 的 `male_vote_count`/`female_vote_count` 嵌套对象**（向后兼容投影）；**CP 首次获得 gender 字段**（此前 `CPRankingEntry` 无 male/female）。`compute_paper_results(votes, segment_map)`：去掉未用的 `vote_start`/`total_hours` 参数，新增每题 `total_male`/`total_female`、每选项 `male_votes`/`female_votes`。
+- `compute_completion_rates` 返回结构变化：`{category: float}` → `{category: {rate, num_complete, total}}`（补分子分母，供 `CompletionRateItem` 直接消费）。
+- `compute_covote(votes, whitelist, top_k)`：新增 `whitelist` 参数，先按白名单过滤再配对（此前不过滤、直接用原始 id）；输出 `a`/`b` 改为人名（`Whitelist.name_of()`），不再是裸 8-hex id；`cs`/`mi` 显式置 `0.0` 并注释"未实现，前端 connect 页仍是占位、无消费方"。
+- `ComputeDAO.load_questionnaire_votes` 新增 `vote_year` 参数，数据源从死表 `Questionnaire`（全仓无写入方，恒空）改为读 B-039 结构化表 `paper_answer`，经 `question_def`/`option_def` 的 `id→code` 映射把 `active_question_id`/`selected_option_ids` 翻译成语义码；缺 code 的问题/选项行分别计数，汇总为一条 debug 日志。
+- **`queryQuestionnaireTrend` 计划纠错**：设计稿与实施计划均称其为 `queryQuestionnaire` 的别名、字面推导返回 `QueryQuestionnaireResponse`；用真实前端源码（`QuestionnaireDetail.vue`）核对，前端实际按数组下标消费 `queryQuestionnaireTrend[0].trend`，旧 Rust 网关 schema 与此一致。已更正为返回 `[Trends!]!`（与 `queryCharacterTrend`/`queryMusicTrend` 同构），内容为空序列（问卷无真实时间维度，需 append-only 存储改造后才能填真值）。若按计划字面实现会导致前端 schema 校验失败、页面整体挂掉。
+
+### 兼容性
+- **新增 12 个 GraphQL 查询是加法式**：旧的 JSON 标量查询 `ranking`/`trends`/`globalStats`/`singleEntity`/`reasons`/`covote`/`completionRates`/`questionnaire`/`questionnaireTrend` **全部保留**，不影响任何现有调用方。
+- **`compute_*` 三处签名变化**（纯内部函数，无外部调用方，仅供本仓库 `compute_service.py` 调用）：`compute_gender_map`→`build_segment_map`（参数含义变化：从"性别专用三元组"泛化为"任意题的选项→标签映射"）；`compute_paper_results` 去掉未用的 `vote_start`/`total_hours` 两个参数；`compute_covote` 新增必传 `whitelist` 参数。
+- **`compute_completion_rates` 返回结构变化**：调用方唯一是 `compute_service.py`（已同步更新），无 GraphQL/REST 直接暴露旧结构。
+- **新增 alembic `0015`**：`question_def`/`option_def` 加 `code` 列，需 `alembic upgrade head`；幂等、Postgres-only，sqlite 测试库经 `create_all` 不受影响。
+- **配置新增 `gender_*_code` 三项，旧三项 `gender_question_id`/`gender_male_value`/`gender_female_value` 标记 deprecated**（保留一个发布周期，`compute_service` 不再读取，仅为避免未升级配置的部署报缺键错误）。
+- ⚠️ **性别票/问卷结果本轮仍会是 0**：线上问卷是占位内容 + 非语义自增 id，真实题目待运营录入并回填 `code`（见 BACKLOG）；契约层本身已具备真实数据时的完整输出能力。
+- ⚠️ `paper_answer` 无 `invalidated` 标志，admin 作废动作（B-049）触达不到问卷答案（记录差异，未处理）。
+
+### 验收
+- `python3 -m pytest tests/ -q` → 462 passed, 1 skipped（跳过项依赖可选 `pymongo`）。
+- `python3 -m flake8 src/` → exit 0。
+- 12 个 `query*` 字段的 SDL 与真实前端源码（`Touhou-Vote/packages/result/src`，14 个 `.vue` 文件）逐字段/参数核对，零漂移；实际执行前端原文 `queryCharacterRanking` 查询验证 `voteYear` 回落行为与真实数据返回。
 
 ## [2026-07-18] B-050 v1：计票系统重写落地（读 raw_*、id 白名单、CP 无序、名次口径对齐）
 
