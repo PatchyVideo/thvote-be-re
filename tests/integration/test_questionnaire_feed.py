@@ -8,6 +8,8 @@ values added on ``QuestionDef`` / ``OptionDef`` in Task 1.
 """
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from src.apps.result.compute_dao import ComputeDAO
@@ -89,3 +91,37 @@ async def test_load_questionnaire_votes_skips_rows_without_code(session):
     votes = await dao.load_questionnaire_votes(2026)
     by_vote = {vid: items for vid, items in votes}
     assert "vote-5" not in by_vote
+
+
+@pytest.mark.asyncio
+async def test_load_questionnaire_votes_skips_options_without_code(session, caplog):
+    """An option missing ``code`` is dropped from ``answer``, not kept as a
+    raw id and not allowed to crash the row — same "can't address without
+    code" rule as the question-level skip, and it must show up in the
+    summary log too (migration observability: partial option-code backfill
+    in prod would otherwise silently truncate answers with no trace).
+    """
+    q = QuestionDef(group_id=1, type="Single", content="口味", code="11031")
+    session.add(q)
+    await session.flush()
+    coded_opt = OptionDef(question_id=q.id, content="甜", code="1103101")
+    uncoded_opt = OptionDef(question_id=q.id, content="咸", code=None)
+    session.add_all([coded_opt, uncoded_opt])
+    await session.flush()
+    session.add(
+        PaperAnswer(
+            vote_id="vote-6", vote_year=2026, questionnaire_id=1, group_id=1,
+            active_question_id=q.id,
+            selected_option_ids=[coded_opt.id, uncoded_opt.id],
+        )
+    )
+    await session.commit()
+
+    dao = ComputeDAO(session)
+    with caplog.at_level(logging.DEBUG, logger="src.apps.result.compute_dao"):
+        votes = await dao.load_questionnaire_votes(2026)
+    by_vote = {vid: items for vid, items in votes}
+
+    # 咸(缺 code)被排除,甜(有 code)保留,没有崩、也没有把裸 id 混进 answer。
+    assert by_vote["vote-6"][0]["answer"] == ["1103101"]
+    assert "1 options without code" in caplog.text
