@@ -19,6 +19,7 @@ from typing import Optional
 import strawberry
 
 from src.api.graphql.errors import map_app_errors
+from src.api.graphql.resolvers.result import _get_result_service
 from src.api.graphql.types import (
     CharacterOrMusicRanking,
     CPItem,
@@ -33,19 +34,15 @@ from src.apps.result.dao import ResultDAO, ResultNotComputedError
 from src.apps.result.schemas import RankingQuery
 from src.apps.result.service import ResultService
 from src.apps.result.whitelist import Whitelist, load_whitelist
-from src.common.config import Settings, get_settings
+from src.common.config import Settings
 from src.common.exceptions import ValidationError
-from src.common.redis import get_redis
 
 logger = logging.getLogger(__name__)
 
 _SERVICE = "result"  # extensions.service，对齐 brief 要求的 map_app_errors(service="result")
 
-
-async def _get_result_service() -> ResultService:
-    redis = await get_redis()
-    settings = get_settings()
-    return ResultService(ResultDAO(redis, settings))
+# _get_result_service 复用 resolvers/result.py 的现成实现(同一份 get_redis/
+# get_settings 接线)，不在本模块重复定义——两份拷贝迟早会漂移。
 
 
 # ── 公共助手(本任务建立，后续任务复用) ─────────────────────────────
@@ -60,6 +57,13 @@ async def _resolve_vote_year(
     ``settings.vote_year`` 下。用 ``get_global_stats`` 探测该年是否已跑过
     compute（每年计算一次、与 category 无关，天然是"该年是否有数据"的探针），
     没有数据才回落——不能仅因为前端传了旧的 legacy 年份就整体 503。
+
+    探针 key（``result:{year}:global_stats``）与实际排名读取的 key
+    （``result:{year}:{cat}:ranking``）是两个不同的 Redis key；两者在
+    ``ComputeService.compute_all`` 里由同一个 pipeline 一次性写入，正常情况下
+    永远同生共死，此处才能把前者当后者的存在性代理。如果未来出现"pipeline
+    写到一半失败"这类部分写入场景，两者可能不一致——届时这个探针不再可靠，
+    需要重新评估。
     """
     year = requested if requested is not None else settings.vote_year
     try:
@@ -86,9 +90,33 @@ def _reject_query_dsl(query: Optional[str]) -> None:
     if query and query != "NONE":
         raise ValidationError(
             "ADVANCED_SEARCH_NOT_IMPLEMENTED",
-            details=501,
             human_readable_message="高级搜索暂未实现",
         )
+
+
+async def _fetch_ranking(svc: ResultService, category: str, year: int) -> dict:
+    """svc.get_ranking 包一层：ResultNotComputedError → 稳定、可辨识、不泄内部细节的错误。
+
+    ``ResultNotComputedError`` 的 message 是
+    ``f"No computed data at Redis key: {key}"``（dao.py），逐年不同、且直接
+    暴露内部 Redis key 布局；``map_app_errors`` 会把 ``exc.message`` 原样当
+    ``error_kind`` 透传给调用方，这既不稳定（前端没法匹配一个包含年份的字符串）
+    也违反 errors.py 自己的契约("响应只暴露稳定的 INTERNAL_ERROR，不向调用方
+    透出内部细节")。这里改写成稳定 kind + 用户文案，不透传原始 message。
+
+    这是"该年确实没算过"的真实兜底路径——``_resolve_vote_year`` 回落到
+    ``settings.vote_year`` 之后，如果连这一年都没算过（全新部署的真实状态），
+    这里同样会触发。
+    """
+    try:
+        return await svc.get_ranking(
+            RankingQuery(category=category, vote_year=year, names=[])
+        )
+    except ResultNotComputedError as exc:
+        raise ValidationError(
+            "RESULT_NOT_COMPUTED",
+            human_readable_message="投票结果尚未生成，请稍后再试",
+        ) from exc
 
 
 def _trend_items(raw: list[dict]) -> list[VotingTrendItem]:
@@ -111,6 +139,12 @@ def _ranking_entry_from_dict(e: dict) -> RankingEntry:
     rank_last_*/vote_count_last_*/first_vote_count_last_*（0）与
     first_vote_percentage_last_*/vote_percentage_last_*（0.0）是上届对比字段，
     本轮 compute 尚未提供历史数据源，按 brief 要求固定置零/置空——不是遗漏。
+
+    移除条件：compute.py 里 ``compute_ranking``/``compute_cp_ranking`` 已经有
+    "``historical`` 非空时在 ``rank[1]``/``rank[2]`` 里塞历史快照"的活路径
+    （目前 compute_service.py 固定传 ``{}``）；一旦上届对比（历史 backlog 项）
+    落地、``compute_service`` 开始传非空 ``historical``，这里必须同步改成从
+    ``rank[1]``/``rank[2]`` 取值，否则会用硬编码 0 悄悄盖掉真实历史数据。
     """
     male = e["male_vote_count"]
     female = e["female_vote_count"]
@@ -196,11 +230,9 @@ async def _query_character_or_music_ranking(
 ) -> CharacterOrMusicRanking:
     _reject_query_dsl(query)
     svc = await _get_result_service()
-    settings = get_settings()
-    year = await _resolve_vote_year(svc.result_dao, vote_year, settings)
-    data = await svc.get_ranking(
-        RankingQuery(category=category, vote_year=year, names=[])
-    )
+    # settings 直接取 dao 上已持有的那份(同一个 get_settings() 单例)，不重复调用。
+    year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    data = await _fetch_ranking(svc, category, year)
     return CharacterOrMusicRanking(
         entries=[_ranking_entry_from_dict(e) for e in data["rankings"]],
         global_=_ranking_global_from_dict(data["global"]),
@@ -212,9 +244,8 @@ async def _query_cp_ranking(
 ) -> CPRanking:
     _reject_query_dsl(query)
     svc = await _get_result_service()
-    settings = get_settings()
-    year = await _resolve_vote_year(svc.result_dao, vote_year, settings)
-    data = await svc.get_ranking(RankingQuery(category="cp", vote_year=year, names=[]))
+    year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    data = await _fetch_ranking(svc, "cp", year)
     char_whitelist = load_whitelist("character")
     return CPRanking(
         entries=[
@@ -243,6 +274,8 @@ class ResultCompatQuery:
             return await _query_character_or_music_ranking(
                 "character", vote_year, query
             )
+        # 不可达：map_app_errors 出错必 re-raise，成功则已在 with 块内 return；
+        # 这行只为满足类型检查器"函数需要显式返回值"的要求。
         raise RuntimeError("unreachable")  # pragma: no cover
 
     @strawberry.field
@@ -254,6 +287,8 @@ class ResultCompatQuery:
     ) -> CharacterOrMusicRanking:
         async with map_app_errors(service=_SERVICE):
             return await _query_character_or_music_ranking("music", vote_year, query)
+        # 不可达：map_app_errors 出错必 re-raise，成功则已在 with 块内 return；
+        # 这行只为满足类型检查器"函数需要显式返回值"的要求。
         raise RuntimeError("unreachable")  # pragma: no cover
 
     @strawberry.field(name="queryCPRanking")
@@ -265,4 +300,6 @@ class ResultCompatQuery:
     ) -> CPRanking:
         async with map_app_errors(service=_SERVICE):
             return await _query_cp_ranking(vote_year, query)
+        # 不可达：map_app_errors 出错必 re-raise，成功则已在 with 块内 return；
+        # 这行只为满足类型检查器"函数需要显式返回值"的要求。
         raise RuntimeError("unreachable")  # pragma: no cover
