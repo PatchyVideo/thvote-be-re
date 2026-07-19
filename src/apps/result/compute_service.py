@@ -110,8 +110,8 @@ class ComputeService:
                 char_votes, music_votes, cp_votes, q_votes, all_voters
             )
             paper_results = compute_paper_results(q_votes, segment_map)
-            char_covote = compute_covote(char_votes, top_k=100)
-            music_covote = compute_covote(music_votes, top_k=100)
+            char_covote = compute_covote(char_votes, char_wl, top_k=100)
+            music_covote = compute_covote(music_votes, music_wl, top_k=100)
 
             # Bulk write to Redis
             pipe = self.redis.pipeline()

@@ -418,16 +418,28 @@ def compute_completion_rates(
     cp_votes: list[tuple[str, datetime, list[dict]]],
     questionnaire_votes: list[tuple[str, list[dict]]],
     all_voters: set[str],
-) -> dict[str, float]:
+) -> dict[str, dict]:
+    """各分类的完成率，附带分子/分母（供 CompletionRateItem 直接消费）。
+
+    返回 {category: {"rate": float, "num_complete": int, "total": int}}。
+    ``total`` 对所有分类相同（都是 all_voters 的规模），分子是该分类投票者
+    与 all_voters 的交集大小。
+    """
     total = len(all_voters)
-    if total == 0:
-        return {"character": 0.0, "music": 0.0, "cp": 0.0, "questionnaire": 0.0}
+
+    def _item(voters: set[str]) -> dict:
+        num_complete = len(voters & all_voters)
+        return {
+            "rate": (num_complete / total) if total else 0.0,
+            "num_complete": num_complete,
+            "total": total,
+        }
+
     return {
-        "character": len({uid for uid, _, _ in char_votes} & all_voters) / total,
-        "music": len({uid for uid, _, _ in music_votes} & all_voters) / total,
-        "cp": len({uid for uid, _, _ in cp_votes} & all_voters) / total,
-        "questionnaire": len({uid for uid, _ in questionnaire_votes} & all_voters)
-        / total,
+        "character": _item({uid for uid, _, _ in char_votes}),
+        "music": _item({uid for uid, _, _ in music_votes}),
+        "cp": _item({uid for uid, _, _ in cp_votes}),
+        "questionnaire": _item({uid for uid, _ in questionnaire_votes}),
     }
 
 
@@ -509,29 +521,37 @@ def compute_paper_results(
 
 def compute_covote(
     votes: list[tuple[str, datetime, list[dict]]],
+    whitelist: "Whitelist",
     top_k: int = 100,
 ) -> list[dict]:
-    """Compute pairwise co-vote statistics for the top-k entities."""
+    """Compute pairwise co-vote statistics for the top-k whitelisted entities.
+
+    id 先经白名单过滤（不在白名单的 id 直接丢弃，不参与配对），输出的
+    ``a``/``b`` 用 ``whitelist.name_of()`` 转成人名，而不是原始 8 位 hash id。
+    """
     vote_count: dict[str, int] = defaultdict(int)
     user_voted: dict[str, set[str]] = {}
 
     for user_id, _, items in votes:
-        names = {item.get("id", "") for item in items if item.get("id")}
-        user_voted[user_id] = names
-        for name in names:
-            vote_count[name] += 1
+        ids = {
+            item.get("id", "") for item in items
+            if item.get("id") and item["id"] in whitelist
+        }
+        user_voted[user_id] = ids
+        for oid in ids:
+            vote_count[oid] += 1
 
-    top_names = sorted(vote_count, key=lambda n: -vote_count[n])[:top_k]
-    top_set = set(top_names)
+    top_ids = sorted(vote_count, key=lambda n: -vote_count[n])[:top_k]
+    top_set = set(top_ids)
     total = len(user_voted)
 
     result = []
-    for a, b in combinations(top_names, 2):
+    for a, b in combinations(top_ids, 2):
         voters_a = {
-            uid for uid, names in user_voted.items() if a in names and a in top_set
+            uid for uid, ids in user_voted.items() if a in ids and a in top_set
         }
         voters_b = {
-            uid for uid, names in user_voted.items() if b in names and b in top_set
+            uid for uid, ids in user_voted.items() if b in ids and b in top_set
         }
         m11 = len(voters_a & voters_b)
         m10 = len(voters_a - voters_b)
@@ -541,13 +561,18 @@ def compute_covote(
         cv = m11 / union if union else 0.0
         result.append(
             {
-                "a": a,
-                "b": b,
+                "a": whitelist.name_of(a),
+                "b": whitelist.name_of(b),
                 "m00": m00,
                 "m01": m01,
                 "m10": m10,
                 "m11": m11,
                 "cv": round(cv, 4),
+                # cs/mi: 契约类型已声明字段，但相关性/互信息统计本轮未实现
+                # （前端 connect 页仍是占位、无消费方），先置 0，待有消费方
+                # 再补真实计算。
+                "cs": 0.0,
+                "mi": 0.0,
             }
         )
 
