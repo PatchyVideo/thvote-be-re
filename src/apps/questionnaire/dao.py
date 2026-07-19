@@ -169,6 +169,7 @@ class QuestionnaireDAO:
                         "introduction": q.get("introduction", ""),
                         "order": q.get("order", 0),
                         "max_input_len": q.get("maxInputLen", 1000),
+                        "code": q.get("code"),
                     }
                     if q.get("id") is not None:
                         q_kwargs["id"] = q["id"]
@@ -183,6 +184,7 @@ class QuestionnaireDAO:
                             "mutex_option_ids": o.get("mutexOptionIds") or [],
                             "option_group": o.get("optionGroup", 0),
                             "order": o.get("order", 0),
+                            "code": o.get("code"),
                         }
                         if o.get("id") is not None:
                             o_kwargs["id"] = o["id"]

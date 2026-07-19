@@ -3,6 +3,23 @@ from __future__ import annotations
 
 from src.apps.questionnaire.admin_dao import QuestionnaireAdminDAO
 
+# 显式可写字段集合(question/option):防止请求体里混入非法列名,同时明确
+# 声明 admin 编辑器能设置哪些字段——`code` 是语义码(题 5 位/选项 7 位),
+# 见 db_model/questionnaire_def.py 的字段注释。
+_QUESTION_WRITABLE_FIELDS = {
+    "group_id", "type", "content", "introduction", "order", "max_input_len",
+    "code",
+}
+_OPTION_WRITABLE_FIELDS = {
+    "question_id", "content", "related_question_ids", "mutex_option_ids",
+    "option_group", "order", "code",
+}
+
+
+def _pick_writable(fields: dict, allowed: set[str]) -> dict:
+    """Keep only known writable columns from a raw request-body dict."""
+    return {k: v for k, v in fields.items() if k in allowed}
+
 
 class KeyConflictError(Exception):
     """Questionnaire key already exists."""
@@ -53,10 +70,14 @@ class QuestionnaireAdminService:
     async def create_question(self, fields: dict) -> int:
         if not await self.dao.group_exists(fields.get("group_id")):
             raise ParentNotFoundError("group")
-        return await self.dao.create_question(fields)
+        return await self.dao.create_question(
+            _pick_writable(fields, _QUESTION_WRITABLE_FIELDS)
+        )
 
     async def update_question(self, qid: int, fields: dict) -> bool:
-        return await self.dao.update_question(qid, fields)
+        return await self.dao.update_question(
+            qid, _pick_writable(fields, _QUESTION_WRITABLE_FIELDS)
+        )
 
     async def delete_question(self, qid: int) -> bool:
         return await self.dao.delete_question(qid)
@@ -64,10 +85,14 @@ class QuestionnaireAdminService:
     async def create_option(self, fields: dict) -> int:
         if not await self.dao.question_exists(fields.get("question_id")):
             raise ParentNotFoundError("question")
-        return await self.dao.create_option(fields)
+        return await self.dao.create_option(
+            _pick_writable(fields, _OPTION_WRITABLE_FIELDS)
+        )
 
     async def update_option(self, oid: int, fields: dict) -> bool:
-        return await self.dao.update_option(oid, fields)
+        return await self.dao.update_option(
+            oid, _pick_writable(fields, _OPTION_WRITABLE_FIELDS)
+        )
 
     async def delete_option(self, oid: int) -> bool:
         return await self.dao.delete_option(oid)
