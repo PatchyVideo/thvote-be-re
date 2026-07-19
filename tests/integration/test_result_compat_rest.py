@@ -258,6 +258,13 @@ async def gql_schema(monkeypatch, session, fake_redis, settings):
     return schema
 
 
+@pytest_asyncio.fixture
+async def gql_schema_uncomputed(monkeypatch, fake_redis, settings):
+    """schema，指向一个从未跑过 compute_all 的空 fake_redis(模拟全新部署)。"""
+    _patch_result_service(monkeypatch, fake_redis, settings)
+    return schema
+
+
 # ── queryCharacterSingle / queryMusicSingle / queryCPSingle ───────────────
 
 
@@ -455,6 +462,24 @@ async def test_query_questionnaire_accepts_q_prefix_and_bare_code_and_skips_miss
     assert input_entry["totalAnswers"] == 1
     assert input_entry["totalMale"] == 1
     assert input_entry["totalFemale"] == 0
+
+
+@pytest.mark.asyncio
+async def test_query_questionnaire_not_computed_is_stable_error_not_empty_success(
+    gql_schema_uncomputed,
+) -> None:
+    """全新部署(该年从未跑过 compute_all)时,queryQuestionnaire 必须报稳定的
+    RESULT_NOT_COMPUTED,不能把"每道题都查不到"悄悄跳成一个看似成功的
+    {entries: []}——两者是完全不同的状态,前者是"系统还没算过",后者是"算过了
+    但这些具体题没人答"。"""
+    result = await gql_schema_uncomputed.execute(
+        QUERY_QUESTIONNAIRE,
+        variable_values={"ids": ["q11011"], "voteYear": None},
+    )
+    assert result.errors is not None
+    assert result.data is None
+    error_kind = result.errors[0].extensions["error_kind"]
+    assert error_kind == "RESULT_NOT_COMPUTED"
 
 
 @pytest.mark.asyncio

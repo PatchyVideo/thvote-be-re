@@ -327,22 +327,22 @@ async def _query_character_or_music_trend(
     ``Trends``(不报错，不影响其余 name 的结果)；但整个分类都没算过
     (``ResultNotComputedError``，理论上不该发生——见 `_resolve_vote_year`
     的探针注释)时仍要转写成稳定的 ``RESULT_NOT_COMPUTED``，不能被"缺失当空"
-    的规则悄悄吞掉，否则前端会把"整体没算过"误读成"这些角色都没人投"。
+    的规则悄悄吞掉，否则前端会把"整体没算过"误读成"这些角色都没人投"。这条
+    转写复用 `_map_not_computed_error`（与 `_fetch_ranking`/全局统计/完成率/
+    问卷同一处逻辑），只在外层单独捕获 `EntityNotFoundError`（它不会被
+    `_map_not_computed_error` 拦下，会正常穿透到这里）。
     """
     svc = await _get_result_service()
     year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
     trends: list[Trends] = []
     for name in names:
         try:
-            raw = await svc.result_dao.get_trend(category, name, year)
+            raw = await _map_not_computed_error(
+                svc.result_dao.get_trend(category, name, year)
+            )
         except EntityNotFoundError:
             trends.append(Trends(trend=[], trend_first=[]))
             continue
-        except ResultNotComputedError as exc:
-            raise ValidationError(
-                "RESULT_NOT_COMPUTED",
-                human_readable_message="投票结果尚未生成，请稍后再试",
-            ) from exc
         trends.append(
             Trends(
                 trend=_trend_items(raw["trend"]),
@@ -416,13 +416,22 @@ async def _query_questionnaire_entries(
 ) -> QueryQuestionnaireResponse:
     """按 ``question_ids`` 顺序逐个取问卷统计；缺的题跳过，不报错。
 
-    "缺的题"（``ResultNotComputedError``，dao 对单个 ``paper:{code}`` key
-    的统一命名）通常意味着这道题本届没人答、或题目压根不存在——两种情况都不是
-    "整体没计算过"，用户体验上应当是"这道题没数据"而不是报错阻断整个响应。
+    ``ResultDAO.get_questionnaire`` 对"这道题没数据"和"整个 paper/年份从未
+    计算过"抛的是**同一个** ``ResultNotComputedError``，无法只凭异常类型区分——
+    如果直接在逐题循环里 catch-and-continue，一个全新部署（该年从未跑过
+    compute）会让每个 id 都触发这个分支，最终得到一个"看起来成功但其实什么
+    都没算过"的 ``{entries: []}``，而不是可辨识的 ``RESULT_NOT_COMPUTED``。
+    所以进入逐题循环前，先对 `get_global_stats` 做一次 `_map_not_computed_error`
+    探测（与 `queryQuestionnaireTrend` 用的是同一套探测）：这一步过了，
+    "该年确实算过"这个前提就成立，per-id 的 ``ResultNotComputedError`` 才能
+    被安全地解读为"这道具体题没数据"而不是"整体没算过"，跳过才是正确行为。
     """
     _reject_query_dsl(query)
     svc = await _get_result_service()
     year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    await _map_not_computed_error(
+        svc.get_global_stats(GlobalStatsQuery(vote_year=year))
+    )
     entries: list[CachedQuestionItem] = []
     for question_id in question_ids:
         code = _strip_question_prefix(question_id)
