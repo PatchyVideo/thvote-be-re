@@ -28,6 +28,49 @@ EXPECTED_SIGNATURES = [
     # global（而非 global_，strawberry.field(name="global") 生效）
     "type CharacterOrMusicRanking {\n  entries: [RankingEntry!]!\n  global: RankingGlobal!\n}",
     "type CPRanking {\n  entries: [CPRankingEntry!]!\n  global: RankingGlobal!\n}",
+    # Task 6：单条查询(按唯一序号 rank,不是 displayRank)
+    (
+        "queryCharacterSingle(rank: Int!, voteStart: DateTimeUtc = null, "
+        "voteYear: Int = null, query: String = null): RankingEntry!"
+    ),
+    (
+        "queryMusicSingle(rank: Int!, voteStart: DateTimeUtc = null, "
+        "voteYear: Int = null, query: String = null): RankingEntry!"
+    ),
+    # 大写拼写 queryCPSingle(而非 queryCpSingle)—— strawberry.field(name=...) 生效
+    (
+        "queryCPSingle(rank: Int!, voteStart: DateTimeUtc = null, "
+        "voteYear: Int = null, query: String = null): CPRankingEntry!"
+    ),
+    # 趋势:names 列表,顺序保留,无 query 参数(前端真实文档不传)
+    (
+        "queryCharacterTrend(names: [String!]!, voteStart: DateTimeUtc = null, "
+        "voteYear: Int = null): [Trends!]!"
+    ),
+    (
+        "queryMusicTrend(names: [String!]!, voteStart: DateTimeUtc = null, "
+        "voteYear: Int = null): [Trends!]!"
+    ),
+    # 全局统计 / 完成率
+    (
+        "queryGlobalStats(voteStart: DateTimeUtc = null, voteYear: Int = null, "
+        "query: String = null): ResultGlobalStats!"
+    ),
+    (
+        "queryCompletionRates(voteStart: DateTimeUtc = null, voteYear: Int = null, "
+        "query: String = null): CompletionRate!"
+    ),
+    # 问卷:questionsOfInterest / questionIds,均返回 QueryQuestionnaireResponse
+    (
+        "queryQuestionnaire(questionsOfInterest: [String!]!, "
+        "voteStart: DateTimeUtc = null, voteYear: Int = null, "
+        "query: String = null): QueryQuestionnaireResponse!"
+    ),
+    (
+        "queryQuestionnaireTrend(questionIds: [String!]!, "
+        "voteStart: DateTimeUtc = null, voteYear: Int = null, "
+        "query: String = null): QueryQuestionnaireResponse!"
+    ),
 ]
 
 

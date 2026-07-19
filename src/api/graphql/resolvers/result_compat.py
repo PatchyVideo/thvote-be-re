@@ -21,21 +21,33 @@ import strawberry
 from src.api.graphql.errors import map_app_errors
 from src.api.graphql.resolvers.result import _get_result_service
 from src.api.graphql.types import (
+    CachedQuestionAnswerItem,
+    CachedQuestionItem,
     CharacterOrMusicRanking,
+    CompletionRate,
+    CompletionRateItem,
     CPItem,
     CPRanking,
     CPRankingEntry,
     DateTimeUtc,
+    QueryQuestionnaireResponse,
     RankingEntry,
     RankingGlobal,
+    ResultGlobalStats,
+    Trends,
     VotingTrendItem,
 )
-from src.apps.result.dao import ResultDAO, ResultNotComputedError
-from src.apps.result.schemas import RankingQuery
+from src.apps.result.dao import EntityNotFoundError, ResultDAO, ResultNotComputedError
+from src.apps.result.schemas import (
+    CompletionRatesQuery,
+    GlobalStatsQuery,
+    QuestionnaireQuery,
+    RankingQuery,
+)
 from src.apps.result.service import ResultService
 from src.apps.result.whitelist import Whitelist, load_whitelist
 from src.common.config import Settings
-from src.common.exceptions import ValidationError
+from src.common.exceptions import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +106,8 @@ def _reject_query_dsl(query: Optional[str]) -> None:
         )
 
 
-async def _fetch_ranking(svc: ResultService, category: str, year: int) -> dict:
-    """svc.get_ranking 包一层：ResultNotComputedError → 稳定、可辨识、不泄内部细节的错误。
+async def _map_not_computed_error(coro):
+    """await coro；``ResultNotComputedError`` → 稳定、可辨识、不泄内部细节的错误。
 
     ``ResultNotComputedError`` 的 message 是
     ``f"No computed data at Redis key: {key}"``（dao.py），逐年不同、且直接
@@ -106,17 +118,23 @@ async def _fetch_ranking(svc: ResultService, category: str, year: int) -> dict:
 
     这是"该年确实没算过"的真实兜底路径——``_resolve_vote_year`` 回落到
     ``settings.vote_year`` 之后，如果连这一年都没算过（全新部署的真实状态），
-    这里同样会触发。
+    这里同样会触发。被 ``_fetch_ranking``（排名）以及 Task 6 新增的
+    global stats / completion rates 取数复用，避免每处重写一遍 try/except。
     """
     try:
-        return await svc.get_ranking(
-            RankingQuery(category=category, vote_year=year, names=[])
-        )
+        return await coro
     except ResultNotComputedError as exc:
         raise ValidationError(
             "RESULT_NOT_COMPUTED",
             human_readable_message="投票结果尚未生成，请稍后再试",
         ) from exc
+
+
+async def _fetch_ranking(svc: ResultService, category: str, year: int) -> dict:
+    """svc.get_ranking 包一层，见 `_map_not_computed_error` 的转写规则。"""
+    return await _map_not_computed_error(
+        svc.get_ranking(RankingQuery(category=category, vote_year=year, names=[]))
+    )
 
 
 def _trend_items(raw: list[dict]) -> list[VotingTrendItem]:
@@ -255,9 +273,189 @@ async def _query_cp_ranking(
     )
 
 
+# ── 单条查询(按唯一序号) ──────────────────────────────────────────
+
+
+def _find_by_ordinal(rankings: list[dict], rank: int) -> dict:
+    """按唯一序号 ``e["rank"][0]["rank"]`` 匹配——不用会并列的 ``display_rank``
+    （并列名次时多个条目共享同一个 display_rank，无法用它取到确定的单条）。
+
+    找不到 → ``NotFoundError("ENTITY_NOT_FOUND")``，经 map_app_errors 变成
+    可辨识的 404 类错误；不是 ``INTERNAL_ERROR``，也不能把 ``None`` 悄悄传给
+    RankingEntry/CPRankingEntry 这类字段全部必填、无默认值的 GraphQL 类型。
+    """
+    for e in rankings:
+        if e["rank"][0]["rank"] == rank:
+            return e
+    raise NotFoundError(
+        "ENTITY_NOT_FOUND", human_readable_message="未找到该排名条目"
+    )
+
+
+async def _query_character_or_music_single(
+    category: str, rank: int, vote_year: Optional[int], query: Optional[str]
+) -> RankingEntry:
+    _reject_query_dsl(query)
+    svc = await _get_result_service()
+    year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    data = await _fetch_ranking(svc, category, year)
+    return _ranking_entry_from_dict(_find_by_ordinal(data["rankings"], rank))
+
+
+async def _query_cp_single(
+    rank: int, vote_year: Optional[int], query: Optional[str]
+) -> CPRankingEntry:
+    _reject_query_dsl(query)
+    svc = await _get_result_service()
+    year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    data = await _fetch_ranking(svc, "cp", year)
+    char_whitelist = load_whitelist("character")
+    return _cp_ranking_entry_from_dict(
+        _find_by_ordinal(data["rankings"], rank), char_whitelist
+    )
+
+
+# ── 趋势(按 name 列表，逐个取) ───────────────────────────────────────
+
+
+async def _query_character_or_music_trend(
+    category: str, names: list[str], vote_year: Optional[int]
+) -> list[Trends]:
+    """逐个 name 取 ``ResultDAO.get_trend``；顺序与入参 ``names`` 一致。
+
+    单个 name 不在该年榜单里(``EntityNotFoundError``) → 该位置返回空
+    ``Trends``(不报错，不影响其余 name 的结果)；但整个分类都没算过
+    (``ResultNotComputedError``，理论上不该发生——见 `_resolve_vote_year`
+    的探针注释)时仍要转写成稳定的 ``RESULT_NOT_COMPUTED``，不能被"缺失当空"
+    的规则悄悄吞掉，否则前端会把"整体没算过"误读成"这些角色都没人投"。
+    """
+    svc = await _get_result_service()
+    year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    trends: list[Trends] = []
+    for name in names:
+        try:
+            raw = await svc.result_dao.get_trend(category, name, year)
+        except EntityNotFoundError:
+            trends.append(Trends(trend=[], trend_first=[]))
+            continue
+        except ResultNotComputedError as exc:
+            raise ValidationError(
+                "RESULT_NOT_COMPUTED",
+                human_readable_message="投票结果尚未生成，请稍后再试",
+            ) from exc
+        trends.append(
+            Trends(
+                trend=_trend_items(raw["trend"]),
+                trend_first=_trend_items(raw["trend_first"]),
+            )
+        )
+    return trends
+
+
+# ── 全局统计 / 完成率 ─────────────────────────────────────────────
+
+
+async def _query_global_stats(
+    vote_year: Optional[int], query: Optional[str]
+) -> ResultGlobalStats:
+    _reject_query_dsl(query)
+    svc = await _get_result_service()
+    year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    data = await _map_not_computed_error(
+        svc.get_global_stats(GlobalStatsQuery(vote_year=year))
+    )
+    # vote_year 是解析后的年份(_resolve_vote_year 的返回值)，不是前端原始传参——
+    # compute_global_stats 本身不产出这个字段，契约层补上。
+    return ResultGlobalStats(
+        vote_year=year,
+        num_vote=data["num_vote"],
+        num_char=data["num_char"],
+        num_music=data["num_music"],
+        num_cp=data["num_cp"],
+        num_doujin=data["num_doujin"],
+        num_male=data["num_male"],
+        num_female=data["num_female"],
+    )
+
+
+async def _query_completion_rates(
+    vote_year: Optional[int], query: Optional[str]
+) -> CompletionRate:
+    _reject_query_dsl(query)
+    svc = await _get_result_service()
+    year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    data = await _map_not_computed_error(
+        svc.get_completion_rates(CompletionRatesQuery(vote_year=year))
+    )
+    return CompletionRate(
+        vote_year=year,
+        items=[
+            CompletionRateItem(
+                name=category,
+                rate=d["rate"],
+                num_complete=d["num_complete"],
+                total=d["total"],
+            )
+            for category, d in data.items()
+        ],
+    )
+
+
+# ── 问卷 ──────────────────────────────────────────────────────────
+
+
+def _strip_question_prefix(question_id: str) -> str:
+    """接受两种写法：带可选前导 ``q``(前端线上格式 ``q11011``)或裸数字码
+    ``11011``；库里按裸码存(``paper:{code}``)，两种写法都落到同一个 key。
+    """
+    return question_id[1:] if question_id.startswith("q") else question_id
+
+
+async def _query_questionnaire_entries(
+    question_ids: list[str], vote_year: Optional[int], query: Optional[str]
+) -> QueryQuestionnaireResponse:
+    """按 ``question_ids`` 顺序逐个取问卷统计；缺的题跳过，不报错。
+
+    "缺的题"（``ResultNotComputedError``，dao 对单个 ``paper:{code}`` key
+    的统一命名）通常意味着这道题本届没人答、或题目压根不存在——两种情况都不是
+    "整体没计算过"，用户体验上应当是"这道题没数据"而不是报错阻断整个响应。
+    """
+    _reject_query_dsl(query)
+    svc = await _get_result_service()
+    year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    entries: list[CachedQuestionItem] = []
+    for question_id in question_ids:
+        code = _strip_question_prefix(question_id)
+        try:
+            raw = await svc.get_questionnaire(
+                QuestionnaireQuery(question_id=code, vote_year=year)
+            )
+        except ResultNotComputedError:
+            continue
+        entries.append(
+            CachedQuestionItem(
+                question_id="q" + code,
+                answers_cat=[
+                    CachedQuestionAnswerItem(
+                        aid=a["aid"],
+                        total_votes=a["count"],
+                        male_votes=a["male_votes"],
+                        female_votes=a["female_votes"],
+                    )
+                    for a in raw["answers_cat"]
+                ],
+                answers_str=raw["answers_str"],
+                total_answers=raw["total"],
+                total_male=raw["total_male"],
+                total_female=raw["total_female"],
+            )
+        )
+    return QueryQuestionnaireResponse(entries=entries)
+
+
 @strawberry.type
 class ResultCompatQuery:
-    """前端(旧 Rust gateway)排名查询契约桥。"""
+    """前端(旧 Rust gateway)result 契约桥：排名/单条/趋势/统计/问卷。"""
 
     @strawberry.field
     async def query_character_ranking(
@@ -302,4 +500,141 @@ class ResultCompatQuery:
             return await _query_cp_ranking(vote_year, query)
         # 不可达：map_app_errors 出错必 re-raise，成功则已在 with 块内 return；
         # 这行只为满足类型检查器"函数需要显式返回值"的要求。
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    # ── 单条查询(按唯一序号 rank，不是会并列的 displayRank) ──────────
+
+    @strawberry.field
+    async def query_character_single(
+        self,
+        rank: int,
+        vote_start: Optional[DateTimeUtc] = None,
+        vote_year: Optional[int] = None,
+        query: Optional[str] = None,
+    ) -> RankingEntry:
+        async with map_app_errors(service=_SERVICE):
+            return await _query_character_or_music_single(
+                "character", rank, vote_year, query
+            )
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    @strawberry.field
+    async def query_music_single(
+        self,
+        rank: int,
+        vote_start: Optional[DateTimeUtc] = None,
+        vote_year: Optional[int] = None,
+        query: Optional[str] = None,
+    ) -> RankingEntry:
+        async with map_app_errors(service=_SERVICE):
+            return await _query_character_or_music_single(
+                "music", rank, vote_year, query
+            )
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    @strawberry.field(name="queryCPSingle")
+    async def query_cp_single(
+        self,
+        rank: int,
+        vote_start: Optional[DateTimeUtc] = None,
+        vote_year: Optional[int] = None,
+        query: Optional[str] = None,
+    ) -> CPRankingEntry:
+        async with map_app_errors(service=_SERVICE):
+            return await _query_cp_single(rank, vote_year, query)
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    # ── 趋势(按 name 列表批量取，顺序与入参一致) ──────────────────────
+
+    @strawberry.field
+    async def query_character_trend(
+        self,
+        names: list[str],
+        vote_start: Optional[DateTimeUtc] = None,
+        vote_year: Optional[int] = None,
+    ) -> list[Trends]:
+        async with map_app_errors(service=_SERVICE):
+            return await _query_character_or_music_trend(
+                "character", names, vote_year
+            )
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    @strawberry.field
+    async def query_music_trend(
+        self,
+        names: list[str],
+        vote_start: Optional[DateTimeUtc] = None,
+        vote_year: Optional[int] = None,
+    ) -> list[Trends]:
+        async with map_app_errors(service=_SERVICE):
+            return await _query_character_or_music_trend("music", names, vote_year)
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    # ── 全局统计 / 完成率 ─────────────────────────────────────────────
+
+    @strawberry.field
+    async def query_global_stats(
+        self,
+        vote_start: Optional[DateTimeUtc] = None,
+        vote_year: Optional[int] = None,
+        query: Optional[str] = None,
+    ) -> ResultGlobalStats:
+        async with map_app_errors(service=_SERVICE):
+            return await _query_global_stats(vote_year, query)
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    @strawberry.field
+    async def query_completion_rates(
+        self,
+        vote_start: Optional[DateTimeUtc] = None,
+        vote_year: Optional[int] = None,
+        query: Optional[str] = None,
+    ) -> CompletionRate:
+        async with map_app_errors(service=_SERVICE):
+            return await _query_completion_rates(vote_year, query)
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    # ── 问卷 ──────────────────────────────────────────────────────────
+
+    @strawberry.field
+    async def query_questionnaire(
+        self,
+        questions_of_interest: list[str],
+        vote_start: Optional[DateTimeUtc] = None,
+        vote_year: Optional[int] = None,
+        query: Optional[str] = None,
+    ) -> QueryQuestionnaireResponse:
+        async with map_app_errors(service=_SERVICE):
+            return await _query_questionnaire_entries(
+                questions_of_interest, vote_year, query
+            )
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    @strawberry.field
+    async def query_questionnaire_trend(
+        self,
+        question_ids: list[str],
+        vote_start: Optional[DateTimeUtc] = None,
+        vote_year: Optional[int] = None,
+        query: Optional[str] = None,
+    ) -> QueryQuestionnaireResponse:
+        """与 ``queryQuestionnaire`` 同实现——**没有真正的时间维度**。
+
+        现有后端 ``ResultDAO.get_questionnaire_trend`` 本就是
+        ``get_questionnaire`` 的别名（问卷 trend 存储改造/C3 未落地，见设计稿
+        §七「已知限制」第 3 条），这里的字段只是为了满足前端 schema 校验能
+        查到这个名字，不代表按小时切片返回真实趋势。
+
+        ⚠️已知偏差(需在端到端联调/Task 7 复核)：真实前端 GraphQL 文档
+        （`QuestionnaireDetail.vue`）里 ``queryQuestionnaireTrend`` 实际请求
+        的是 ``trend { hrs cnt } trendFirst { hrs cnt }``——即期待返回形状
+        ``[Trends!]!``，而不是这里按 task-6-brief.md/设计稿字面要求实现的
+        ``QueryQuestionnaireResponse``(`entries { questionId answersCat … }`)。
+        两份规划文档(design + plan)对这个字段的定义一致且标注"已与用户确认"，
+        本实现严格照办；但这意味着该页面的趋势图在真实联调时仍会报
+        "Cannot query field 'trend' on type 'QueryQuestionnaireResponse'"，
+        是本任务已知但未修的缺口，不是遗漏。
+        """
+        async with map_app_errors(service=_SERVICE):
+            return await _query_questionnaire_entries(question_ids, vote_year, query)
         raise RuntimeError("unreachable")  # pragma: no cover
