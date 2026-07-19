@@ -15,34 +15,75 @@ if TYPE_CHECKING:
     from src.apps.result.whitelist import Whitelist
 
 
-# ── Gender ────────────────────────────────────────────────────────────
+# ── Segmentation (generalized gender) ──────────────────────────────────
 
 
-def compute_gender_map(
+def build_segment_map(
     questionnaire_votes: list[tuple[str, list[dict]]],
-    gender_question_id: str,
-    gender_male_value: str,
-    gender_female_value: str,
+    question_code: str,
+    label_by_option: dict[str, str],
 ) -> dict[str, str]:
-    """Map user_id → 'male' | 'female' | 'unknown' from questionnaire data."""
+    """Map user_id → segment label from questionnaire data.
+
+    A "segment" is just the answer a voter gave to a designated
+    questionnaire question (``question_code``), projected through
+    ``label_by_option`` (option code → label, e.g. {"1101101": "male"}).
+    Gender is no longer special-cased: it is simply the segment produced
+    when the demographic-axis question happens to be the gender question.
+    No match (question not answered, or answer not in label_by_option) →
+    ``"unknown"``.
+    """
     result: dict[str, str] = {}
     for user_id, q_list in questionnaire_votes:
-        gender = "unknown"
+        label = "unknown"
         for item in q_list:
-            if item.get("id") == gender_question_id:
+            if item.get("id") == question_code:
                 ans = item.get("answer")
                 val = (
                     (ans[0] if isinstance(ans, list) and ans else None)
                     or item.get("answer_str")
                     or ""
                 )
-                if val == gender_male_value:
-                    gender = "male"
-                elif val == gender_female_value:
-                    gender = "female"
+                label = label_by_option.get(val, "unknown")
                 break
-        result[user_id] = gender
+        result[user_id] = label
     return result
+
+
+def _segment_breakdown(
+    segs: dict[str, int], vc: int, total_voters: int
+) -> dict[str, dict]:
+    """按 label 展开 vote_count / percentage_per_item / percentage_per_total。"""
+
+    def _one(count: int) -> dict:
+        return {
+            "vote_count": count,
+            "percentage_per_item": round(count / vc, 4) if vc else 0.0,
+            "percentage_per_total": (
+                round(count / total_voters, 4) if total_voters else 0.0
+            ),
+        }
+
+    return {label: _one(count) for label, count in segs.items()}
+
+
+def _legacy_gender_projection(segments: dict[str, dict]) -> tuple[dict, dict]:
+    """把 segments["male"/"female"] 投影为旧字段形状（供未迁移的消费方过渡用）。
+
+    旧字段用 percentage_per_char 而非 percentage_per_item；缺失该 label 时
+    返回全 0，不报错。
+    """
+    zero = {"vote_count": 0, "percentage_per_item": 0.0, "percentage_per_total": 0.0}
+
+    def _proj(label: str) -> dict:
+        s = segments.get(label, zero)
+        return {
+            "vote_count": s["vote_count"],
+            "percentage_per_char": s["percentage_per_item"],
+            "percentage_per_total": s["percentage_per_total"],
+        }
+
+    return _proj("male"), _proj("female")
 
 
 # ── Character / Music Ranking ─────────────────────────────────────────
@@ -51,7 +92,7 @@ def compute_gender_map(
 def compute_ranking(
     votes: list[tuple[str, datetime, list[dict]]],
     whitelist: "Whitelist",
-    gender_map: dict[str, str],
+    segment_map: dict[str, str],
     historical: dict[str, dict],
     vote_start: datetime,
     total_hours: int,
@@ -60,20 +101,21 @@ def compute_ranking(
 
     votes: (vote_id, submit_datetime, items)，item = {"id", "first", "reason"}
     whitelist: id 白名单/展示注册表；不在白名单的 id 直接丢弃。
+    segment_map: vote_id → 分段标签（如 "male"/"female"，或其它问卷题的选项
+    label）；由 build_segment_map 构造，性别只是其中一种特例。
     历史键仍按 name（final_ranking 是 name-keyed）；v1 传空 dict。
     返回 (ranking_list, global_stats_dict)
     """
     vote_count: dict[str, int] = defaultdict(int)      # 按 oid
     first_count: dict[str, int] = defaultdict(int)
     reasons: dict[str, list[str]] = defaultdict(list)
-    male_count: dict[str, int] = defaultdict(int)
-    female_count: dict[str, int] = defaultdict(int)
+    segment_count: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     trend: dict[str, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
     trend_first: dict[str, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
     total_voters = len(votes)
 
     for user_id, submit_dt, items in votes:
-        gender = gender_map.get(user_id, "unknown")
+        segment = segment_map.get(user_id, "unknown")
         if submit_dt.tzinfo is None:
             submit_dt = submit_dt.replace(tzinfo=timezone.utc)
         hour_bucket = max(0, min(
@@ -93,10 +135,7 @@ def compute_ranking(
                 first_count[oid] += 1
             if reason:
                 reasons[oid].append(reason)
-            if gender == "male":
-                male_count[oid] += 1
-            elif gender == "female":
-                female_count[oid] += 1
+            segment_count[oid][segment] += 1
             trend[oid][hour_bucket] += 1
             if is_first:
                 trend_first[oid][hour_bucket] += 1
@@ -144,10 +183,10 @@ def compute_ranking(
                     "vote_percentage": 0.0,
                 })
 
-        mc = male_count[oid]
-        fc_gender = female_count[oid]
         meta = whitelist.get(oid)
         name = meta.name if meta else oid
+        segments = _segment_breakdown(segment_count[oid], vc, total_voters)
+        male_proj, female_proj = _legacy_gender_projection(segments)
 
         # rank_snapshots[0]["rank"] = i+1，原始 1-based 序号，永不并列；
         # display_rank = 名次（同票数同名次、虚位递推），前端展示用这个。
@@ -164,20 +203,9 @@ def compute_ranking(
             "name_jp": (meta.name_jp if meta else "") or "",
             "favorite_percentage": round(fp * 100, 2),
             "favorite_percentage_of_all": round(fpa * 100, 2),
-            "male_vote_count": {
-                "vote_count": mc,
-                "percentage_per_char": round(mc / vc, 4) if vc else 0.0,
-                "percentage_per_total": (
-                    round(mc / total_voters, 4) if total_voters else 0.0
-                ),
-            },
-            "female_vote_count": {
-                "vote_count": fc_gender,
-                "percentage_per_char": round(fc_gender / vc, 4) if vc else 0.0,
-                "percentage_per_total": (
-                    round(fc_gender / total_voters, 4) if total_voters else 0.0
-                ),
-            },
+            "segments": segments,
+            "male_vote_count": male_proj,
+            "female_vote_count": female_proj,
             "reasons": reasons[oid],
             "reasons_count": len(reasons[oid]),
             "trend": [{"hrs": h, "cnt": c} for h, c in enumerate(trend[oid]) if c > 0],
@@ -211,7 +239,7 @@ def _median(values: list[int]) -> float:
 def compute_cp_ranking(
     cp_votes: list[tuple[str, datetime, list[dict]]],
     whitelist: "Whitelist",
-    gender_map: dict[str, str],
+    segment_map: dict[str, str],
     historical: dict[str, dict],
     vote_start: datetime,
     total_hours: int,
@@ -221,17 +249,20 @@ def compute_cp_ranking(
     item: {"id_a","id_b","id_c","active","first","reason"}
     key = tuple(sorted([id_a,id_b,id_c?去None]))；顺序/主动方/first 不进 key。
     任一成员不在白名单 → 整条 CP 丢弃；组合票数==1 不计入。
+    segment_map: vote_id → 分段标签，用法同 compute_ranking。
     """
     vote_count: dict[tuple, int] = defaultdict(int)
     first_count: dict[tuple, int] = defaultdict(int)
     reasons: dict[tuple, list[str]] = defaultdict(list)
     active_count: dict[tuple, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    segment_count: dict[tuple, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     members_of: dict[tuple, list[str]] = {}
     trend: dict[tuple, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
     trend_first: dict[tuple, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
     total_voters = len(cp_votes)
 
     for user_id, submit_dt, items in cp_votes:
+        segment = segment_map.get(user_id, "unknown")
         if submit_dt.tzinfo is None:
             submit_dt = submit_dt.replace(tzinfo=timezone.utc)
         hour_bucket = max(0, min(
@@ -257,6 +288,7 @@ def compute_cp_ranking(
             if reason:
                 reasons[key].append(reason)
             active_count[key][active] += 1
+            segment_count[key][segment] += 1
             trend[key][hour_bucket] += 1
             if is_first:
                 trend_first[key][hour_bucket] += 1
@@ -291,6 +323,8 @@ def compute_cp_ranking(
         b = members[1] if len(members) > 1 else ""
         c = members[2] if len(members) > 2 else None
         ac = active_count[key]
+        segments = _segment_breakdown(segment_count[key], vc, total_voters)
+        male_proj, female_proj = _legacy_gender_projection(segments)
 
         def _rate(mid: str) -> float:
             return round(ac.get(mid, 0) / vc, 4) if vc else 0.0
@@ -317,6 +351,9 @@ def compute_cp_ranking(
             "favorite_percentage_of_all": (
                 round(fc / total_first_cp * 100, 2) if total_first_cp else 0.0
             ),
+            "segments": segments,
+            "male_vote_count": male_proj,
+            "female_vote_count": female_proj,
             "active_a": _rate(a),
             "active_b": _rate(b) if b else 0.0,
             "active_c": _rate(c) if c else 0.0,
@@ -399,28 +436,50 @@ def compute_completion_rates(
 
 def compute_paper_results(
     questionnaire_votes: list[tuple[str, list[dict]]],
-    vote_start: datetime,
-    total_hours: int,
+    segment_map: dict[str, str],
 ) -> dict[str, dict]:
-    """Compute per-question statistics from questionnaire votes.
+    """Compute per-question statistics (incl. gender crosstab) from questionnaire votes.
 
-    Returns {question_id: {"answers_cat": [...], "answers_str": [...], "total": int}}
+    Returns {question_id: {"answers_cat": [...], "answers_str": [...], "total": int,
+    "total_male": int, "total_female": int}}，其中 answers_cat 项另带
+    male_votes/female_votes。
+
+    简化说明（与设计稿的偏差，见 CHANGELOG）：聚合按**答案形状**分派——`answer`
+    是非空 list → 按选项计数；`answer_str` 非空 → 收字符串——不引入
+    `question_def.type` 映射。形状已经足以区分单选/多选/填空题，引入类型表只
+    会多一次 DB 往返，没有实际收益。
     """
     question_cat: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    question_cat_gender: dict[str, dict[str, dict[str, int]]] = defaultdict(
+        lambda: defaultdict(lambda: {"male": 0, "female": 0})
+    )
     question_str: dict[str, list[str]] = defaultdict(list)
     question_total: dict[str, int] = defaultdict(int)
+    question_gender_total: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"male": 0, "female": 0}
+    )
 
     for user_id, q_list in questionnaire_votes:
+        segment = segment_map.get(user_id, "unknown")
         for item in q_list:
             qid = str(item.get("id", ""))
             if not qid:
                 continue
             question_total[qid] += 1
+            if segment == "male":
+                question_gender_total[qid]["male"] += 1
+            elif segment == "female":
+                question_gender_total[qid]["female"] += 1
             ans = item.get("answer")
             ans_str = item.get("answer_str")
             if isinstance(ans, list):
                 for a in ans:
-                    question_cat[qid][str(a)] += 1
+                    aid = str(a)
+                    question_cat[qid][aid] += 1
+                    if segment == "male":
+                        question_cat_gender[qid][aid]["male"] += 1
+                    elif segment == "female":
+                        question_cat_gender[qid][aid]["female"] += 1
             if ans_str and str(ans_str).strip() and str(ans_str).strip() != "无":
                 question_str[qid].append(str(ans_str).strip())
 
@@ -429,10 +488,18 @@ def compute_paper_results(
         result[qid] = {
             "question_id": qid,
             "answers_cat": [
-                {"aid": k, "count": v} for k, v in question_cat[qid].items()
+                {
+                    "aid": k,
+                    "count": v,
+                    "male_votes": question_cat_gender[qid][k]["male"],
+                    "female_votes": question_cat_gender[qid][k]["female"],
+                }
+                for k, v in question_cat[qid].items()
             ],
             "answers_str": question_str[qid],
             "total": question_total[qid],
+            "total_male": question_gender_total[qid]["male"],
+            "total_female": question_gender_total[qid]["female"],
         }
     return result
 

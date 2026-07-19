@@ -215,7 +215,14 @@ class Settings(BaseSettings):
             if d.strip()
         ]
 
-    # 结果计算配置
+    # 结果计算配置（B-050 Task 3：性别泛化为"被指定的问卷题分段"）
+    # 新字段：题/选项用语义 code（不带 q 前缀），与 paper_answer 产出的
+    # questionnaire_votes 的 id/answer 直接对应（见 ComputeDAO.load_questionnaire_votes）。
+    gender_question_code: str = Field("11011")
+    gender_male_option_code: str = Field("1101101")
+    gender_female_option_code: str = Field("1101102")
+    # 旧字段：deprecated，仅为兼容尚未升级配置的部署保留一个发布周期。
+    # compute_service 不再读取它们；下一个发布周期可删除。
     gender_question_id: str = Field("q11011")
     gender_male_value: str = Field("male")
     gender_female_value: str = Field("female")

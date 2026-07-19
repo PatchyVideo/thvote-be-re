@@ -60,19 +60,18 @@ def settings():
     s.__dict__["vote_year"] = 2026
     s.__dict__["vote_start_iso"] = "2026-01-01T00:00:00Z"
     s.__dict__["vote_end_iso"] = "2026-12-31T23:59:59Z"
-    s.__dict__["gender_question_id"] = "q11011"
-    s.__dict__["gender_male_value"] = "male"
-    s.__dict__["gender_female_value"] = "female"
+    s.__dict__["gender_question_code"] = "11011"
+    s.__dict__["gender_male_option_code"] = "1101101"
+    s.__dict__["gender_female_option_code"] = "1101102"
     return s
 
 
 async def _seed_data(session: AsyncSession) -> None:
     """Insert raw_* votes using real whitelist ids + a paper_answer row for gender.
 
-    问卷 feed 已改读 paper_answer(B-039 结构化表,Task 2),不再读死表
-    Questionnaire。gender_question_id 配置仍是旧字符串 "q11011"(Task 3 才会切
-    到语义 code),与 feed 产出的 code "11011" 对不上,gender_map 因此判不出
-    性别——这是本任务预期内的过渡态,见 test_compute_global_stats 的断言注释。
+    问卷 feed 读 paper_answer(B-039 结构化表,Task 2 迁移)。gender_* 配置
+    (Task 3)已切到语义 code,与 feed 产出的 QuestionDef.code / OptionDef.code
+    直接对应,build_segment_map 能正确判出性别。
     """
     wl = load_whitelist("character")
     id1 = sorted(wl.ids)[0]
@@ -135,7 +134,6 @@ async def test_compute_global_stats(session, fake_redis, settings):
     result_dao = ResultDAO(fake_redis, settings)
     stats = await result_dao.get_global_stats(2026)
     assert stats["num_char"] == 2   # user-1, user-2
-    # gender_question_id 配置仍是旧字符串 "q11011",与问卷 feed(读 paper_answer,
-    # Task 2)产出的语义 code "11011" 对不上,compute_gender_map 找不到匹配项,
-    # 暂时判不出性别。Task 3 把配置切到语义 code 后这里会恢复为 1。
-    assert stats["num_male"] == 0
+    # user-1 在 paper_answer 里选了 opt_male("1101101"),gender_question_code
+    # 配置("11011")与 QuestionDef.code 对应,build_segment_map 判出 male。
+    assert stats["num_male"] == 1

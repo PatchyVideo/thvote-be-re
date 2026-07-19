@@ -5,9 +5,9 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from src.apps.result.compute import (
+    build_segment_map,
     compute_completion_rates,
     compute_covote,
-    compute_gender_map,
     compute_global_stats,
 )
 
@@ -19,27 +19,29 @@ def _dt(hour_offset: int) -> datetime:
     return VOTE_START + timedelta(hours=hour_offset)
 
 
-# ── compute_gender_map ────────────────────────────────────────────────
+# ── build_segment_map ─────────────────────────────────────────────────
 
-def test_compute_gender_map_basic():
+def test_build_segment_map_basic():
     q_votes = [
-        ("u1", [{"id": "q11011", "answer": ["male"], "answer_str": None}]),
-        ("u2", [{"id": "q11011", "answer": ["female"], "answer_str": None}]),
-        ("u3", [{"id": "q11011", "answer": None, "answer_str": None}]),
-        ("u4", [{"id": "other_q", "answer": ["male"], "answer_str": None}]),
+        ("u1", [{"id": "11011", "answer": ["1101101"], "answer_str": None}]),
+        ("u2", [{"id": "11011", "answer": ["1101102"], "answer_str": None}]),
+        ("u3", [{"id": "11011", "answer": None, "answer_str": None}]),
+        ("u4", [{"id": "other_q", "answer": ["1101101"], "answer_str": None}]),
     ]
-    result = compute_gender_map(q_votes, "q11011", "male", "female")
+    label_by_option = {"1101101": "male", "1101102": "female"}
+    result = build_segment_map(q_votes, "11011", label_by_option)
     assert result["u1"] == "male"
     assert result["u2"] == "female"
     assert result["u3"] == "unknown"
     assert result["u4"] == "unknown"
 
 
-def test_compute_gender_map_answer_str_fallback():
+def test_build_segment_map_answer_str_fallback():
     q_votes = [
-        ("u1", [{"id": "q11011", "answer": None, "answer_str": "male"}]),
+        ("u1", [{"id": "11011", "answer": None, "answer_str": "1101101"}]),
     ]
-    result = compute_gender_map(q_votes, "q11011", "male", "female")
+    label_by_option = {"1101101": "male", "1101102": "female"}
+    result = build_segment_map(q_votes, "11011", label_by_option)
     assert result["u1"] == "male"
 
 
