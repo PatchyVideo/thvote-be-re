@@ -60,16 +60,18 @@ EXPECTED_SIGNATURES = [
         "queryCompletionRates(voteStart: DateTimeUtc = null, voteYear: Int = null, "
         "query: String = null): CompletionRate!"
     ),
-    # 问卷:questionsOfInterest / questionIds,均返回 QueryQuestionnaireResponse
+    # 问卷:queryQuestionnaire 返回 QueryQuestionnaireResponse
     (
         "queryQuestionnaire(questionsOfInterest: [String!]!, "
         "voteStart: DateTimeUtc = null, voteYear: Int = null, "
         "query: String = null): QueryQuestionnaireResponse!"
     ),
+    # queryQuestionnaireTrend 返回 [Trends!]!(匹配真实前端消费方,不是
+    # QueryQuestionnaireResponse——见 result_compat.py 里该字段的 docstring)
     (
         "queryQuestionnaireTrend(questionIds: [String!]!, "
         "voteStart: DateTimeUtc = null, voteYear: Int = null, "
-        "query: String = null): QueryQuestionnaireResponse!"
+        "query: String = null): [Trends!]!"
     ),
 ]
 

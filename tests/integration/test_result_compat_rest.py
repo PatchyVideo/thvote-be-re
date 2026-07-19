@@ -121,10 +121,8 @@ query($ids: [String!]!, $voteYear: Int) {
 QUERY_QUESTIONNAIRE_TREND = """
 query($ids: [String!]!, $voteYear: Int) {
   queryQuestionnaireTrend(questionIds: $ids, voteYear: $voteYear) {
-    entries {
-      questionId
-      totalAnswers
-    }
+    trend { hrs cnt }
+    trendFirst { hrs cnt }
   }
 }
 """
@@ -460,20 +458,20 @@ async def test_query_questionnaire_accepts_q_prefix_and_bare_code_and_skips_miss
 
 
 @pytest.mark.asyncio
-async def test_query_questionnaire_trend_is_alias_of_questionnaire(gql_schema) -> None:
-    """brief 要求 queryQuestionnaireTrend 与 queryQuestionnaire 同实现(无时间
-    轴);同样的 id 应得到同样的统计。"""
-    trend_result = await gql_schema.execute(
+async def test_query_questionnaire_trend_returns_empty_series_in_input_order(
+    gql_schema,
+) -> None:
+    """后端没有问卷时间维度(compute_paper_results 不产出按小时数据),但真实
+    前端按 [Trends!]! 消费这个字段(entries[0].trend);返回形状必须正确、
+    数量与入参 questionIds 一致、顺序保留,内容退化成空(而不是报错或者
+    返回 QueryQuestionnaireResponse 那种不匹配的形状)。"""
+    result = await gql_schema.execute(
         QUERY_QUESTIONNAIRE_TREND,
-        variable_values={"ids": ["q11011"], "voteYear": None},
+        variable_values={"ids": ["q11011", "11021", "q99999"], "voteYear": None},
     )
-    plain_result = await gql_schema.execute(
-        QUERY_QUESTIONNAIRE,
-        variable_values={"ids": ["q11011"], "voteYear": None},
-    )
-    assert trend_result.errors is None and plain_result.errors is None
-    trend_entries = trend_result.data["queryQuestionnaireTrend"]["entries"]
-    plain_entries = plain_result.data["queryQuestionnaire"]["entries"]
-    assert len(trend_entries) == 1
-    assert trend_entries[0]["questionId"] == "q11011"
-    assert trend_entries[0]["totalAnswers"] == plain_entries[0]["totalAnswers"]
+    assert result.errors is None
+    trends = result.data["queryQuestionnaireTrend"]
+    assert len(trends) == 3  # 3 个入参 id -> 3 个出参条目(不跳过任何一个)
+    for entry in trends:
+        assert entry["trend"] == []
+        assert entry["trendFirst"] == []
