@@ -154,33 +154,37 @@ def _ranking_global_from_dict(g: dict) -> RankingGlobal:
 def _ranking_entry_from_dict(e: dict) -> RankingEntry:
     """compute_ranking() 产出的单条 dict → RankingEntry（34 个字段全部必填）。
 
-    rank_last_*/vote_count_last_*/first_vote_count_last_*（0）与
-    first_vote_percentage_last_*/vote_percentage_last_*（0.0）是上届对比字段，
-    本轮 compute 尚未提供历史数据源，按 brief 要求固定置零/置空——不是遗漏。
+    rank_last_*/vote_count_last_*/first_vote_count_last_*（``-1``）与
+    first_vote_percentage_last_*/vote_percentage_last_*（``-1.0``）是上届对比
+    字段的"无数据"哨兵值，本轮 compute 尚未提供历史数据源，按旧网关口径
+    （``query.rs`` ``.unwrap_or(-1)``/``.unwrap_or(-1.0)``）固定置为 -1/-1.0——
+    不是遗漏，也不能用 0/0.0，前端（``characterCompare.vue``）按
+    ``item.voteCountLast1 < 0 ? '-' : ...`` 判断"有没有上届数据"，置 0 会被
+    误判成"上届真的是 0 票"这种编造出来的数据。
 
     移除条件：compute.py 里 ``compute_ranking``/``compute_cp_ranking`` 已经有
     "``historical`` 非空时在 ``rank[1]``/``rank[2]`` 里塞历史快照"的活路径
     （目前 compute_service.py 固定传 ``{}``）；一旦上届对比（历史 backlog 项）
     落地、``compute_service`` 开始传非空 ``historical``，这里必须同步改成从
-    ``rank[1]``/``rank[2]`` 取值，否则会用硬编码 0 悄悄盖掉真实历史数据。
+    ``rank[1]``/``rank[2]`` 取值，否则会用硬编码的 -1 哨兵悄悄盖掉真实历史数据。
     """
     male = e["male_vote_count"]
     female = e["female_vote_count"]
     return RankingEntry(
         rank=e["rank"][0]["rank"],
-        rank_last_1=0,
-        rank_last_2=0,
+        rank_last_1=-1,
+        rank_last_2=-1,
         display_rank=e["display_rank"],
         name=e["name"],
         vote_count=e["rank"][0]["vote_count"],
-        vote_count_last_1=0,
-        vote_count_last_2=0,
+        vote_count_last_1=-1,
+        vote_count_last_2=-1,
         first_vote_count=e["rank"][0]["favorite_vote_count"],
-        first_vote_count_last_1=0,
-        first_vote_count_last_2=0,
+        first_vote_count_last_1=-1,
+        first_vote_count_last_2=-1,
         first_vote_percentage=e["favorite_percentage"],
-        first_vote_percentage_last_1=0.0,
-        first_vote_percentage_last_2=0.0,
+        first_vote_percentage_last_1=-1.0,
+        first_vote_percentage_last_2=-1.0,
         first_vote_count_weighted=e["favorite_vote_count_weighted"],
         character_type=e["type"],
         character_origin=e["origin"],
@@ -188,8 +192,8 @@ def _ranking_entry_from_dict(e: dict) -> RankingEntry:
         album=e["album"] or None,
         name_jpn=e["name_jp"],
         vote_percentage=e["rank"][0]["vote_percentage"],
-        vote_percentage_last_1=0.0,
-        vote_percentage_last_2=0.0,
+        vote_percentage_last_1=-1.0,
+        vote_percentage_last_2=-1.0,
         first_percentage=e["favorite_percentage_of_all"],
         male_vote_count=male["vote_count"],
         male_percentage_per_char=male["percentage_per_char"],

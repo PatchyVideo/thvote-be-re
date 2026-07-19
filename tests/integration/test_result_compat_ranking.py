@@ -235,13 +235,11 @@ async def test_query_character_ranking_not_computed_is_stable_and_leak_free(
     error_kind = result.errors[0].extensions["error_kind"]
     assert error_kind == "RESULT_NOT_COMPUTED"
 
+    # 完整序列化整个错误对象(含 locations/path,而不是只挑 message/extensions)——
+    # 这条测试的目的就是证明"响应里任何角落都不泄内部细节",挑字段序列化会让
+    # 这个安全性质变得不完整。
     serialized = json.dumps(
-        {
-            "errors": [
-                {"message": e.message, "extensions": e.extensions}
-                for e in result.errors
-            ]
-        },
+        {"errors": [e.formatted for e in result.errors]},
         default=str,
     )
     assert "result:" not in serialized

@@ -6,7 +6,7 @@ return computed results. No database or Redis access.
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from itertools import combinations
 from typing import TYPE_CHECKING, Any
@@ -51,20 +51,26 @@ def build_segment_map(
 
 
 def _segment_breakdown(
-    segs: dict[str, int], vc: int, total_voters: int
+    segs: dict[str, int], vc: int, segment_totals: dict[str, int]
 ) -> dict[str, dict]:
-    """按 label 展开 vote_count / percentage_per_item / percentage_per_total。"""
+    """按 label 展开 vote_count / percentage_per_item / percentage_per_total。
 
-    def _one(count: int) -> dict:
+    ``percentage_per_total`` 的分母是**该 label 自己的总人数**（旧网关口径
+    ``male_percentage_per_total = male_count / total_male``，即"占总体男性
+    比例"，不是"占全体投票人数比例"）——``segment_totals`` 由调用方按同一批
+    ``votes`` 统计出的每个 label 的人数传入，不能用共享的 ``total_voters``
+    代替，否则值系统性偏小。
+    """
+
+    def _one(label: str, count: int) -> dict:
+        denom = segment_totals.get(label, 0)
         return {
             "vote_count": count,
             "percentage_per_item": round(count / vc, 4) if vc else 0.0,
-            "percentage_per_total": (
-                round(count / total_voters, 4) if total_voters else 0.0
-            ),
+            "percentage_per_total": round(count / denom, 4) if denom else 0.0,
         }
 
-    return {label: _one(count) for label, count in segs.items()}
+    return {label: _one(label, count) for label, count in segs.items()}
 
 
 def _legacy_gender_projection(segments: dict[str, dict]) -> tuple[dict, dict]:
@@ -113,6 +119,11 @@ def compute_ranking(
     trend: dict[str, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
     trend_first: dict[str, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
     total_voters = len(votes)
+    # 每个 label(如 male/female)在本类别投票人群中的总人数——
+    # percentage_per_total 的分母（旧网关口径，见 _segment_breakdown）。
+    segment_totals = Counter(
+        segment_map.get(user_id, "unknown") for user_id, _, _ in votes
+    )
 
     for user_id, submit_dt, items in votes:
         segment = segment_map.get(user_id, "unknown")
@@ -163,12 +174,14 @@ def compute_ranking(
         fp = fc / vc if vc else 0.0
         fpa = fc / total_first if total_first else 0.0
 
+        # 百分比字段全部是 0..1 的分数(旧网关口径,前端 toPercentageString
+        # 自己 *100 拼 '%')——不要在这里预乘 100,否则前端会再乘一次到 8000%。
         rank_snapshots = [{
             "rank": i + 1,
             "vote_count": vc,
             "favorite_vote_count": fc,
-            "favorite_percentage": int(fp * 100),
-            "vote_percentage": round(vp * 100, 2),
+            "favorite_percentage": round(fp, 4),
+            "vote_percentage": round(vp, 4),
         }]
         hist = historical.get(whitelist.name_of(oid), {})
         for suffix in ("1", "2"):
@@ -179,13 +192,13 @@ def compute_ranking(
                     "rank": hist[f"rank_{suffix}"],
                     "vote_count": hvc,
                     "favorite_vote_count": hfc,
-                    "favorite_percentage": int(hfc / hvc * 100) if hvc else 0,
+                    "favorite_percentage": round(hfc / hvc, 4) if hvc else 0.0,
                     "vote_percentage": 0.0,
                 })
 
         meta = whitelist.get(oid)
         name = meta.name if meta else oid
-        segments = _segment_breakdown(segment_count[oid], vc, total_voters)
+        segments = _segment_breakdown(segment_count[oid], vc, segment_totals)
         male_proj, female_proj = _legacy_gender_projection(segments)
 
         # rank_snapshots[0]["rank"] = i+1，原始 1-based 序号，永不并列；
@@ -201,8 +214,8 @@ def compute_ranking(
             "first_appearance": (meta.first_appearance if meta else "") or "",
             "album": (meta.album if meta else "") or "",
             "name_jp": (meta.name_jp if meta else "") or "",
-            "favorite_percentage": round(fp * 100, 2),
-            "favorite_percentage_of_all": round(fpa * 100, 2),
+            "favorite_percentage": round(fp, 4),
+            "favorite_percentage_of_all": round(fpa, 4),
             "segments": segments,
             "male_vote_count": male_proj,
             "female_vote_count": female_proj,
@@ -260,6 +273,10 @@ def compute_cp_ranking(
     trend: dict[tuple, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
     trend_first: dict[tuple, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
     total_voters = len(cp_votes)
+    # 每个 label 在本类别(CP)投票人群中的总人数——percentage_per_total 的分母。
+    segment_totals = Counter(
+        segment_map.get(user_id, "unknown") for user_id, _, _ in cp_votes
+    )
 
     for user_id, submit_dt, items in cp_votes:
         segment = segment_map.get(user_id, "unknown")
@@ -323,7 +340,7 @@ def compute_cp_ranking(
         b = members[1] if len(members) > 1 else ""
         c = members[2] if len(members) > 2 else None
         ac = active_count[key]
-        segments = _segment_breakdown(segment_count[key], vc, total_voters)
+        segments = _segment_breakdown(segment_count[key], vc, segment_totals)
         male_proj, female_proj = _legacy_gender_projection(segments)
 
         def _rate(mid: str) -> float:
@@ -331,14 +348,16 @@ def compute_cp_ranking(
 
         # "rank" 内的 rank = i+1，原始 1-based 序号，永不并列；
         # display_rank = 名次（同票数同名次、虚位递推），前端展示用这个。
+        # 百分比字段全部是 0..1 的分数,与角色/音乐口径一致(见 compute_ranking
+        # 里的同款注释)。
         ranking.append({
             "rank": [{
                 "rank": i + 1,
                 "vote_count": vc,
                 "favorite_vote_count": fc,
-                "favorite_percentage": int(fc / vc * 100) if vc else 0,
+                "favorite_percentage": round(fc / vc, 4) if vc else 0.0,
                 "vote_percentage": (
-                    round(vc / total_voters * 100, 2) if total_voters else 0.0
+                    round(vc / total_voters, 4) if total_voters else 0.0
                 ),
             }],
             "display_rank": prev_display_rank,
@@ -347,9 +366,9 @@ def compute_cp_ranking(
             "id_b": b,
             "id_c": c,
             "favorite_vote_count_weighted": vc + fc,
-            "favorite_percentage": round(fc / vc * 100, 2) if vc else 0.0,
+            "favorite_percentage": round(fc / vc, 4) if vc else 0.0,
             "favorite_percentage_of_all": (
-                round(fc / total_first_cp * 100, 2) if total_first_cp else 0.0
+                round(fc / total_first_cp, 4) if total_first_cp else 0.0
             ),
             "segments": segments,
             "male_vote_count": male_proj,
@@ -386,15 +405,15 @@ def compute_global_stats(
     music_votes: list[tuple[str, datetime, list[dict]]],
     cp_votes: list[tuple[str, datetime, list[dict]]],
     questionnaire_votes: list[tuple[str, list[dict]]],
-    gender_map: dict[str, str],
+    segment_map: dict[str, str],
 ) -> dict[str, Any]:
     char_users = {uid for uid, _, _ in char_votes}
     music_users = {uid for uid, _, _ in music_votes}
     cp_users = {uid for uid, _, _ in cp_votes}
     q_users = {uid for uid, _ in questionnaire_votes}
     all_users = char_users | music_users | cp_users | q_users
-    male = sum(1 for uid in all_users if gender_map.get(uid) == "male")
-    female = sum(1 for uid in all_users if gender_map.get(uid) == "female")
+    male = sum(1 for uid in all_users if segment_map.get(uid) == "male")
+    female = sum(1 for uid in all_users if segment_map.get(uid) == "female")
     finished = char_users & music_users
     return {
         "num_vote": len(all_users),
@@ -542,17 +561,14 @@ def compute_covote(
             vote_count[oid] += 1
 
     top_ids = sorted(vote_count, key=lambda n: -vote_count[n])[:top_k]
-    top_set = set(top_ids)
     total = len(user_voted)
 
     result = []
     for a, b in combinations(top_ids, 2):
-        voters_a = {
-            uid for uid, ids in user_voted.items() if a in ids and a in top_set
-        }
-        voters_b = {
-            uid for uid, ids in user_voted.items() if b in ids and b in top_set
-        }
+        # a/b 都来自 top_ids 本身，天然在 top_set 里；非白名单 id 已在上面的
+        # user_voted 构造阶段被过滤掉，这里不需要再判一次 in top_set。
+        voters_a = {uid for uid, ids in user_voted.items() if a in ids}
+        voters_b = {uid for uid, ids in user_voted.items() if b in ids}
         m11 = len(voters_a & voters_b)
         m10 = len(voters_a - voters_b)
         m01 = len(voters_b - voters_a)

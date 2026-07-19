@@ -67,6 +67,28 @@ def test_cp_ranking_has_gender_fields():
     assert e["female_vote_count"]["vote_count"] == 0
 
 
+# ── MUST FIX 2 回归(2026-07-19 fix-wave):percentage_per_total 分母必须是
+# 该 label 自己的总人数，不是全体投票人数 ─────────────────────────────────
+
+
+def test_percentage_per_total_uses_per_label_denominator_not_total_voters():
+    # 4 个投票人：2 男(u1 投 id_a、u2 投 id_b) + 2 女(u3、u4 都投 id_a)。
+    # id_a 的 male 分段：vote_count=1，分母=total_male=2 → percentage_per_total=0.5。
+    # 若误用全体投票人数(4)做分母会得到 0.25——这条测试专门抓这个回归
+    # （旧网关口径 male_percentage_per_total = male_count / total_male，
+    # "占总体男性比例"，不是"占全体人数比例"）。
+    votes = [
+        _vote("u1", [{"id": "id_a"}]),
+        _vote("u2", [{"id": "id_b"}]),
+        _vote("u3", [{"id": "id_a"}]),
+        _vote("u4", [{"id": "id_a"}]),
+    ]
+    seg = {"u1": "male", "u2": "male", "u3": "female", "u4": "female"}
+    ranking, _ = compute_ranking(votes, _wl(), seg, {}, VS, 1)
+    e = next(x for x in ranking if x["id"] == "id_a")
+    assert e["segments"]["male"]["percentage_per_total"] == 0.5
+
+
 def test_paper_results_gender_crosstab():
     q_votes = [
         ("u1", [{"id": "11011", "answer": ["1101101"], "answer_str": None}]),

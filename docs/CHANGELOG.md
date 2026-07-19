@@ -4,7 +4,7 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-19（result 前端 GraphQL 契约层落地：12 个 query* + 问卷语义 code + 分段统计）
+> 最后更新：2026-07-19（result 前端 GraphQL 契约层落地 + 合并前复核修复：百分比单位、分段分母、历史哨兵值、admin 接口泄露）
 
 ## [2026-07-19] result 前端 GraphQL 契约层落地（12 个 query* + 问卷语义 code + 分段统计）
 
@@ -30,9 +30,23 @@
 - **配置新增 `gender_*_code` 三项，旧三项 `gender_question_id`/`gender_male_value`/`gender_female_value` 标记 deprecated**（保留一个发布周期，`compute_service` 不再读取，仅为避免未升级配置的部署报缺键错误）。
 - ⚠️ **性别票/问卷结果本轮仍会是 0**：线上问卷是占位内容 + 非语义自增 id，真实题目待运营录入并回填 `code`（见 BACKLOG）；契约层本身已具备真实数据时的完整输出能力。
 - ⚠️ `paper_answer` 无 `invalidated` 标志，admin 作废动作（B-049）触达不到问卷答案（记录差异，未处理）。
+- ⚠️ **`result:{year}:*:ranking` 存储值本次 fix-wave 换单位（不兼容旧缓存，需要重新 compute）**：见下方"合并前复核修复"。**部署顺序要求：上线本次修复后必须重新执行一次 `POST /api/v1/admin/compute-results`（或等下一次定时 compute）**，覆盖掉修复前算出的旧缓存；否则前端会继续读到 0..100 口径与错误分母算出的 `percentage_per_total`，直到下次 compute 才会自愈。
+
+### Fixed（合并前复核修复，2026-07-19 fix-wave）
+
+> 承接 `feat/result-graphql-compat` 分支的全分支终审："Ready to merge: with fixes"，4 项必须修复 + 3 项低成本清理全部完成，并补齐了让 #1/#2 溜过评审的数值断言缺口（此前所有 compat 测试只断言名字/计数/错误 kind，没有一条断言过具体数值）。终审依据是**旧 Rust 网关**（`thvote-be/result-query/src/query.rs`）与**前端格式化函数**（`Touhou-Vote/packages/result/src/lib/numberFormat.ts`/`characterCompare.vue`）——这两处是单位与哨兵值的权威来源。
+
+- **【必须修复】百分比字段单位错误（100 倍）**：`compute.py` 里 `vote_percentage`/`favorite_percentage`/`favorite_percentage_of_all`（角色/音乐/CP 三处，含 `rank_snapshots[0]` 里那份此前用 `int(fp*100)` 的"第二套换算"）此前产出 0..100，但旧网关产出 0..1 的**分数**，前端 `toPercentageString` 自己 `*100` 拼 `%`——两边都乘一次会在结果页每张表的"票数占比"列渲染出 `8000.00%`。已改为全链路统一输出 0..1 分数（`_segment_breakdown`/CP 的 `_rate` 本来就是分数，现在整条流水线口径一致）。历史对比快照分支（`historical` 非空时的 `rank_snapshots[1]/[2]`）当前是死代码（`compute_service.py` 固定传 `historical={}`），为免将来启用时踩同一个坑，一并改成分数。已 grep 确认仓库内没有任何调用方读取 `rank[0]["favorite_percentage"]`（`save_final_ranking` 只读 `rank`/`vote_count`/`favorite_vote_count`），改动不影响历史归档。
+- **【必须修复】`percentage_per_total` 分母错误**：`_segment_breakdown` 此前用共享的 `total_voters` 做分母，旧网关口径是 `male_percentage_per_total = male_count / total_male`——**该 label 自己的总人数**（前端列名"占总体男性比例"）。已改为按 label 的 `segment_totals`（`Counter(segment_map.get(uid, "unknown") for uid, _, _ in votes)`，与旧网关同样统计口径：本类别投票人群，不是全站投票人群），角色/音乐/CP 三处调用点同步更新。
+- **【必须修复】上届对比字段哨兵值错误**：`result_compat.py` 的 `RankingEntry` 六组 `rank_last_*`/`vote_count_last_*`/`first_vote_count_last_*`/`first_vote_percentage_last_*`/`vote_percentage_last_*` 此前硬编码 `0`/`0.0`；旧网关对"无上届数据"用 `-1`/`-1.0` 哨兵（`query.rs` 的 `.unwrap_or(-1)`），前端 `characterCompare.vue` 按 `< 0` 判断"有没有上届数据"。硬编码 0 会让第⑨/⑩届对比列显示编造出来的"上届 0 票"而不是正确的"-"。已改为 `-1`/`-1.0`。
+- **【必须修复】`ResultQuery`（旧版 JSON 标量查询）泄露内部 admin 接口**：`result.py` 此前对 `ResultNotComputedError` 直接抛裸 `ValueError("...Run POST /api/v1/admin/compute-results first.")`，且该 resolver 类没有 `map_app_errors` 包裹，message 原样透传给匿名调用方。已包一层 `map_app_errors(service="result")`，并把哨兵异常改成与 `result_compat.py` 同款的稳定 `RESULT_NOT_COMPUTED` `ValidationError`（不透出任何内部路径/堆栈）。
+- **【清理】`compute_global_stats` 第 5 个参数 `gender_map`→`segment_map`**，与其余三个已泛化的同名参数保持一致命名。
+- **【清理】加固"无泄漏"回归测试**：`test_query_character_ranking_not_computed_is_stable_and_leak_free` 此前只挑 `message`/`extensions` 两个字段序列化断言，现在改成对 `GraphQLError.formatted`（含 `locations`/`path`）做完整序列化断言——这条测试的目的本来就是证明"响应任何角落都不泄内部细节"，挑字段验证是不完整的。
+- **【清理】`compute_covote` 里两个恒真断言 `a in top_set`/`b in top_set`**：`a`/`b` 本来就来自 `top_ids`（= `top_set` 的来源），非白名单 id 在更早的 `user_voted` 构造阶段已经过滤，判断恒为 `True`，已删除。
+- **新增数值断言测试**（此前所有 compat/compute 测试只断言名字/计数/错误 kind，没有一条断言具体数值，这正是 #1/#2 能溜过上一轮评审的原因）：`compute_ranking`/`compute_cp_ranking` 的百分比字段落在 `[0, 1]`（4/5 票 → `0.8`，不是 `80.0`）；`percentage_per_total` 用 per-label 分母而非全体投票人数（2 男 1 中 → `0.5`，不是 `0.25`）；`result_compat.py._ranking_entry_from_dict` 的历史字段回填 `-1`/`-1.0`。
 
 ### 验收
-- `python3 -m pytest tests/ -q` → 462 passed, 1 skipped（跳过项依赖可选 `pymongo`）。
+- `python3 -m pytest tests/ -q` → 466 passed, 1 skipped（跳过项依赖可选 `pymongo`；新增 4 条数值断言测试，另有 2 条既有测试因百分比单位修正被重新配平到新数值）。
 - `python3 -m flake8 src/` → exit 0。
 - 12 个 `query*` 字段的 SDL 与真实前端源码（`Touhou-Vote/packages/result/src`，14 个 `.vue` 文件）逐字段/参数核对，零漂移；实际执行前端原文 `queryCharacterRanking` 查询验证 `voteYear` 回落行为与真实数据返回。
 
