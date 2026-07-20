@@ -4,8 +4,7 @@ These tables hold the canonical identity for voteable items.
 candidate_* tables reference these via voteable_id.
 """
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON, Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.sql import func
 
 from .base import Base
@@ -20,7 +19,7 @@ class VoteableCharacter(Base):
     type = Column(String(64), nullable=False, server_default="")
     first_appearance = Column(String(16), nullable=True)
     work_id = Column(Integer, ForeignKey("work.id"), nullable=True)
-    aliases = Column(JSONB, nullable=False, server_default="[]")
+    aliases = Column(JSON, nullable=False, server_default="[]")
     old_id = Column(String(64), nullable=True)
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -36,7 +35,7 @@ class VoteableMusic(Base):
     type = Column(String(64), nullable=False, server_default="")
     first_appearance = Column(String(16), nullable=True)
     work_id = Column(Integer, ForeignKey("work.id"), nullable=True)
-    aliases = Column(JSONB, nullable=False, server_default="[]")
+    aliases = Column(JSON, nullable=False, server_default="[]")
     old_id = Column(String(64), nullable=True)
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

@@ -155,7 +155,19 @@ async def test_fields_endpoint(app, admin_secret):
 
 
 @pytest.mark.asyncio
-async def test_import_dry_run_then_commit(app, admin_secret):
+async def test_import_dry_run_then_commit(app, engine, admin_secret):
+    # Seed work + voteables (required by candidate import via voteable_id)
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+    maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    async with maker() as s:
+        await s.execute(text("INSERT INTO work (id, name, type) VALUES (1, 'w', 'new')"))
+        await s.execute(text(
+            "INSERT INTO voteable_character (id, name, work_id) VALUES (10, 'A', 1)"
+        ))
+        await s.execute(text(
+            "INSERT INTO voteable_character (id, name, work_id) VALUES (11, 'B', 1)"
+        ))
+        await s.commit()
     payload = {
         "vote_year": 2030, "category": "character", "format": "auto",
         "content": '[{"voteable_id":"10"},{"voteable_id":"11"}]',

@@ -168,7 +168,7 @@ class ComputeDAO:
                 vmodel.first_appearance,
                 Work.id, Work.name, Work.type,
             )
-            .join(vmodel, model.voteable_id == vmodel.id)
+            .outerjoin(vmodel, model.voteable_id == vmodel.id)
             .outerjoin(Work, vmodel.work_id == Work.id)
             .where(model.vote_year == vote_year)
         )

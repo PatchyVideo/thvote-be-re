@@ -79,7 +79,7 @@ async def test_characters_grouped_by_work(app):
         resp = await ac.get("/api/v1/vote-objects/characters?vote_year=2026")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["vote_year"] == 2026
+    assert data["voteYear"] == 2026
 
     # Check groups by work name
     names = [i["name"] for g in data["groups"] for i in g["items"]]
