@@ -1,3 +1,12 @@
+"""Candidate junction models — which voteables participate in which vote_year.
+
+After the voteable refactor, these tables are thin junction tables:
+  candidate_character: (vote_year, voteable_id) with UNIQUE
+  candidate_music:     (vote_year, voteable_id) with UNIQUE
+
+Metadata (name, type, origin, album, ...) lives on the voteable_* tables.
+"""
+
 from sqlalchemy import Column, Integer, String, UniqueConstraint
 
 from .base import Base
@@ -8,16 +17,13 @@ class CandidateCharacter(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     vote_year = Column(Integer, nullable=False, index=True)
-    name = Column(String(255), nullable=False)
-    name_jp = Column(String(255), nullable=False, server_default="")
-    origin = Column(String, nullable=False, server_default="")
-    type = Column(String(64), nullable=False, server_default="")
-    first_appearance = Column(String(16), nullable=True)
-    # 规范化合并:非空指向主候选 id;NULL = 自身即规范化主候选
-    merged_into = Column(Integer, nullable=True, index=True)
+    voteable_id = Column(Integer, nullable=False, index=True)
 
     __table_args__ = (
-        UniqueConstraint("vote_year", "name", name="uq_candidate_char_year_name"),
+        UniqueConstraint(
+            "vote_year", "voteable_id",
+            name="uq_candidate_char_year_voteable",
+        ),
     )
 
 
@@ -26,16 +32,13 @@ class CandidateMusic(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     vote_year = Column(Integer, nullable=False, index=True)
-    name = Column(String(255), nullable=False)
-    name_jp = Column(String(255), nullable=False, server_default="")
-    type = Column(String(64), nullable=False, server_default="")
-    first_appearance = Column(String(16), nullable=True)
-    album = Column(String(255), nullable=True)
-    # 规范化合并:非空指向主候选 id;NULL = 自身即规范化主候选
-    merged_into = Column(Integer, nullable=True, index=True)
+    voteable_id = Column(Integer, nullable=False, index=True)
 
     __table_args__ = (
-        UniqueConstraint("vote_year", "name", name="uq_candidate_music_year_name"),
+        UniqueConstraint(
+            "vote_year", "voteable_id",
+            name="uq_candidate_music_year_voteable",
+        ),
     )
 
 
@@ -49,6 +52,7 @@ class FinalRanking(Base):
     name = Column(String(255), nullable=False)
     vote_count = Column(Integer, nullable=False)
     first_vote_count = Column(Integer, nullable=False)
+    voteable_id = Column(Integer, nullable=True, index=True)
 
     __table_args__ = (
         UniqueConstraint(

@@ -7,6 +7,7 @@ PostgreSQL数据库模型定义
 from .activity_log import ActivityLog
 from .base import Base
 from .candidate import CandidateCharacter, CandidateMusic, FinalRanking
+from .voteable import VoteableCharacter, VoteableMusic
 from .character import Character
 from .cp import Cp
 from .dojin_nomination import DojinNomination
@@ -57,5 +58,7 @@ __all__ = [
     "RawWorkSubmit",
     "SyncRunLog",
     "User",
+    "VoteableCharacter",
+    "VoteableMusic",
     "VoterReview",
 ]
