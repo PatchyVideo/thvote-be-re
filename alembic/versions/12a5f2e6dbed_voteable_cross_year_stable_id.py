@@ -78,9 +78,9 @@ def upgrade() -> None:
     op.execute("""
         INSERT INTO voteable_character (name, name_jp, type, first_appearance, work_id)
         SELECT c.name,
-               MAX(c.name_jp) FILTER (WHERE c.name_jp <> '')     AS name_jp,
-               MAX(c.type)    FILTER (WHERE c.type <> '')        AS type,
-               MAX(c.first_appearance)                           AS first_appearance,
+               COALESCE(MAX(c.name_jp) FILTER (WHERE c.name_jp <> ''), '') AS name_jp,
+               COALESCE(MAX(c.type)    FILTER (WHERE c.type <> ''), '')    AS type,
+               MAX(c.first_appearance)                                     AS first_appearance,
                w.id AS work_id
         FROM candidate_character c
         LEFT JOIN work w ON w.name = c.origin
@@ -90,9 +90,9 @@ def upgrade() -> None:
     op.execute("""
         INSERT INTO voteable_music (name, name_jp, type, first_appearance, work_id)
         SELECT c.name,
-               MAX(c.name_jp) FILTER (WHERE c.name_jp <> '')     AS name_jp,
-               MAX(c.type)    FILTER (WHERE c.type <> '')        AS type,
-               MAX(c.first_appearance)                           AS first_appearance,
+               COALESCE(MAX(c.name_jp) FILTER (WHERE c.name_jp <> ''), '') AS name_jp,
+               COALESCE(MAX(c.type)    FILTER (WHERE c.type <> ''), '')    AS type,
+               MAX(c.first_appearance)                                     AS first_appearance,
                w.id AS work_id
         FROM candidate_music c
         LEFT JOIN work w ON w.name = c.album
