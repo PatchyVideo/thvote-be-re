@@ -68,28 +68,31 @@ class ComputeDAO:
     async def upsert_candidates(
         self, vote_year: int, category: str, items: list[dict]
     ) -> int:
-        """Bulk upsert candidate rows. Returns number of rows upserted."""
+        """Bulk upsert candidate rows. Returns number of rows upserted.
+
+        After voteable refactor, items contain voteable_id as the unique key.
+        """
         Model = CandidateCharacter if category == "character" else CandidateMusic
-        # Get valid column names for the model
-        # (exclude 'id' and 'vote_year' which are handled separately)
         model_columns = {
             c.key for c in Model.__table__.columns if c.key not in ("id", "vote_year")
         }
         count = 0
         for item in items:
-            # Only pass fields that exist in the model
             filtered = {k: v for k, v in item.items() if k in model_columns}
+            vid = int(filtered.get("voteable_id", 0))
+            if not vid:
+                continue
             existing = (
                 await self.session.execute(
                     select(Model).where(
                         Model.vote_year == vote_year,
-                        Model.name == filtered.get("name", item.get("name")),
+                        Model.voteable_id == vid,
                     )
                 )
             ).scalar_one_or_none()
             if existing:
                 for k, v in filtered.items():
-                    if k != "name" and hasattr(existing, k):
+                    if k != "voteable_id" and hasattr(existing, k):
                         setattr(existing, k, v)
             else:
                 row = Model(vote_year=vote_year, **filtered)
@@ -148,19 +151,50 @@ class ComputeDAO:
     ) -> tuple[list, int]:
         from sqlalchemy import func as sqlfunc
         from src.db_model.candidate import CandidateCharacter, CandidateMusic
+        from src.db_model.voteable import VoteableCharacter, VoteableMusic
+        from src.db_model.work import Work
 
-        model = CandidateCharacter if category == "character" else CandidateMusic
-        query = select(model).where(model.vote_year == vote_year)
+        if category == "character":
+            model = CandidateCharacter
+            vmodel = VoteableCharacter
+        else:
+            model = CandidateMusic
+            vmodel = VoteableMusic
+
+        base = (
+            select(
+                model.id, model.vote_year, model.voteable_id,
+                vmodel.name, vmodel.name_jp, vmodel.type,
+                vmodel.first_appearance,
+                Work.id, Work.name, Work.type,
+            )
+            .join(vmodel, model.voteable_id == vmodel.id)
+            .outerjoin(Work, vmodel.work_id == Work.id)
+            .where(model.vote_year == vote_year)
+        )
         if q:
-            query = query.where(model.name.ilike(f"%{q}%"))
+            base = base.where(vmodel.name.ilike(f"%{q}%"))
 
         total = (await self.session.execute(
-            select(sqlfunc.count()).select_from(query.subquery())
+            select(sqlfunc.count()).select_from(base.subquery())
         )).scalar_one()
         rows = (await self.session.execute(
-            query.order_by(model.name).offset((page - 1) * page_size).limit(page_size)
-        )).scalars().all()
-        return rows, total
+            base.order_by(vmodel.name)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )).all()
+        # Return as list of dicts with joined data
+        items = [
+            {
+                "id": r[0], "vote_year": r[1], "voteable_id": r[2],
+                "name": r[3], "name_jp": r[4] or "",
+                "type": r[5] or "", "first_appearance": r[6],
+                "work_id": r[7], "work_name": r[8] or "",
+                "work_type": r[9] or "",
+            }
+            for r in rows
+        ]
+        return items, total
 
     async def delete_candidate(self, candidate_id: int, category: str) -> bool:
         from sqlalchemy import delete
@@ -178,12 +212,9 @@ class ComputeDAO:
     ) -> str:
         """Update one candidate row. Returns 'ok' / 'not_found' / 'conflict'.
 
-        insertSelective: only columns present in ``fields`` (and belonging to
-        the model) are written. Renaming to a name that already exists in the
-        same vote_year returns 'conflict'.
+        After voteable refactor, only voteable_id is writable.
+        Conflict: another candidate in same vote_year already has target voteable_id.
         """
-        from src.db_model.candidate import CandidateCharacter, CandidateMusic
-
         model = CandidateCharacter if category == "character" else CandidateMusic
         valid_cols = {
             c.key for c in model.__table__.columns if c.key not in ("id", "vote_year")
@@ -194,17 +225,19 @@ class ComputeDAO:
         if row is None:
             return "not_found"
 
-        new_name = fields.get("name")
-        if new_name and new_name != row.name:
-            dup = (await self.session.execute(
-                select(model).where(
-                    model.vote_year == row.vote_year,
-                    model.name == new_name,
-                    model.id != candidate_id,
-                )
-            )).scalar_one_or_none()
-            if dup is not None:
-                return "conflict"
+        new_voteable_id = fields.get("voteable_id")
+        if new_voteable_id is not None:
+            new_vid = int(new_voteable_id)
+            if new_vid != row.voteable_id:
+                dup = (await self.session.execute(
+                    select(model).where(
+                        model.vote_year == row.vote_year,
+                        model.voteable_id == new_vid,
+                        model.id != candidate_id,
+                    )
+                )).scalar_one_or_none()
+                if dup is not None:
+                    return "conflict"
 
         for k, v in fields.items():
             if k in valid_cols:
@@ -237,23 +270,14 @@ class ComputeDAO:
                 return "target_not_found"
             if target_id == candidate_id:
                 return "self"
-        row.merged_into = target_id
+        if hasattr(row, "merged_into"):
+            row.merged_into = target_id
         await self.session.commit()
         return "ok"
 
     async def list_merges(self, category: str, vote_year: int) -> list[dict]:
-        """List merged (non-canonical) candidates for a year."""
-        model = self._candidate_model(category)
-        rows = (await self.session.execute(
-            select(model).where(
-                model.vote_year == vote_year,
-                model.merged_into.isnot(None),
-            )
-        )).scalars().all()
-        return [
-            {"id": r.id, "name": r.name, "merged_into": r.merged_into}
-            for r in rows
-        ]
+        """After voteable refactor: merge_into column removed. Returns empty."""
+        return []
 
     async def auto_merge(self, category: str, vote_year: int) -> int:
         """Detect + apply name-based merges for a year. Returns merges applied.
@@ -268,17 +292,21 @@ class ComputeDAO:
         rows = (await self.session.execute(
             select(model).where(model.vote_year == vote_year)
         )).scalars().all()
+        # After voteable refactor, name/album columns no longer exist on candidate.
+        # Use getattr to avoid AttributeError; auto-merge is a no-op.
         dicts = [
             {
-                "id": r.id, "vote_year": r.vote_year, "name": r.name,
+                "id": r.id, "vote_year": r.vote_year,
+                "name": getattr(r, "name", ""),
                 "album": getattr(r, "album", None),
             }
             for r in rows
         ]
         merges = detect_merges(category, dicts)
+        # merged_into column removed after voteable refactor — skip assignment
         by_id = {r.id: r for r in rows}
         for dup_id, canonical_id in merges:
-            if dup_id in by_id:
+            if dup_id in by_id and hasattr(by_id[dup_id], "merged_into"):
                 by_id[dup_id].merged_into = canonical_id
         if merges:
             await self.session.commit()

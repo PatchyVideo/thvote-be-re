@@ -233,12 +233,12 @@ async def list_candidates(
     data = await service.list_candidates(category, year, q, page, page_size)
     items = [
         {
-            "id": r.id, "vote_year": r.vote_year, "name": r.name,
-            "name_jp": r.name_jp or "",
-            "type": r.type or "",
-            "origin": getattr(r, "origin", None),
-            "first_appearance": r.first_appearance,
-            "album": getattr(r, "album", None),
+            "id": r["id"], "vote_year": r["vote_year"], "name": r["name"],
+            "name_jp": r.get("name_jp", ""),
+            "type": r.get("type", ""),
+            "origin": r.get("work_name", ""),
+            "first_appearance": r.get("first_appearance"),
+            "album": r.get("work_name", ""),
         }
         for r in data["items"]
     ]

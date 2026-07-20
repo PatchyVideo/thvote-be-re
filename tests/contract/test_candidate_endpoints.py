@@ -19,7 +19,7 @@ async def test_fields_shape(app, admin_secret):
     assert resp.status_code == 200
     data = resp.json()
     assert data["category"] == "music"
-    assert any(f["name"] == "album" for f in data["fields"])
+    assert any(f["name"] == "voteable_id" for f in data["fields"])
 
 
 @pytest.mark.asyncio

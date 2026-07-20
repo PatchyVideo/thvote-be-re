@@ -58,31 +58,48 @@ def admin_secret():
     cfg._settings_instance = None
 
 
+async def _seed(app):
+    """Seed work + voteable + candidate for tests."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
 # ── DAO: update_candidate ────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_update_candidate_ok(db_session):
     from src.apps.result.compute_dao import ComputeDAO
 
+    # Seed: work → voteable → candidate
     await db_session.execute(text(
-        "INSERT INTO candidate_character (vote_year, name, name_jp, origin, type) "
-        "VALUES (2026, '灵梦', '霊夢', '红魔乡', 'human')"
+        "INSERT INTO work (id, name, type) VALUES (1, '红魔乡', 'new')"
+    ))
+    await db_session.execute(text(
+        "INSERT INTO voteable_character (id, name, work_id) VALUES (10, '灵梦', 1)"
+    ))
+    await db_session.execute(text(
+        "INSERT INTO candidate_character (vote_year, voteable_id) VALUES (2026, 10)"
     ))
     await db_session.commit()
     row_id = (await db_session.execute(
-        text("SELECT id FROM candidate_character WHERE name='灵梦'")
+        text("SELECT id FROM candidate_character WHERE voteable_id=10")
     )).scalar_one()
 
     dao = ComputeDAO(db_session)
-    result = await dao.update_candidate(
-        row_id, "character", {"name_jp": "博麗霊夢", "type": "shrine"}
-    )
+    # create another voteable to relink to
+    await db_session.execute(text(
+        "INSERT INTO voteable_character (id, name, work_id) VALUES (11, '灵梦MarkII', 1)"
+    ))
+    await db_session.commit()
+    result = await dao.update_candidate(row_id, "character", {"voteable_id": "11"})
     assert result == "ok"
 
-    name_jp = (await db_session.execute(
-        text("SELECT name_jp FROM candidate_character WHERE id=:i"), {"i": row_id}
+    new_vid = (await db_session.execute(
+        text("SELECT voteable_id FROM candidate_character WHERE id=:i"), {"i": row_id}
     )).scalar_one()
-    assert name_jp == "博麗霊夢"
+    assert new_vid == 11
 
 
 @pytest.mark.asyncio
@@ -90,26 +107,36 @@ async def test_update_candidate_not_found(db_session):
     from src.apps.result.compute_dao import ComputeDAO
 
     dao = ComputeDAO(db_session)
-    assert await dao.update_candidate(999999, "character", {"name": "x"}) == "not_found"
+    assert await dao.update_candidate(999999, "character", {"voteable_id": "1"}) == "not_found"
 
 
 @pytest.mark.asyncio
-async def test_update_candidate_name_conflict(db_session):
+async def test_update_candidate_conflict(db_session):
     from src.apps.result.compute_dao import ComputeDAO
 
     await db_session.execute(text(
-        "INSERT INTO candidate_character (vote_year, name) VALUES (2026, '灵梦')"
+        "INSERT INTO work (id, name, type) VALUES (1, '红魔乡', 'new')"
     ))
     await db_session.execute(text(
-        "INSERT INTO candidate_character (vote_year, name) VALUES (2026, '魔理沙')"
+        "INSERT INTO voteable_character (id, name, work_id) VALUES (10, 'A', 1)"
+    ))
+    await db_session.execute(text(
+        "INSERT INTO voteable_character (id, name, work_id) VALUES (11, 'B', 1)"
+    ))
+    await db_session.execute(text(
+        "INSERT INTO candidate_character (vote_year, voteable_id) VALUES (2031, 10)"
+    ))
+    await db_session.execute(text(
+        "INSERT INTO candidate_character (vote_year, voteable_id) VALUES (2031, 11)"
     ))
     await db_session.commit()
     rid = (await db_session.execute(
-        text("SELECT id FROM candidate_character WHERE name='魔理沙'")
+        text("SELECT id FROM candidate_character WHERE voteable_id=11 AND vote_year=2031")
     )).scalar_one()
 
     dao = ComputeDAO(db_session)
-    assert await dao.update_candidate(rid, "character", {"name": "灵梦"}) == "conflict"
+    # Try to relink candidate B to voteable 10 (already taken by A in same year)
+    assert await dao.update_candidate(rid, "character", {"voteable_id": "10"}) == "conflict"
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -124,15 +151,14 @@ async def test_fields_endpoint(app, admin_secret):
     assert resp.status_code == 200
     data = resp.json()
     names = {f["name"]: f["required"] for f in data["fields"]}
-    assert names["name"] is True
-    assert names["name_jp"] is False
+    assert names["voteable_id"] is True
 
 
 @pytest.mark.asyncio
 async def test_import_dry_run_then_commit(app, admin_secret):
     payload = {
         "vote_year": 2030, "category": "character", "format": "auto",
-        "content": '[{"name":"灵梦","name_jp":"霊夢"},{"type":"human"}]',
+        "content": '[{"voteable_id":"10"},{"voteable_id":"11"}]',
         "dry_run": True,
     }
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
@@ -140,21 +166,21 @@ async def test_import_dry_run_then_commit(app, admin_secret):
                            headers={"X-Admin-Secret": admin_secret})
         assert r1.status_code == 200
         d1 = r1.json()
-        assert d1["valid_count"] == 1
+        assert d1["valid_count"] == 2
         assert d1["imported"] == 0
-        assert len(d1["rejected"]) == 1
+        assert len(d1["rejected"]) == 0
 
         payload["dry_run"] = False
         r2 = await ac.post("/api/v1/admin/candidates/import", json=payload,
                            headers={"X-Admin-Secret": admin_secret})
         assert r2.status_code == 200
-        assert r2.json()["imported"] == 1
+        assert r2.json()["imported"] == 2
 
         r3 = await ac.get(
             "/api/v1/admin/candidates?category=character&vote_year=2030",
             headers={"X-Admin-Secret": admin_secret},
         )
-        assert r3.json()["total"] == 1
+        assert r3.json()["total"] == 2
 
 
 @pytest.mark.asyncio
@@ -169,18 +195,28 @@ async def test_import_parse_error(app, admin_secret):
 
 @pytest.mark.asyncio
 async def test_edit_endpoint_conflict(app, db_session, admin_secret):
+    # Seed work + voteables + candidates
     await db_session.execute(text(
-        "INSERT INTO candidate_character (vote_year, name) VALUES (2031, 'A')"
+        "INSERT INTO work (id, name, type) VALUES (1, 'w', 'new')"
     ))
     await db_session.execute(text(
-        "INSERT INTO candidate_character (vote_year, name) VALUES (2031, 'B')"
+        "INSERT INTO voteable_character (id, name, work_id) VALUES (10, 'A', 1)"
+    ))
+    await db_session.execute(text(
+        "INSERT INTO voteable_character (id, name, work_id) VALUES (11, 'B', 1)"
+    ))
+    await db_session.execute(text(
+        "INSERT INTO candidate_character (vote_year, voteable_id) VALUES (2031, 10)"
+    ))
+    await db_session.execute(text(
+        "INSERT INTO candidate_character (vote_year, voteable_id) VALUES (2031, 11)"
     ))
     await db_session.commit()
     rid = (await db_session.execute(
-        text("SELECT id FROM candidate_character WHERE name='B' AND vote_year=2031")
+        text("SELECT id FROM candidate_character WHERE voteable_id=11 AND vote_year=2031")
     )).scalar_one()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.put(f"/api/v1/admin/candidates/{rid}",
-                            json={"category": "character", "fields": {"name": "A"}},
+                            json={"category": "character", "fields": {"voteable_id": "10"}},
                             headers={"X-Admin-Secret": admin_secret})
     assert resp.status_code == 409
