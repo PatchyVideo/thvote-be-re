@@ -8,6 +8,7 @@ from .activity_log import ActivityLog
 from .base import Base
 from .candidate import CandidateCharacter, CandidateMusic, FinalRanking
 from .voteable import VoteableCharacter, VoteableMusic
+from .work import Work
 from .character import Character
 from .cp import Cp
 from .dojin_nomination import DojinNomination
@@ -61,4 +62,5 @@ __all__ = [
     "VoteableCharacter",
     "VoteableMusic",
     "VoterReview",
+    "Work",
 ]
