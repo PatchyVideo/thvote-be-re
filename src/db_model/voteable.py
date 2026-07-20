@@ -22,7 +22,9 @@ class VoteableCharacter(Base):
     work_id = Column(Integer, ForeignKey("work.id"), nullable=True)
     aliases = Column(JSONB, nullable=False, server_default="[]")
     old_id = Column(String(64), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class VoteableMusic(Base):
@@ -36,4 +38,6 @@ class VoteableMusic(Base):
     work_id = Column(Integer, ForeignKey("work.id"), nullable=True)
     aliases = Column(JSONB, nullable=False, server_default="[]")
     old_id = Column(String(64), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

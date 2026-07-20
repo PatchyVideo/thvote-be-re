@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>问卷管理 — 重设计预览</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --panel:#ffffff; --ink:#1f2430; --muted:#8a91a3; --line:#eaecf2;
+    --indigo:#4f46e5; --indigo-soft:#eef0ff; --teal:#0ea5a4; --amber:#d97706;
+    --red:#e11d48; --green:#16a34a; --slate:#64748b;
+    --shadow:0 1px 2px rgba(16,24,40,.04),0 4px 16px rgba(16,24,40,.06);
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);
+       -webkit-font-smoothing:antialiased;line-height:1.45}
+  .wrap{max-width:980px;margin:0 auto;padding:1.4rem 1.2rem 4rem}
+
+  /* preview switcher */
+  .pv-bar{display:flex;gap:.4rem;align-items:center;margin-bottom:1.2rem;flex-wrap:wrap}
+  .pv-bar .t{font-weight:700;color:var(--muted);margin-right:auto;font-size:.85rem;letter-spacing:.02em}
+  .pv-bar button{border:1px solid var(--line);background:#fff;color:var(--slate);padding:.4rem .8rem;
+       border-radius:8px;cursor:pointer;font-size:.85rem;font-weight:600}
+  .pv-bar button.on{background:var(--indigo);border-color:var(--indigo);color:#fff}
+
+  /* generic */
+  .page-head{display:flex;align-items:center;gap:.7rem;margin-bottom:1.1rem}
+  .page-head h1{font-size:1.25rem;font-weight:700}
+  .page-head .sub{color:var(--muted);font-size:.85rem}
+  .spacer{margin-left:auto}
+  .btn{border:none;border-radius:9px;padding:.5rem .9rem;font-size:.85rem;font-weight:600;cursor:pointer;
+       display:inline-flex;align-items:center;gap:.4rem;transition:.15s;font-family:inherit}
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{background:var(--indigo);color:#fff}
+  .btn.primary:hover{background:#4338ca}
+  .btn.ghost{background:#fff;color:var(--slate);border:1px solid var(--line)}
+  .btn.ghost:hover{border-color:#c9cdd9;color:var(--ink)}
+  .btn.sm{padding:.32rem .55rem;font-size:.78rem;border-radius:7px}
+  .icobtn{border:1px solid transparent;background:transparent;color:var(--muted);cursor:pointer;
+       width:30px;height:30px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;
+       font-size:.95rem;transition:.12s}
+  .icobtn:hover{background:#f1f2f7;color:var(--ink)}
+  .icobtn.danger:hover{background:#fff1f3;color:var(--red)}
+
+  /* list cards */
+  .qlist{display:grid;grid-template-columns:1fr 1fr;gap:.85rem}
+  @media(max-width:720px){.qlist{grid-template-columns:1fr}}
+  .qcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1rem 1.1rem;
+       box-shadow:var(--shadow);position:relative;display:flex;flex-direction:column;gap:.6rem;
+       transition:.15s;cursor:pointer}
+  .qcard:hover{border-color:#cdd2e4;box-shadow:0 6px 22px rgba(16,24,40,.10);transform:translateY(-1px)}
+  .qcard .row1{display:flex;align-items:center;gap:.5rem}
+  .qcard .title{font-weight:700;font-size:1.02rem}
+  .qcard .key{font-family:ui-monospace,monospace;font-size:.74rem;color:var(--muted);
+       background:#f4f5f9;padding:.1rem .4rem;border-radius:5px}
+  .qcard .intro{color:var(--muted);font-size:.83rem;min-height:1.1em}
+  .qcard .meta{display:flex;gap:1.1rem;align-items:center;color:var(--slate);font-size:.8rem;
+       border-top:1px dashed var(--line);padding-top:.55rem;margin-top:.1rem}
+  .qcard .meta b{color:var(--ink);font-weight:700}
+  .qcard .acts{position:absolute;top:.7rem;right:.7rem;display:flex;gap:.15rem;opacity:0;transition:.15s}
+  .qcard:hover .acts{opacity:1}
+
+  .pill{display:inline-flex;align-items:center;gap:.25rem;padding:.12rem .5rem;border-radius:999px;
+       font-size:.72rem;font-weight:700;line-height:1.6}
+  .pill.main{background:var(--indigo-soft);color:var(--indigo)}
+  .pill.extra{background:#f1f3f7;color:var(--slate)}
+  .pill.req{background:#fff0f3;color:var(--red)}
+  .pill.hidden{background:#fff7ed;color:var(--amber)}
+
+  /* empty / dashed add */
+  .qadd{border:1.5px dashed #d3d8e6;border-radius:14px;display:flex;align-items:center;justify-content:center;
+       gap:.5rem;color:var(--indigo);font-weight:600;cursor:pointer;min-height:118px;background:#fcfcff}
+  .qadd:hover{background:var(--indigo-soft);border-color:var(--indigo)}
+
+  /* editor */
+  .qhead{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+       padding:1rem 1.2rem;display:flex;align-items:center;gap:.7rem;margin-bottom:1rem}
+  .qhead .back{cursor:pointer;color:var(--muted);font-size:1.1rem;padding:.2rem .4rem;border-radius:7px}
+  .qhead .back:hover{background:#f1f2f7;color:var(--ink)}
+  .qhead .title{font-weight:700;font-size:1.1rem}
+  .qhead .key{font-family:ui-monospace,monospace;font-size:.75rem;color:var(--muted)}
+
+  .group{background:var(--panel);border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow);
+       margin-bottom:.85rem;overflow:hidden}
+  .group>.ghead{display:flex;align-items:center;gap:.6rem;padding:.7rem .9rem;cursor:pointer;
+       border-left:4px solid var(--teal)}
+  .group>.ghead:hover{background:#fbfcfe}
+  .group .chev{color:var(--muted);transition:.2s;font-size:.8rem}
+  .group.collapsed .chev{transform:rotate(-90deg)}
+  .group .gname{font-weight:700;font-size:.92rem}
+  .group .gcount{color:var(--muted);font-size:.78rem}
+  .group .gbody{padding:.2rem .9rem .8rem 1.3rem}
+  .group.collapsed .gbody{display:none}
+  .ghead .acts,.ques .acts{display:flex;gap:.1rem;opacity:0;transition:.12s}
+  .group>.ghead:hover .acts,.ques:hover .acts{opacity:1}
+
+  .ques{border:1px solid var(--line);border-radius:10px;margin:.55rem 0;padding:.6rem .75rem;background:#fff}
+  .ques:hover{border-color:#dfe3ef}
+  .ques .qrow{display:flex;align-items:center;gap:.5rem}
+  .ques .qtext{font-weight:600;font-size:.9rem}
+  .tbadge{font-size:.7rem;font-weight:700;padding:.1rem .45rem;border-radius:6px}
+  .tbadge.single{background:#e8f0fe;color:#1a56db}
+  .tbadge.multiple{background:#f3e8ff;color:#7c3aed}
+  .tbadge.input{background:#e7f6ec;color:#15803d}
+
+  .opts{display:flex;flex-wrap:wrap;gap:.4rem;margin:.5rem 0 .1rem .2rem}
+  .opt{display:inline-flex;align-items:center;gap:.4rem;background:#f7f8fb;border:1px solid var(--line);
+       border-radius:8px;padding:.28rem .55rem;font-size:.82rem}
+  .opt .lbl{font-weight:500}
+  .opt .tag{font-size:.66rem;font-weight:700;padding:.05rem .35rem;border-radius:5px}
+  .opt .tag.rel{background:#eef0ff;color:var(--indigo)}
+  .opt .tag.mut{background:#fff1f3;color:var(--red)}
+  .opt .oa{opacity:0;transition:.12s;display:flex;gap:.05rem}
+  .opt:hover .oa{opacity:1}
+  .opt .oa span{cursor:pointer;color:var(--muted);padding:0 .15rem;border-radius:4px}
+  .opt .oa span:hover{color:var(--ink)}
+  .opt.add{cursor:pointer;color:var(--indigo);border-style:dashed;font-weight:600;background:#fcfcff}
+  .opt.add:hover{background:var(--indigo-soft)}
+  .addq{margin:.4rem 0 .2rem;color:var(--indigo);font-weight:600;font-size:.82rem;cursor:pointer;
+       display:inline-flex;gap:.35rem;align-items:center}
+  .addq:hover{text-decoration:underline}
+  .addgroup{border:1.5px dashed #d3d8e6;border-radius:13px;text-align:center;padding:.8rem;color:var(--indigo);
+       font-weight:600;cursor:pointer;background:#fcfcff}
+  .addgroup:hover{background:var(--indigo-soft);border-color:var(--indigo)}
+
+  /* modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(20,24,38,.4);backdrop-filter:blur(2px);
+       display:flex;align-items:flex-start;justify-content:center;padding-top:7vh;z-index:150}
+  .modal{width:480px;max-width:92vw;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.28);overflow:hidden}
+  .modal-head{padding:1rem 1.2rem;font-weight:700;font-size:1rem;border-bottom:1px solid var(--line)}
+  .modal-body{padding:1.1rem 1.2rem;max-height:64vh;overflow-y:auto}
+  .modal-foot{display:flex;gap:.6rem;justify-content:flex-end;padding:.9rem 1.2rem;border-top:1px solid var(--line);background:#fafbfd}
+  .field{margin-bottom:.85rem}
+  .field>label{display:block;font-size:.78rem;color:var(--slate);font-weight:600;margin-bottom:.3rem}
+  .field input[type=text],.field input[type=number],.field select,.field textarea{
+       width:100%;border:1px solid #d6dae6;border-radius:9px;padding:.55rem .7rem;font-family:inherit;
+       font-size:.88rem;color:var(--ink);background:#fff;transition:.12s}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--indigo);
+       box-shadow:0 0 0 3px var(--indigo-soft)}
+  .field .hint{font-size:.74rem;color:var(--muted);margin-top:.25rem}
+  .check{display:flex;align-items:center;gap:.5rem;font-size:.86rem;font-weight:500;cursor:pointer}
+  .seg{display:inline-flex;background:#f1f3f7;border-radius:9px;padding:.2rem;gap:.2rem}
+  .seg span{padding:.35rem .8rem;border-radius:7px;cursor:pointer;font-size:.82rem;font-weight:600;color:var(--slate)}
+  .seg span.on{background:#fff;color:var(--indigo);box-shadow:var(--shadow)}
+  .picklist{border:1px solid var(--line);border-radius:9px;max-height:150px;overflow-y:auto;padding:.3rem}
+  .picklist label{display:flex;align-items:center;gap:.5rem;padding:.32rem .45rem;border-radius:7px;
+       font-size:.83rem;cursor:pointer}
+  .picklist label:hover{background:#f6f7fb}
+  textarea.code{font-family:ui-monospace,monospace;font-size:.82rem;min-height:220px}
+  .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1f2430;color:#fff;
+       padding:.7rem 1.2rem;border-radius:10px;font-size:.88rem;opacity:0;transition:.25s;pointer-events:none;z-index:300}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="pv-bar">
+    <span class="t">▣ 重设计预览 · 三种视图可切换 · 数据为示例</span>
+    <button id="pv-list" class="on" onclick="pv('list')">问卷列表</button>
+    <button id="pv-editor" onclick="pv('editor')">嵌套编辑器</button>
+    <button id="pv-modals" onclick="pv('modals')">弹窗示例</button>
+  </div>
+  <div id="view"></div>
+</div>
+<div id="modal-root"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+// ───────── mock data ─────────
+const DATA = [
+  { id:1, key:"main_required", title:"主问卷", introduction:"参与本届东方人气投票的必答问卷", category:"main", required:true,
+    questionGroups:[
+      { id:10, order:1, hiddenByDefault:false, questions:[
+        { id:100, type:"Single", content:"你的性别是？", introduction:"", maxInputLen:1000, order:1, options:[
+          { id:1000, content:"男", relatedQuestionIds:[], mutexOptionIds:[], optionGroup:0, order:0 },
+          { id:1001, content:"女", relatedQuestionIds:[], mutexOptionIds:[], optionGroup:0, order:1 },
+          { id:1002, content:"不愿透露", relatedQuestionIds:[], mutexOptionIds:[1000,1001], optionGroup:0, order:2 },
+        ]},
+        { id:101, type:"Multiple", content:"你通过哪些渠道了解东方Project？", introduction:"可多选", maxInputLen:1000, order:2, options:[
+          { id:1010, content:"游戏本体", relatedQuestionIds:[], mutexOptionIds:[], optionGroup:0, order:0 },
+          { id:1011, content:"二次创作", relatedQuestionIds:[102], mutexOptionIds:[], optionGroup:0, order:1 },
+          { id:1012, content:"音乐", relatedQuestionIds:[], mutexOptionIds:[], optionGroup:0, order:2 },
+        ]},
+      ]},
+      { id:11, order:2, hiddenByDefault:true, questions:[
+        { id:102, type:"Input", content:"最喜欢的二创作者是？", introduction:"选了「二次创作」才显示", maxInputLen:50, order:1, options:[] },
+      ]},
+    ]},
+  { id:2, key:"extra_feedback", title:"附加反馈", introduction:"选填，帮助我们改进下届投票", category:"extra", required:false,
+    questionGroups:[
+      { id:20, order:1, hiddenByDefault:false, questions:[
+        { id:200, type:"Single", content:"本届投票体验如何？", introduction:"", maxInputLen:1000, order:1, options:[
+          { id:2000, content:"很好", relatedQuestionIds:[], mutexOptionIds:[], optionGroup:0, order:0 },
+          { id:2001, content:"一般", relatedQuestionIds:[], mutexOptionIds:[], optionGroup:0, order:1 },
+        ]},
+      ]},
+    ]},
+];
+function countQ(q){return q.questionGroups.reduce((a,g)=>a+g.questions.length,0)}
+
+// ───────── view switch ─────────
+let collapsed = {};
+function pv(v){
+  ['list','editor','modals'].forEach(x=>document.getElementById('pv-'+x).classList.toggle('on',x===v));
+  if(v==='list') renderList();
+  else if(v==='editor') renderEditor(1);
+  else renderModalsDemo();
+}
+
+// ───────── list ─────────
+function renderList(){
+  const cards = DATA.map(q=>`
+    <div class="qcard" onclick="pv('editor')">
+      <div class="acts">
+        <button class="icobtn" title="编辑" onclick="event.stopPropagation();pv('editor')">✎</button>
+        <button class="icobtn danger" title="删除" onclick="event.stopPropagation();toast('（示例）删除问卷')">🗑</button>
+      </div>
+      <div class="row1">
+        <span class="title">${q.title}</span>
+        <span class="pill ${q.category}">${q.category==='main'?'主问卷':'附加'}</span>
+        ${q.required?'<span class="pill req">必填</span>':''}
+      </div>
+      <div class="key">${q.key}</div>
+      <div class="intro">${q.introduction||'—'}</div>
+      <div class="meta">
+        <span><b>${q.questionGroups.length}</b> 题组</span>
+        <span><b>${countQ(q)}</b> 问题</span>
+        <span class="spacer"></span>
+        <span style="color:var(--indigo);font-weight:600">编辑 →</span>
+      </div>
+    </div>`).join('');
+  document.getElementById('view').innerHTML = `
+    <div class="page-head">
+      <h1>问卷管理</h1>
+      <span class="sub">不分年份 · 持续迭代</span>
+      <span class="spacer"></span>
+      <button class="btn ghost" onclick="renderImportModal()">⇪ 整树导入</button>
+      <button class="btn primary" onclick="renderQnMetaModal()">＋ 新建问卷</button>
+    </div>
+    <div class="qlist">
+      ${cards}
+      <div class="qadd" onclick="renderQnMetaModal()">＋ 新建问卷</div>
+    </div>`;
+}
+
+// ───────── editor ─────────
+function renderEditor(id){
+  const q = DATA.find(x=>x.id===id);
+  const groups = q.questionGroups.map(g=>{
+    const isCol = collapsed['g'+g.id];
+    const ques = g.questions.map(qu=>{
+      const opts = qu.options.map(o=>{
+        const rel = o.relatedQuestionIds.length?`<span class="tag rel" title="选中后展示问题 ${o.relatedQuestionIds.join(',')}">↪ ${o.relatedQuestionIds.length}</span>`:'';
+        const mut = o.mutexOptionIds.length?`<span class="tag mut" title="与选项 ${o.mutexOptionIds.join(',')} 互斥">⊘ ${o.mutexOptionIds.length}</span>`:'';
+        return `<span class="opt">
+          <span class="lbl">${o.content}</span>${rel}${mut}
+          <span class="oa"><span title="编辑" onclick="renderOptModal()">✎</span><span title="删除" onclick="toast('（示例）删除选项')">🗑</span></span>
+        </span>`;
+      }).join('');
+      const optWrap = qu.type==='Input'
+        ? `<div class="opts"><span style="color:var(--muted);font-size:.8rem">文本输入题 · 最大 ${qu.maxInputLen} 字</span></div>`
+        : `<div class="opts">${opts}<span class="opt add" onclick="renderOptModal()">＋ 选项</span></div>`;
+      return `<div class="ques">
+        <div class="qrow">
+          <span class="tbadge ${qu.type.toLowerCase()}">${({Single:'单选',Multiple:'多选',Input:'输入'})[qu.type]}</span>
+          <span class="qtext">${qu.content}</span>
+          <span class="spacer"></span>
+          <span class="acts">
+            <button class="icobtn" title="编辑问题" onclick="renderQuModal()">✎</button>
+            <button class="icobtn danger" title="删除问题" onclick="toast('（示例）删除问题')">🗑</button>
+          </span>
+        </div>
+        ${qu.introduction?`<div style="color:var(--muted);font-size:.78rem;margin:.2rem 0 0 .1rem">${qu.introduction}</div>`:''}
+        ${optWrap}
+      </div>`;
+    }).join('');
+    return `<div class="group ${isCol?'collapsed':''}">
+      <div class="ghead" onclick="toggleGroup(${g.id})">
+        <span class="chev">▼</span>
+        <span class="gname">题组 ${g.order}</span>
+        <span class="gcount">${g.questions.length} 题</span>
+        ${g.hiddenByDefault?'<span class="pill hidden">默认隐藏</span>':''}
+        <span class="spacer"></span>
+        <span class="acts">
+          <button class="icobtn" title="编辑题组" onclick="event.stopPropagation();renderGrpModal()">✎</button>
+          <button class="icobtn danger" title="删除题组" onclick="event.stopPropagation();toast('（示例）删除题组')">🗑</button>
+        </span>
+      </div>
+      <div class="gbody">
+        ${ques}
+        <div class="addq" onclick="renderQuModal()">＋ 添加问题</div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('view').innerHTML = `
+    <div class="qhead">
+      <span class="back" title="返回列表" onclick="pv('list')">←</span>
+      <div>
+        <div class="title">${q.title} <span class="pill ${q.category}" style="vertical-align:middle">${q.category==='main'?'主问卷':'附加'}</span> ${q.required?'<span class="pill req" style="vertical-align:middle">必填</span>':''}</div>
+        <div class="key">${q.key}</div>
+      </div>
+      <span class="spacer"></span>
+      <button class="btn ghost" onclick="renderQnMetaModal(true)">⚙ 元数据</button>
+      <button class="btn primary" onclick="renderGrpModal()">＋ 题组</button>
+    </div>
+    ${groups}
+    <div class="addgroup" onclick="renderGrpModal()">＋ 添加题组</div>`;
+}
+function toggleGroup(id){ collapsed['g'+id]=!collapsed['g'+id]; renderEditor(1); }
+
+// ───────── modals ─────────
+function openModal(html){ document.getElementById('modal-root').innerHTML =
+  `<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal">${html}</div></div>`; }
+function closeModal(){ document.getElementById('modal-root').innerHTML=''; }
+
+function renderQnMetaModal(isEdit){
+  openModal(`
+    <div class="modal-head">${isEdit?'问卷元数据':'新建问卷'}</div>
+    <div class="modal-body">
+      <div class="field"><label>标识 key ${isEdit?'':'<span style="color:var(--red)">*</span>'}</label>
+        <input type="text" value="${isEdit?'main_required':''}" placeholder="例如 main_required"><div class="hint">唯一英文标识，前端按此引用</div></div>
+      <div class="field"><label>标题</label><input type="text" value="${isEdit?'主问卷':''}" placeholder="展示给用户的标题"></div>
+      <div class="field"><label>说明</label><input type="text" value="${isEdit?'参与本届东方人气投票的必答问卷':''}" placeholder="副标题/引导语"></div>
+      <div class="field"><label>分类</label>
+        <div class="seg"><span class="on">主问卷 main</span><span>附加 extra</span></div></div>
+      <div class="field"><label class="check"><input type="checkbox" ${isEdit?'checked':''}> 必填（计入投票门禁）</label>
+        <div class="hint">勾选后，用户必须答完此问卷才能投票</div></div>
+      <div class="field"><label>排序 order</label><input type="number" value="${isEdit?'1':'0'}"></div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost" onclick="closeModal()">取消</button><button class="btn primary" onclick="closeModal();toast('（示例）已保存')">${isEdit?'保存':'创建'}</button></div>`);
+}
+function renderGrpModal(){
+  openModal(`
+    <div class="modal-head">题组</div>
+    <div class="modal-body">
+      <div class="field"><label>排序 order</label><input type="number" value="1"></div>
+      <div class="field"><label class="check"><input type="checkbox"> 默认隐藏</label>
+        <div class="hint">默认隐藏的题组，需被某选项的「关联跳转」触发后才出现</div></div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost" onclick="closeModal()">取消</button><button class="btn primary" onclick="closeModal();toast('（示例）已保存')">保存</button></div>`);
+}
+function renderQuModal(){
+  openModal(`
+    <div class="modal-head">问题</div>
+    <div class="modal-body">
+      <div class="field"><label>类型</label>
+        <div class="seg"><span class="on">单选</span><span>多选</span><span>输入</span></div></div>
+      <div class="field"><label>题面</label><input type="text" value="你的性别是？"></div>
+      <div class="field"><label>说明</label><input type="text" placeholder="可选的补充说明"></div>
+      <div class="field"><label>最大输入长度（输入题）</label><input type="number" value="1000"></div>
+      <div class="field"><label>排序 order</label><input type="number" value="1"></div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost" onclick="closeModal()">取消</button><button class="btn primary" onclick="closeModal();toast('（示例）已保存')">保存</button></div>`);
+}
+function renderOptModal(){
+  openModal(`
+    <div class="modal-head">选项</div>
+    <div class="modal-body">
+      <div class="field"><label>内容</label><input type="text" value="二次创作"></div>
+      <div class="field"><label>选中后展示的问题（关联跳转）</label>
+        <div class="picklist">
+          <label><input type="checkbox" checked> #102 最喜欢的二创作者是？</label>
+          <label><input type="checkbox"> #100 你的性别是？</label>
+          <label><input type="checkbox"> #101 你通过哪些渠道了解东方Project？</label>
+        </div><div class="hint">勾选的问题，仅当本选项被选中时才展示给用户</div></div>
+      <div class="field"><label>互斥选项</label>
+        <div class="picklist">
+          <label><input type="checkbox"> #1000 男</label>
+          <label><input type="checkbox"> #1001 女</label>
+        </div><div class="hint">选中本项会自动取消勾选的互斥项</div></div>
+      <div class="field"><label>选项分组 option_group</label><input type="number" value="0"></div>
+      <div class="field"><label>排序 order</label><input type="number" value="1"></div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost" onclick="closeModal()">取消</button><button class="btn primary" onclick="closeModal();toast('（示例）已保存')">保存</button></div>`);
+}
+function renderImportModal(){
+  openModal(`
+    <div class="modal-head">整树导入 · 覆盖全部问卷</div>
+    <div class="modal-body">
+      <div class="field"><label>粘贴 {"questionnaires":[...]} JSON</label>
+        <textarea class="code" placeholder='{\n  "questionnaires": [\n    { "key": "main_required", "title": "主问卷", ... }\n  ]\n}'></textarea>
+        <div class="hint">⚠ 导入会清空并替换现有全部问卷结构。可省略 id，导入时自动分配。</div></div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost" onclick="closeModal()">取消</button><button class="btn primary" onclick="closeModal();toast('（示例）已导入 2 份问卷')">导入</button></div>`);
+}
+function renderModalsDemo(){
+  document.getElementById('view').innerHTML = `
+    <div class="page-head"><h1>弹窗示例</h1><span class="sub">点击查看四种编辑弹窗与导入弹窗</span></div>
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap">
+      <button class="btn ghost" onclick="renderQnMetaModal(true)">问卷元数据</button>
+      <button class="btn ghost" onclick="renderGrpModal()">题组</button>
+      <button class="btn ghost" onclick="renderQuModal()">问题</button>
+      <button class="btn ghost" onclick="renderOptModal()">选项（含关联/互斥）</button>
+      <button class="btn ghost" onclick="renderImportModal()">整树导入</button>
+    </div>
+    <p style="color:var(--muted);font-size:.85rem;margin-top:1rem">这些弹窗在「列表」和「编辑器」视图中由对应按钮触发，这里集中展示样式。</p>`;
+}
+
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(window._tt); window._tt=setTimeout(()=>t.classList.remove('show'),2200); }
+
+renderList();
+</script>
+</body>
+</html>

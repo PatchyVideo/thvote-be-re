@@ -33,8 +33,12 @@ class WorkService:
                 Work.name,
                 Work.type,
                 Work.created_at,
-                func.count(func.distinct(VoteableCharacter.id)).label("character_count"),
-                func.count(func.distinct(VoteableMusic.id)).label("music_count"),
+                func.count(
+                    func.distinct(VoteableCharacter.id)
+                ).label("character_count"),
+                func.count(
+                    func.distinct(VoteableMusic.id)
+                ).label("music_count"),
             )
             .outerjoin(VoteableCharacter, VoteableCharacter.work_id == Work.id)
             .outerjoin(VoteableMusic, VoteableMusic.work_id == Work.id)
