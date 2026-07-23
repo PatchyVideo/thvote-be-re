@@ -4,7 +4,34 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-19（result 前端 GraphQL 契约层落地 + 合并前复核修复：百分比单位、分段分母、历史哨兵值、admin 接口泄露）
+> 最后更新：2026-07-23（补记 voteable/work 重构合入 main + 分支收口；升级记票白名单对撞点 B-050-后补6）
+
+## [2026-07-23] voteable/work 重构合入 main（补记）+ 分支收口
+
+> **补记**：以下变更由合作者在 `zfq_dev` 分支完成（2026-07-20~21，13 commits），2026-07-23 快进合入 `main` 并随 CI 部署测试机。原提交未更新本 CHANGELOG，按 CLAUDE.md §4 于合入日补记。实现对应设计稿：[voteable 跨年稳定 id](./superpowers/specs/2026-07-20-voteable-cross-year-stable-id-design.md)、[work 表前后端统一](./superpowers/specs/2026-07-21-work-table-unified-design.md)（实施计划 [2026-07-21-work-table-unified](./superpowers/plans/2026-07-21-work-table-unified.md)，11 tasks）。**目标：投票对象从"前端 .ts 写死"迁到后端数据库，投票传参最终只传 `candidateId`(int)。**
+
+### Added
+- `work` 表（跨切面作品目录：name + type∈old/new/CD/book/others，迁移内置种子数据）。
+- `voteable_character` / `voteable_music` 表（跨年稳定投票实体）：name/name_jp/type/first_appearance/aliases(JSON)/`work_id` FK/**`old_id`**（保留前端 8-hex 旧 id 的桥接字段，供历史数据关联）。
+- Alembic 迁移 `12a5f2e6dbed`（⚠️ 哈希名，命名漂移见 BACKLOG B-056）：建表 + work 种子 + 从既有 `candidate_*` 按 name GROUP 回填 voteable + 回填 `candidate.voteable_id` + `final_ranking` 加 `voteable_id`。
+- Admin Work CRUD：`GET/POST /admin/works`、`POST/DELETE /admin/works/{id}`（删除有引用时 409 `WORK_IN_USE`）+ admin-ui `WorksView`。
+- `scripts/bson_to_sql.py`：BSON dump → SQL 导入辅助。
+
+### Changed
+- **`candidate_character` / `candidate_music` 精简为纯年度关联表** `(vote_year, voteable_id)`：原 `name`/`name_jp`/`origin`/`album`/`type`/`first_appearance`/`merged_into` 列全部删除。任何直接读这些列的代码都会坏——仓库内消费方（admin 候选管理、autocomplete、compute_dao、导入）已同步适配为经 voteable/work JOIN 反查。
+- **`GET /vote-objects/characters|music` 响应重构**：改为 `{voteYear, groups:[{group, items:[{candidateId, name, nameJp, type, firstAppearance, workIds, workTypes}]}]}` + `filterMeta`（kinds/works），供前端筛选组件直接消费（实测 vote_year=12 数据完整）。
+- 测试重配：7 条旧候选测试（origin/album 分组、name 键）替换为 6 条新语义测试（work 分组、voteable_id 键）。
+
+### 契约方向（重要，尚未切换）
+- 会议结论（2026-07-20）：**投票提交只传 `candidateId`(int)**，`voteableId` 不出接口。**当前前后端提交侧均未切换**——`src/apps/submit` 零改动，前端 vote 包尚无 candidateId 提交路径，现行契约仍是旧 8-hex payload。
+
+### 兼容性
+- 需 `alembic upgrade head`（`12a5f2e6dbed`；测试库已应用）。迁移链已由 `0015` 重接为单链 `0014 → 12a5f2e6dbed → 0015`，**后续新迁移从 `0016` 顺延**。
+- ⚠️ **记票对撞点（合入时最高风险项）**：B-050 记票白名单仍按前端 8-hex id 归票（`whitelist_*.json` 前端快照）。**前端切换 candidateId 提交前必须完成 B-050-后补6**（白名单迁 DB voteable，`candidateId ↔ old_id` 双认），否则新格式票会被当未知 id 整票丢弃、排名归零。详见 BACKLOG。
+- 设计稿中 `GET /admin/voteables`（§4.6）**设计有、实现无**（404）；admin import 的 work 匹配（Task 5）按计划记为 tech-debt；上届 `final_ranking`(year=11) 导入未执行——收尾清单见 BACKLOG **B-057**。
+
+### 分支收口（2026-07-23，运维记录）
+- `main` 快进同步 `zfq_dev`（`771757f→ea16b1c`）；PR #25（result 契约层）随后合入并部署，compute 已重跑；后端/前端双仓开出我方工作分支 `renko_dev`；前端 `dev` 快进至 `zfq_dev_fe`（含 captcha 超时修复，Touhou-Vote #19）。
 
 ## [2026-07-19] result 前端 GraphQL 契约层落地（12 个 query* + 问卷语义 code + 分段统计）
 
