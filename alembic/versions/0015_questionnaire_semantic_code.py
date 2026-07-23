@@ -16,7 +16,9 @@ skip this migration entirely.
 from alembic import op
 
 revision = "0015"
-down_revision = "0014"
+# 0014 之后 zfq_dev 的 voteable/work 重构插入了 12a5f2e6dbed(哈希名迁移,
+# 测试库已应用);本迁移接在其后避免双头。编号约定回归事宜见 BACKLOG。
+down_revision = "12a5f2e6dbed"
 branch_labels = None
 depends_on = None
 
