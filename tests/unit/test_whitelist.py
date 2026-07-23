@@ -1,4 +1,4 @@
-from src.apps.result.whitelist import Whitelist, WhitelistEntry, load_whitelist
+from src.apps.result.whitelist import Whitelist, WhitelistEntry
 
 
 def _wl() -> Whitelist:
@@ -27,14 +27,8 @@ def test_name_and_system_id_lookup():
     assert wl.system_id_of("zzzz9999") == 10**9
 
 
-def test_load_real_snapshot_character_count():
-    wl = load_whitelist("character")
-    assert len(wl.ids) == 244  # 与 candidate_character 一致
-    # 系统ID 覆盖 0..243 连续
-    sids = sorted(wl.system_id_of(i) for i in wl.ids)
-    assert sids[0] == 0 and sids[-1] == 243
-
-
-def test_load_real_snapshot_music_nonempty():
-    wl = load_whitelist("music")
-    assert len(wl.ids) > 0
+# JSON 快照直读的两条测试(test_load_real_snapshot_character_count /
+# test_load_real_snapshot_music_nonempty)随 Task 6 一并删除——它们验证的是
+# 已退役的 load_whitelist() JSON loader；快照→DB 的等价覆盖见
+# tests/integration/test_result_compute.py(经 seed_voteables_from_snapshot
+# 导入通道 + load_whitelist_db 读回）。

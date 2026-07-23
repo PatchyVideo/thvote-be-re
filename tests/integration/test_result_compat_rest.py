@@ -22,11 +22,13 @@ except ImportError:
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.integration.conftest import seed_voteables_from_snapshot
+
 import src.api.graphql.resolvers.result as result_resolver_module
 from src.api.graphql.schema import schema
 from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeService
-from src.apps.result.whitelist import load_whitelist
+from src.apps.result.whitelist import load_whitelist_db
 from src.common.config import Settings
 from src.db_model.questionnaire_def import OptionDef, PaperAnswer, QuestionDef
 from src.db_model.raw_submit import RawCharacterSubmit, RawCPSubmit, RawMusicSubmit
@@ -163,9 +165,14 @@ async def _seed_and_compute(session: AsyncSession, fake_redis, settings) -> None
     （相对 vote_start=2026-01-01 分别是 24/48/72/96/120 小时），用于验证
     queryCharacterTrend 按输入 name 顺序返回、且每个 name 的 trend 小时桶
     与其真实提交时间一致（不是随便凑出的空/非空判断）。
+
+    白名单先走 Task 4 导入通道种子进 DB(seed_voteables_from_snapshot)——
+    Task 6 起 compute_service 只读 DB 白名单,不再读 JSON 快照。
     """
-    char_wl = load_whitelist("character")
-    music_wl = load_whitelist("music")
+    await seed_voteables_from_snapshot(session, "character", 2026)
+    await seed_voteables_from_snapshot(session, "music", 2026)
+    char_wl = await load_whitelist_db(session, "character", 2026)
+    music_wl = await load_whitelist_db(session, "music", 2026)
     id1, id2, id3 = sorted(char_wl.ids)[:3]
     m1, m2 = sorted(music_wl.ids)[:2]
 
@@ -270,11 +277,11 @@ async def gql_schema_uncomputed(monkeypatch, fake_redis, settings):
 
 @pytest.mark.asyncio
 async def test_query_character_single_uses_unique_ordinal_not_display_rank(
-    gql_schema,
+    gql_schema, session,
 ) -> None:
     """id1/id2 票数相同 -> display_rank 并列(都是 1),但 rank[0].rank 不同
     (1/2)。用唯一序号取出的两条必须是不同的、可区分的条目。"""
-    char_wl = load_whitelist("character")
+    char_wl = await load_whitelist_db(session, "character", 2026)
     id1, id2, _ = sorted(char_wl.ids)[:3]
     names = {char_wl.name_of(id1), char_wl.name_of(id2)}
 
@@ -296,8 +303,8 @@ async def test_query_character_single_uses_unique_ordinal_not_display_rank(
 
 
 @pytest.mark.asyncio
-async def test_query_music_single_returns_top_entry(gql_schema) -> None:
-    music_wl = load_whitelist("music")
+async def test_query_music_single_returns_top_entry(gql_schema, session) -> None:
+    music_wl = await load_whitelist_db(session, "music", 2026)
     m1, _ = sorted(music_wl.ids)[:2]
 
     result = await gql_schema.execute(
@@ -326,8 +333,8 @@ async def test_query_music_single_rank_not_found_is_recognizable_error(
 
 
 @pytest.mark.asyncio
-async def test_query_cp_single_returns_entry(gql_schema) -> None:
-    char_wl = load_whitelist("character")
+async def test_query_cp_single_returns_entry(gql_schema, session) -> None:
+    char_wl = await load_whitelist_db(session, "character", 2026)
     id1, id2, _ = sorted(char_wl.ids)[:3]
 
     result = await gql_schema.execute(
@@ -346,9 +353,9 @@ async def test_query_cp_single_returns_entry(gql_schema) -> None:
 
 @pytest.mark.asyncio
 async def test_query_character_trend_preserves_order_and_empty_for_unknown_name(
-    gql_schema,
+    gql_schema, session,
 ) -> None:
-    char_wl = load_whitelist("character")
+    char_wl = await load_whitelist_db(session, "character", 2026)
     id1, id2, _ = sorted(char_wl.ids)[:3]
     name1, name2 = char_wl.name_of(id1), char_wl.name_of(id2)
 
@@ -370,8 +377,8 @@ async def test_query_character_trend_preserves_order_and_empty_for_unknown_name(
 
 
 @pytest.mark.asyncio
-async def test_query_music_trend_returns_populated_trend(gql_schema) -> None:
-    music_wl = load_whitelist("music")
+async def test_query_music_trend_returns_populated_trend(gql_schema, session) -> None:
+    music_wl = await load_whitelist_db(session, "music", 2026)
     m1, _ = sorted(music_wl.ids)[:2]
 
     result = await gql_schema.execute(

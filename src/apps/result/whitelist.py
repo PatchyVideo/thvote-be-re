@@ -1,24 +1,20 @@
 """id 白名单 / 展示注册表（B-050 → 计票真相源迁 DB）。
 
-新实现：双键 ``Whitelist``（canonical key = ``str(candidate_id)``；legacy
-8-hex ``old_id`` 仍可作为第二 token 命中同一条 entry）+ 异步 DB 加载
+双键 ``Whitelist``（canonical key = ``str(candidate_id)``；legacy 8-hex
+``old_id`` 仍可作为第二 token 命中同一条 entry）+ 异步 DB 加载
 ``load_whitelist_db``，数据源为 ``voteable_* JOIN candidate_*(vote_year)
 LEFT JOIN work``（设计稿 §4.1/§4.2/§4.4）。
 
-旧的 JSON 快照加载路径（``load_whitelist``/``_to_entry``）暂时保留在文件
-尾部并标记 ``# DEPRECATED: Task 6 移除``——compute_service.py 等调用方尚未
-切换到 DB 加载，迁移完成前不能删除。
+旧的 JSON 快照加载路径（``load_whitelist``/``_to_entry``）已随 Task 6 删除
+（compute_service.py / result_compat.py 全部切到 ``load_whitelist_db``）；
+快照 JSON 本身仍在 ``data/`` 目录保留，作为 ``scripts/whitelist_to_import.py``
+一次性回填导入通道的数据源。
 """
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from functools import lru_cache
-from pathlib import Path
-from typing import Literal
 
-_DATA_DIR = Path(__file__).parent / "data"
 _UNKNOWN_SYSTEM_ID = 10**9  # 未知 id 排最后（正常不该走到，白名单已先过滤）
 
 # 前端 kind → 展示用 type（唯一来源；原 compute.KIND_MAPPING 已随死代码清理删除）
@@ -110,42 +106,3 @@ async def load_whitelist_db(session, category, vote_year: int) -> Whitelist:
                        else SORT_ORDER_TAIL_BASE + cid),
         ))
     return Whitelist(entries)
-
-
-# ─────────────────────────────────────────────────────────────────────────
-# DEPRECATED: Task 6 移除 —— 旧 JSON 快照加载路径。
-#
-# 数据来源：从前端 characterList/musicList 提取的冻结快照 JSON
-# （scripts/extract_whitelist.mjs 产出）。运行时只读快照，不依赖前端仓库。
-# compute_service.py 等调用方切到 load_whitelist_db 后即可随 Task 6 一并删除。
-# ─────────────────────────────────────────────────────────────────────────
-
-def _to_entry(raw: dict, seq: int) -> WhitelistEntry:
-    """把快照行适配成新 10 字段 WhitelistEntry。
-
-    快照没有真正的 candidate_id/voteable_id 概念，用 1-based 顺序号 ``seq``
-    顶替（同一快照每次加载顺序稳定，见 load_whitelist 的 enumerate）；
-    old_id 用快照原始 8-hex id，双键索引里旧 token 依然能命中。
-    """
-    kinds = raw.get("kind") or []
-    work = raw.get("work") or []
-    date = raw.get("date")
-    return WhitelistEntry(
-        candidate_id=seq,
-        voteable_id=seq,
-        old_id=str(raw["id"]),
-        name=raw.get("name", ""),
-        name_jp=raw.get("name_jp", ""),
-        origin="、".join(work) if work else "",
-        type=_KIND_MAPPING.get(kinds[0], "其他") if kinds else "未知",
-        first_appearance=str(date) if date else None,
-        album=raw.get("album"),
-        system_id=int(raw.get("system_id", _UNKNOWN_SYSTEM_ID)),
-    )
-
-
-@lru_cache(maxsize=4)
-def load_whitelist(category: Literal["character", "music"]) -> Whitelist:
-    path = _DATA_DIR / f"whitelist_{category}.json"
-    raw_list = json.loads(path.read_text(encoding="utf-8"))
-    return Whitelist([_to_entry(r, seq) for seq, r in enumerate(raw_list, start=1)])

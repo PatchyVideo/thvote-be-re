@@ -19,7 +19,7 @@ from src.apps.result.compute import (
     compute_ranking,
 )
 from src.apps.result.compute_dao import ComputeDAO
-from src.apps.result.whitelist import load_whitelist
+from src.apps.result.whitelist import load_whitelist_db
 from src.common.config import Settings
 from src.common.exceptions import AppException
 
@@ -73,9 +73,18 @@ class ComputeService:
             cp_votes = await self.dao.load_cp_votes()
             q_votes = await self.dao.load_questionnaire_votes(vote_year)
 
-            # 白名单（id→名/系统ID）；CP 成员是角色 → 用角色白名单
-            char_wl = load_whitelist("character")
-            music_wl = load_whitelist("music")
+            # 白名单（id→名/系统ID）；CP 成员是角色 → 用角色白名单。
+            # 数据源是 DB（voteable_* JOIN candidate_*(vote_year)），不再读
+            # JSON 快照（Task 6，JSON loader 已退役）。
+            char_wl = await load_whitelist_db(
+                self.dao.session, "character", vote_year)
+            music_wl = await load_whitelist_db(
+                self.dao.session, "music", vote_year)
+            if not char_wl.entries and not music_wl.entries:
+                # 该年 candidate_* 一行都没有：不是"投票数据为空"这种正常
+                # 情况，是白名单/候选人配置压根没导入——继续跑只会算出一份
+                # 全员 dropped 的空结果，不如在这里明确报错。
+                raise AppException("WHITELIST_EMPTY", details=500)
 
             # Compute — gender 是"被指定为人口学轴心的那道问卷题"的分段，
             # 不再特殊处理；label_by_option 把该题的两个选项 code 映射到
@@ -95,6 +104,11 @@ class ComputeService:
             )
             cp_ranking, cp_global = compute_cp_ranking(
                 cp_votes, char_wl, segment_map, {}, vote_start, total_hours,
+            )
+            logger.info(
+                "compute dropped tokens: vote_year=%d chars=%s musics=%s cps=%s",
+                vote_year, char_global["dropped"], music_global["dropped"],
+                cp_global["dropped"],
             )
 
             all_voters = (

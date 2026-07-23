@@ -81,6 +81,34 @@ async def user_service(session, session_maker, fake_pnvs, fake_smtp):
     )
 
 
+async def seed_voteables_from_snapshot(session, category: str, vote_year: int):
+    """把冻结的白名单快照 JSON 灌进 voteable_*/candidate_*（Task 6）。
+
+    走 Task 4 的统一导入通道（``VoteableImportService``），不是绕过它直接
+    INSERT——这样集成测试种子数据的路径和真实回填脚本
+    （``scripts/whitelist_to_import.py``）用的是同一段代码，两者不会跑偏
+    （dogfooding）。``VoteableImportService.run`` 自己在成功时已 commit
+    （见 voteable_import_service.py:139），这里再 commit 一次是无害的幂等
+    调用，不是遗漏后的补救。
+    """
+    import json as _json
+    from pathlib import Path
+
+    from scripts.whitelist_to_import import convert
+    from src.apps.admin.voteable_import_service import VoteableImportService
+
+    raw = _json.loads(
+        (Path("src/apps/result/data") / f"whitelist_{category}.json").read_text()
+    )
+    svc = VoteableImportService(session)
+    result = await svc.run(
+        category, vote_year, "json",
+        _json.dumps(convert(category, raw)), dry_run=False,
+    )
+    assert not result.get("conflicts")
+    await session.commit()
+
+
 @pytest.fixture(autouse=True)
 def patch_redis(monkeypatch):
     """Replace common.redis.get_redis with a fakeredis client per test."""

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -82,8 +84,28 @@ async def test_result_endpoints_503_before_compute(client, method, path, body):
 
 @pytest.mark.asyncio
 async def test_admin_compute_results_endpoint_reachable(client, admin_secret):
+    """先经统一导入通道(Task 4)播种一个角色候选。
+
+    Task 6 起 compute_all 的白名单改读 DB(不再是 JSON 快照永远非空)——两个
+    分类的白名单都为空时会报 WHITELIST_EMPTY(见 compute_service.py)，不再是
+    "无候选也能算出一份空结果"的旧行为，所以这里必须先播种至少一个候选，
+    这条用例才能验证的是"端点可达"而不是白名单为空的错误路径。
+    """
+    seed_resp = await client.post(
+        "/api/v1/admin/voteables/import",
+        json={
+            "category": "character", "vote_year": 2026, "format": "json",
+            "content": json.dumps([{"name": "Alice", "old_id": "aaaa1111"}]),
+            "dry_run": False,
+        },
+        headers={"X-Admin-Secret": admin_secret},
+    )
+    assert seed_resp.status_code == 200
+    assert not seed_resp.json().get("conflicts")
+
     resp = await client.post(
         "/api/v1/admin/compute-results",
+        params={"vote_year": 2026},
         headers={"X-Admin-Secret": admin_secret},
     )
     # Returns 200 with empty data (no votes seeded), not 404
