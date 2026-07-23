@@ -88,8 +88,9 @@ def validate_items(category: str, rows: list[dict]) -> tuple[list[dict], list[di
             if sv == "":
                 continue
             cleaned[k] = sv
-        if not cleaned.get("name"):
-            rejected.append({"line": idx + 1, "reason": "缺少 name"})
+        # After voteable refactor: validate voteable_id, not name
+        if not cleaned.get("voteable_id"):
+            rejected.append({"line": idx + 1, "reason": "缺少 voteable_id"})
             continue
         valid.append(cleaned)
     return valid, rejected

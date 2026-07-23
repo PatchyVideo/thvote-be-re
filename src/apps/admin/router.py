@@ -36,6 +36,7 @@ from src.apps.admin.schemas import (
 )
 from src.apps.admin.service import AdminService, SyncService
 from src.apps.admin.sync.progress import set_current_run
+from src.apps.admin.work_service import WorkService
 from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeInProgressError, ComputeService
 from src.apps.result.dao import ResultNotComputedError
@@ -232,12 +233,12 @@ async def list_candidates(
     data = await service.list_candidates(category, year, q, page, page_size)
     items = [
         {
-            "id": r.id, "vote_year": r.vote_year, "name": r.name,
-            "name_jp": r.name_jp or "",
-            "type": r.type or "",
-            "origin": getattr(r, "origin", None),
-            "first_appearance": r.first_appearance,
-            "album": getattr(r, "album", None),
+            "id": r["id"], "vote_year": r["vote_year"], "name": r["name"],
+            "name_jp": r.get("name_jp", ""),
+            "type": r.get("type", ""),
+            "origin": r.get("work_name", ""),
+            "first_appearance": r.get("first_appearance"),
+            "album": r.get("work_name", ""),
         }
         for r in data["items"]
     ]
@@ -604,3 +605,82 @@ async def retry_sync(
         _run_all_collections_bg, run_id, body, settings, redis, session_maker
     )
     return SyncStartResponse(run_id=run_id, message="Retry started from checkpoint")
+
+
+# ── Work CRUD ────────────────────────────────────────────────────────────────
+
+
+async def _clear_vote_objects_cache(redis: aioredis.Redis) -> None:
+    """Clear vote-objects cache keys after work/voteable mutations."""
+    try:
+        keys = await redis.keys("vote_objects:*")
+        if keys:
+            await redis.delete(*keys)
+    except Exception:
+        pass
+
+
+@router.get("/works")
+async def list_works(
+    q: Optional[str] = None,
+    type: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 50,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict:
+    svc = WorkService(session)
+    return await svc.list_works(q=q, wtype=type, page=page, page_size=page_size)
+
+
+@router.post("/works")
+async def create_work(
+    body: dict,
+    session: AsyncSession = Depends(get_db_session),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict:
+    name = (body.get("name") or "").strip()
+    wtype = (body.get("type") or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name is required")
+    svc = WorkService(session)
+    try:
+        result = await svc.create_work(name, wtype)
+        await _clear_vote_objects_cache(redis)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post("/works/{work_id}")
+async def update_work(
+    work_id: int,
+    body: dict,
+    session: AsyncSession = Depends(get_db_session),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict:
+    svc = WorkService(session)
+    try:
+        await svc.update_work(work_id, body.get("name"), body.get("type"))
+        await _clear_vote_objects_cache(redis)
+        return {"ok": True}
+    except LookupError:
+        raise HTTPException(status_code=404, detail="NOT_FOUND")
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.delete("/works/{work_id}")
+async def delete_work(
+    work_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict:
+    svc = WorkService(session)
+    try:
+        await svc.delete_work(work_id)
+        await _clear_vote_objects_cache(redis)
+        return {"ok": True}
+    except LookupError:
+        raise HTTPException(status_code=404, detail="NOT_FOUND")
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))

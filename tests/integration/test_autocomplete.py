@@ -4,11 +4,11 @@ import os
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from src.apps.autocomplete.dao import AutocompleteDAO
 from src.db_model.base import Base
-from src.db_model.candidate import CandidateCharacter, CandidateMusic
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
@@ -26,16 +26,58 @@ async def session():
         await conn.run_sync(Base.metadata.create_all)
     maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
     async with maker() as s:
-        s.add(CandidateCharacter(vote_year=VOTE_YEAR, name="博丽灵梦", name_jp="博麗霊夢",
-                                  origin="东方红魔乡", type="旧作", first_appearance="1996"))
-        s.add(CandidateCharacter(vote_year=VOTE_YEAR, name="雾雨魔理沙", name_jp="霧雨魔理沙",
-                                  origin="东方红魔乡", type="旧作", first_appearance="1996"))
-        s.add(CandidateCharacter(vote_year=VOTE_YEAR, name="十六夜咲夜", name_jp="十六夜咲夜",
-                                  origin="东方红魔乡", type="旧作", first_appearance="2002"))
-        s.add(CandidateMusic(vote_year=VOTE_YEAR, name="Bad Apple!!", name_jp="Bad Apple!!",
-                              type="旧作", album="Akyu's Untouched Score vol.5"))
-        s.add(CandidateMusic(vote_year=VOTE_YEAR, name="U.N.オーエンは彼女なのか？",
-                              name_jp="U.N.オーエンは彼女なのか？", type="旧作", album=None))
+        # Create work entries
+        await s.execute(text(
+            "INSERT INTO work (id, name, type) VALUES (1, '东方红魔乡', 'new')"
+        ))
+        await s.execute(text(
+            "INSERT INTO work (id, name, type) VALUES (2, "
+            "'Akyu''s Untouched Score vol.5', 'CD')"
+        ))
+        # Create voteable_character entries
+        await s.execute(text(
+            "INSERT INTO voteable_character (id, name, name_jp, type, work_id) "
+            "VALUES (100, '博丽灵梦', '博麗霊夢', '旧作', 1)"
+        ))
+        await s.execute(text(
+            "INSERT INTO voteable_character (id, name, name_jp, type, work_id) "
+            "VALUES (101, '雾雨魔理沙', '霧雨魔理沙', '旧作', 1)"
+        ))
+        await s.execute(text(
+            "INSERT INTO voteable_character (id, name, name_jp, type, work_id) "
+            "VALUES (102, '十六夜咲夜', '十六夜咲夜', '旧作', 1)"
+        ))
+        # Create voteable_music entries
+        await s.execute(text(
+            "INSERT INTO voteable_music (id, name, name_jp, type, work_id) "
+            "VALUES (200, 'Bad Apple!!', 'Bad Apple!!', '旧作', 2)"
+        ))
+        await s.execute(text(
+            "INSERT INTO voteable_music (id, name, name_jp, type, work_id) "
+            "VALUES (201, 'U.N.オーエンは彼女なのか？', "
+            "'U.N.オーエンは彼女なのか？', '旧作', NULL)"
+        ))
+        # Create candidate entries
+        await s.execute(text(
+            "INSERT INTO candidate_character (vote_year, voteable_id) "
+            "VALUES (2026, 100)"
+        ))
+        await s.execute(text(
+            "INSERT INTO candidate_character (vote_year, voteable_id) "
+            "VALUES (2026, 101)"
+        ))
+        await s.execute(text(
+            "INSERT INTO candidate_character (vote_year, voteable_id) "
+            "VALUES (2026, 102)"
+        ))
+        await s.execute(text(
+            "INSERT INTO candidate_music (vote_year, voteable_id) "
+            "VALUES (2026, 200)"
+        ))
+        await s.execute(text(
+            "INSERT INTO candidate_music (vote_year, voteable_id) "
+            "VALUES (2026, 201)"
+        ))
         await s.commit()
         yield s
     await engine.dispose()

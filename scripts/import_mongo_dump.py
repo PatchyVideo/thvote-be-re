@@ -103,21 +103,28 @@ async def _import_collection(
         conflict = _conflict_clause(pg_table)
         async with session_maker() as session:
             async with session.begin():
-                for row in batch:
-                    cols = ", ".join(f'"{k}"' for k in row)
-                    params = ", ".join(f":{k}" for k in row)
-                    sql = text(
-                        f'INSERT INTO "{pg_table}" ({cols}) '
-                        f"VALUES ({params}) {conflict}"
-                    )
-                    try:
-                        result = await session.execute(sql, row)
-                        if result.rowcount:
-                            inserted += 1
-                        else:
-                            skipped += 1
-                    except Exception:
-                        errors += 1
+                # Multi-row INSERT: single round trip for the whole batch
+                cols = list(batch[0].keys())
+                col_names = ", ".join(f'"{c}"' for c in cols)
+                ph = ", ".join(
+                    f"({', '.join(f':{c}_{i}' for c in cols)})"
+                    for i in range(len(batch))
+                )
+                values = {}
+                for i, row in enumerate(batch):
+                    for c in cols:
+                        values[f"{c}_{i}"] = row[c]
+                sql = text(
+                    f'INSERT INTO "{pg_table}" ({col_names}) '
+                    f"VALUES {ph} {conflict}"
+                )
+                try:
+                    result = await session.execute(sql, values)
+                    if result.rowcount:
+                        inserted += result.rowcount
+                    # skipped can't be accurately counted per-row with multi-row INSERT
+                except Exception:
+                    errors += len(batch)
 
         logger.info(
             "  %s: %d/%d  ins=%d skip=%d err=%d",
@@ -128,7 +135,7 @@ async def _import_collection(
     return inserted, skipped, errors
 
 
-async def main(dump_dir: str, *, dry_run: bool = False) -> None:
+async def main(dump_dir: str, *, dry_run: bool = False, table_filter: set | None = None) -> None:
     settings = get_settings()
     db_url = normalize_async_database_url(settings.database_url)
     engine = create_async_engine(db_url, echo=False)
@@ -143,6 +150,8 @@ async def main(dump_dir: str, *, dry_run: bool = False) -> None:
     mode = "DRY-RUN" if dry_run else "LIVE"
 
     for rel_path, (mapper, pg_table) in _COLLECTION_CONFIG.items():
+        if table_filter and pg_table not in table_filter:
+            continue
         bson_file = dump / rel_path
         if not bson_file.with_suffix(".bson").is_file():
             logger.warning("SKIP: missing %s.bson", bson_file)
@@ -182,5 +191,10 @@ if __name__ == "__main__":
         "-n", "--dry-run", action="store_true",
         help="Decode + map only; do not write to PG",
     )
+    p.add_argument(
+        "--tables", default=None,
+        help="Comma-separated PG table names to import (default: all)",
+    )
     args = p.parse_args()
-    asyncio.run(main(args.dump_dir, dry_run=args.dry_run))
+    table_filter = set(args.tables.split(",")) if args.tables else None
+    asyncio.run(main(args.dump_dir, dry_run=args.dry_run, table_filter=table_filter))

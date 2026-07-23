@@ -39,21 +39,39 @@ async def app(engine):
     yield a, maker
 
 
+async def _seed_work_and_voteable(session):
+    """Helper: create work + voteable_character + candidate in new schema."""
+    await session.execute(text("INSERT INTO work (id, name, type) VALUES (1, '红魔乡', 'new')"))
+    await session.execute(text(
+        "INSERT INTO voteable_character (id, name, work_id) VALUES (10, '灵梦', 1)"
+    ))
+    await session.execute(text(
+        "INSERT INTO voteable_character (id, name, work_id) VALUES (11, '魔理沙', 1)"
+    ))
+    await session.execute(text(
+        "INSERT INTO voteable_character (id, name, work_id) VALUES (12, '博丽灵梦', 1)"
+    ))
+    await session.execute(text(
+        "INSERT INTO voteable_music (id, name, work_id) VALUES (20, '曲A', 1)"
+    ))
+    await session.commit()
+
+
 @pytest.mark.asyncio
-async def test_characters_grouped_by_origin(app):
+async def test_characters_grouped_by_work(app):
     a, maker = app
     async with maker() as s:
+        await _seed_work_and_voteable(s)
+        # candidate rows reference voteable
         await s.execute(text(
-            "INSERT INTO candidate_character (vote_year, name, origin) "
-            "VALUES (2026, '灵梦', '红魔乡')"
+            "INSERT INTO candidate_character (vote_year, voteable_id) VALUES (2026, 10)"
         ))
         await s.execute(text(
-            "INSERT INTO candidate_character (vote_year, name, origin) "
-            "VALUES (2026, '魔理沙', '红魔乡')"
+            "INSERT INTO candidate_character (vote_year, voteable_id) VALUES (2026, 11)"
         ))
+        # merged variant (has voteable_id but shouldn't be duplicated by voteable query)
         await s.execute(text(
-            "INSERT INTO candidate_character (vote_year, name, origin, merged_into) "
-            "VALUES (2026, '博丽灵梦', '红魔乡', 1)"
+            "INSERT INTO candidate_character (vote_year, voteable_id) VALUES (2026, 12)"
         ))
         await s.commit()
 
@@ -61,43 +79,59 @@ async def test_characters_grouped_by_origin(app):
         resp = await ac.get("/api/v1/vote-objects/characters?vote_year=2026")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["vote_year"] == 2026
+    assert data["voteYear"] == 2026
+
+    # Check groups by work name
     names = [i["name"] for g in data["groups"] for i in g["items"]]
     assert "灵梦" in names and "魔理沙" in names
-    assert "博丽灵梦" not in names  # merged variant excluded
+
+    # Check filterMeta is present
+    assert "filterMeta" in data
+    assert len(data["filterMeta"]["kinds"]) > 0
+    assert len(data["filterMeta"]["works"]) > 0
+
+    # Check workIds in items
+    for g in data["groups"]:
+        for it in g["items"]:
+            assert "workIds" in it
+            assert "workTypes" in it
+            assert "origin" not in it  # old field removed
 
 
 @pytest.mark.asyncio
-async def test_music_grouped_by_album(app):
+async def test_music_grouped_by_work(app):
     a, maker = app
     async with maker() as s:
+        await _seed_work_and_voteable(s)
         await s.execute(text(
-            "INSERT INTO candidate_music (vote_year, name, album) "
-            "VALUES (2026, '曲A', '专辑1')"
+            "INSERT INTO candidate_music (vote_year, voteable_id) VALUES (2026, 20)"
         ))
         await s.commit()
 
     async with AsyncClient(transport=ASGITransport(app=a), base_url="http://test") as ac:
         resp = await ac.get("/api/v1/vote-objects/music?vote_year=2026")
     assert resp.status_code == 200
-    assert resp.json()["groups"][0]["group"] == "专辑1"
+    data = resp.json()
+    names = [i["name"] for g in data["groups"] for i in g["items"]]
+    assert "曲A" in names
 
 
 @pytest.mark.asyncio
 async def test_detail_and_404(app):
     a, maker = app
     async with maker() as s:
+        await _seed_work_and_voteable(s)
         await s.execute(text(
-            "INSERT INTO candidate_character (vote_year, name) VALUES (2026, 'X')"
+            "INSERT INTO candidate_character (vote_year, voteable_id) VALUES (2026, 10)"
         ))
         await s.commit()
         cid = (await s.execute(
-            text("SELECT id FROM candidate_character WHERE name='X'")
+            text("SELECT id FROM candidate_character WHERE voteable_id=10")
         )).scalar_one()
 
     async with AsyncClient(transport=ASGITransport(app=a), base_url="http://test") as ac:
         ok = await ac.get(f"/api/v1/vote-objects/character/{cid}")
         assert ok.status_code == 200
-        assert ok.json()["name"] == "X"
+        assert ok.json()["name"] == "灵梦"
         nf = await ac.get("/api/v1/vote-objects/character/999999")
         assert nf.status_code == 404
