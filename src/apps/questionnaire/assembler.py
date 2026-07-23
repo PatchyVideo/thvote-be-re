@@ -17,6 +17,7 @@ def _option_out(o: dict) -> dict:
         "relatedQuestionIds": o.get("related_question_ids") or [],
         "mutexOptionIds": o.get("mutex_option_ids") or [],
         "optionGroup": o.get("option_group", 0),
+        "code": o.get("code"),
     }
 
 
@@ -31,6 +32,7 @@ def _question_out(q: dict, options_by_question: dict) -> dict:
         "content": q.get("content", ""),
         "introduction": q.get("introduction", ""),
         "maxInputLen": q.get("max_input_len", 1000),
+        "code": q.get("code"),
         "options": [_option_out(o) for o in opts],
     }
 
