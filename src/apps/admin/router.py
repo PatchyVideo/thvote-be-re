@@ -43,6 +43,7 @@ from src.apps.result.compute_service import ComputeInProgressError, ComputeServi
 from src.apps.result.dao import ResultNotComputedError
 from src.common.config import Settings, get_settings
 from src.common.database import get_db_session, get_session_maker
+from src.common.exceptions import AppException
 from src.common.redis import get_redis
 
 _logger = logging.getLogger(__name__)
@@ -87,7 +88,14 @@ async def compute_results(
         result = await service.compute_results(year)
         return ComputeResultsResponse(**result)
     except ComputeInProgressError:
+        # ComputeInProgressError 是 AppException 子类,必须排在通用分支前面,
+        # 否则会被下面的 except AppException 吞掉,丢失 409 语义。
         raise HTTPException(status_code=409, detail="COMPUTE_IN_PROGRESS")
+    except AppException as exc:
+        # 例如 WHITELIST_EMPTY(compute_service.py)——同 user/router.py 的
+        # _raise_http 约定:details 是 int 就当 HTTP 状态码,否则兜底 500。
+        status = int(exc.details) if isinstance(exc.details, int) else 500
+        raise HTTPException(status_code=status, detail=exc.message)
 
 
 @router.post("/import-candidates", response_model=ImportCandidatesResponse)

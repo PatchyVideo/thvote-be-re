@@ -115,6 +115,24 @@ async def test_admin_compute_results_endpoint_reachable(client, admin_secret):
 
 
 @pytest.mark.asyncio
+async def test_admin_compute_results_whitelist_empty_returns_500(
+    client, admin_secret
+):
+    """两个分类的候选白名单都为空(没先经导入通道播种)时,compute_all 会抛
+    ``AppException("WHITELIST_EMPTY", details=500)``——这条用例验证的是它经
+    router 的 ``except AppException`` 分支被转成一个结构化 500 响应,而不是
+    逃逸成 Starlette 兜底的无错误码 500(修 review Finding 1)。
+    """
+    resp = await client.post(
+        "/api/v1/admin/compute-results",
+        params={"vote_year": 2026},
+        headers={"X-Admin-Secret": admin_secret},
+    )
+    assert resp.status_code == 500
+    assert "WHITELIST_EMPTY" in resp.text
+
+
+@pytest.mark.asyncio
 async def test_admin_import_candidates_endpoint_reachable(client, admin_secret):
     resp = await client.post(
         "/api/v1/admin/import-candidates",
