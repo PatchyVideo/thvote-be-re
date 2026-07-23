@@ -8,9 +8,9 @@ VS = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 def _wl():
     return Whitelist([
-        WhitelistEntry("A", "甲", "", "", "旧作", None, None, 0),
-        WhitelistEntry("B", "乙", "", "", "旧作", None, None, 1),
-        WhitelistEntry("C", "丙", "", "", "旧作", None, None, 2),
+        WhitelistEntry(1, 1, "A", "甲", "", "", "旧作", None, None, 0),
+        WhitelistEntry(2, 2, "B", "乙", "", "", "旧作", None, None, 1),
+        WhitelistEntry(3, 3, "C", "丙", "", "", "旧作", None, None, 2),
     ])
 
 

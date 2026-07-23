@@ -93,11 +93,13 @@ def test_compute_completion_rates():
 def _covote_whitelist() -> Whitelist:
     return Whitelist([
         WhitelistEntry(
-            id="Alice", name="Alice", name_jp="", origin="", type="",
+            candidate_id=1, voteable_id=1, old_id="Alice",
+            name="Alice", name_jp="", origin="", type="",
             first_appearance=None, album=None, system_id=1,
         ),
         WhitelistEntry(
-            id="Bob", name="Bob", name_jp="", origin="", type="",
+            candidate_id=2, voteable_id=2, old_id="Bob",
+            name="Bob", name_jp="", origin="", type="",
             first_appearance=None, album=None, system_id=2,
         ),
     ])

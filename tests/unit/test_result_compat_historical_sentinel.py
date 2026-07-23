@@ -21,7 +21,7 @@ VS = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 def _wl() -> Whitelist:
     return Whitelist([
-        WhitelistEntry("id_a", "角色甲", "", "", "旧作", None, None, 0),
+        WhitelistEntry(1, 1, "id_a", "角色甲", "", "", "旧作", None, None, 0),
     ])
 
 

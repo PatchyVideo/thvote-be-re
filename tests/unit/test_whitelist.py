@@ -3,16 +3,19 @@ from src.apps.result.whitelist import Whitelist, WhitelistEntry, load_whitelist
 
 def _wl() -> Whitelist:
     return Whitelist([
-        WhitelistEntry("aaaa1111", "博丽灵梦", "博麗霊夢", "东方红魔乡", "旧作", "19961103", None, 0),
-        WhitelistEntry("bbbb2222", "雾雨魔理沙", "霧雨魔理沙", "东方封魔录", "旧作", "19970815", None, 1),
+        WhitelistEntry(1, 1, "aaaa1111", "博丽灵梦", "博麗霊夢", "东方红魔乡",
+                        "旧作", "19961103", None, 0),
+        WhitelistEntry(2, 2, "bbbb2222", "雾雨魔理沙", "霧雨魔理沙", "东方封魔录",
+                        "旧作", "19970815", None, 1),
     ])
 
 
 def test_contains_and_ids():
     wl = _wl()
-    assert "aaaa1111" in wl
+    assert "aaaa1111" in wl  # old_id 旧 token 仍可命中
+    assert "1" in wl  # candidate_id 才是 canonical token
     assert "zzzz9999" not in wl
-    assert wl.ids == {"aaaa1111", "bbbb2222"}
+    assert wl.ids == {"1", "2"}  # ids 是 canonical token 集合，不是 old_id
 
 
 def test_name_and_system_id_lookup():
