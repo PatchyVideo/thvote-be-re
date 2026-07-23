@@ -112,7 +112,9 @@ async def test_compute_and_read_ranking(session, fake_redis, settings):
     result_dao = ResultDAO(fake_redis, settings)
     ranking, global_stats = await result_dao.get_ranking("character", [], 2026)
     assert len(ranking) == 1
-    assert ranking[0]["id"] == id1
+    # Task 3 起 "id" 字段一律取旧语义 old_id(8-hex)，不再是投票时提交的原始
+    # token（这里种子数据用的是 candidate_id 本身 id1，两者不再相等）。
+    assert ranking[0]["id"] == wl.get(id1).old_id
     assert ranking[0]["name"] == wl.name_of(id1)
     assert ranking[0]["rank"][0]["vote_count"] == 2
     assert ranking[0]["rank"][0]["favorite_vote_count"] == 1
