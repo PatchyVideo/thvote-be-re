@@ -18,6 +18,7 @@ class CandidateCharacter(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     vote_year = Column(Integer, nullable=False, index=True)
     voteable_id = Column(Integer, nullable=False, index=True)
+    sort_order = Column(Integer, nullable=True)
 
     __table_args__ = (
         UniqueConstraint(
@@ -33,6 +34,7 @@ class CandidateMusic(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     vote_year = Column(Integer, nullable=False, index=True)
     voteable_id = Column(Integer, nullable=False, index=True)
+    sort_order = Column(Integer, nullable=True)
 
     __table_args__ = (
         UniqueConstraint(
