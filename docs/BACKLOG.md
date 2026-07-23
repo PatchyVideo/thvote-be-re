@@ -1,7 +1,7 @@
 # 后续开发 BACKLOG（单一仪表盘）
 
 > 创建日期：2026-04-27
-> 最后更新：2026-07-19（result 前端 GraphQL 契约层断裂已解决；B-050-后补1/4/8 随之解决；补记高级搜索真实需求 + 3 项新发现）
+> 最后更新：2026-07-23（main 快进同步 zfq_dev 的 voteable/work 重构、#25 契约层随后合并；0015 重接 12a5f2e6dbed 消双头；新增 B-056 迁移命名漂移；双仓开出 renko_dev 工作分支）
 
 把散落在 5 份文档里的 follow-up 收拢到这里。**这是仪表盘，不是真理来源**——每项的上下文还在原文档里，本表只给一行摘要 + 跳转。
 
@@ -67,6 +67,7 @@
 | **B-053** | 通用"任意问卷题 × 投票结果"交叉分析 API + 前端（与 B-050-后补5 高级搜索同组，共用 `vote_id → {题code: [选项code]}` 索引）：本轮只落地了"性别"这一个特例分段(经配置指定的固定题)，通用查询(任选一道问卷题作为切分轴，交叉任意投票结果)与配套前端本轮未做——全题目预聚合会撑爆 Redis 榜单(244 角色 × 32 题 × 40 选项)，应按需算 | 低 | 🟢 可独立做(与 B-050-后补5 同组) | 本设计稿 §五「C1.2」/§九「BACKLOG」 |
 | **B-054**（运营） | 录入真实问卷内容并回填 `question_def`/`option_def` 的 `code` 列：线上问卷结构是占位文案 + 非语义自增 id(问卷 id=1,2,3/组 id=1,2/题 id=1,2,3/选项 id=1,2)，**在此之前性别票（B-050-后补1）与问卷结果（B-050-后补4）的统计管道虽已就绪，数字恒为 0**。前端 legacy `Touhou-Vote/packages/shared/data/questionnaire.ts` 含真实问卷内容 + 真实 7 位 id，是现成的导入源，不必手敲 | 高（阻塞两个契约层字段出真实数据） | 🟢 可独立做(数据录入，不改代码) | 本设计稿 §四「B」；`Touhou-Vote/packages/shared/data/questionnaire.ts` |
 | **B-055**（前端，Touhou-Vote 仓库） | Task 7 验收时勘察 `packages/result/src` 发现的前端已知缺口(与本仓库后端无关，记录以便跨仓库跟踪)：① `characterConnect.vue`/`MusicConnect.vue` 是"维护中"占位页(covote 契约本轮已修好，但无消费方)；② `Doujin.vue` 总票数硬编码字面量 `1272`，无 GraphQL 查询；③ CP 部门只有 `Couple`/`CoupleDetail`/`CoupleSingleDetail`/`CoupleReason` 四页，缺角色/音乐都有的 compare/evolution 页；④ `router.ts` 里 `/test` → `Test.vue` 调试路由无条件注册在生产路由表 | 低（另一仓库，不阻塞本仓库任何工作） | — | `Touhou-Vote/packages/result/src/{pages/characterConnect.vue,pages/MusicConnect.vue,pages/Doujin.vue,router.ts}` |
+| **B-056** | 迁移编号约定漂移：zfq_dev 的 voteable/work 重构引入 autogenerate 哈希名迁移 `12a5f2e6dbed_voteable_cross_year_stable_id`（约定应为 `00XX` 顺延）。测试库 `alembic_version` 已记录该 id，**改名需 stamp 修正、不建议轻动**——文档化现状即可；`0015` 已重接其后成单链（`0014→12a5f2e6dbed→0015`），**后续新迁移从 `0016` 顺延、down_revision 指 `0015`**。与 zfq 同步一下命名约定，避免下次再产生哈希名 | 低 | 🟢 纯约定沟通 | `alembic/versions/12a5f2e6dbed_*.py`；[[branch-ownership-zfq-dev]] 约定见 CLAUDE.md §9 |
 | **B-050-后补6** | candidate 表迁移 `object_id`(以 id 白名单快照为权威源迁到 DB 表,见设计稿 §四"目标④") | 低 | 🟢 可独立做 | 同上设计稿 §四/§五 |
 | **B-050-后补7** | ~~**死代码清理**:`compute_dao.py` 的 `load_char_candidates`/`load_music_candidates`/`load_merge_name_map`/`load_historical` 四个方法在新 id 白名单管线接线后已无任何调用方(纯死方法,只剩自身定义);`compute.py::CandidateMeta` 与 `whitelist.py::_KIND_MAPPING`/`compute.py::KIND_MAPPING` 重复(同一份映射两处维护),可随死方法一并清理~~ | ✅ 已完成(2026-07-18,fix-wave):四个死方法 + `CandidateMeta`/`compute.KIND_MAPPING` 已删,grep 确认 `src/`+`tests/` 零引用(除 `whitelist.py` 自身 `_KIND_MAPPING`) | — | `src/apps/result/compute_dao.py`、`src/apps/result/compute.py` |
 | **B-050-后补8** | ~~`compute_covote` 当前输出原始 8-hex id(而非人名),且未过白名单过滤——直接拿去拼结果页会显示乱码 id、也可能混入未上白名单的脏 id;需补 id→name 映射(复用 `Whitelist.name_of`)+ 白名单过滤后才可接入结果页~~ ✅ **已解决 (2026-07-19)**:`compute_covote` 新增 `whitelist` 参数,先按白名单过滤再配对,输出 `a`/`b` 改用 `Whitelist.name_of()` 转人名;`cs`/`mi` 两个相关性/互信息字段本轮仍置 0(未实现,无消费方)。⚠️ 诚实提示:前端 `characterConnect`/`MusicConnect` 页仍是"维护中"占位(见 **B-055**),接口修好不代表前端立刻可看 | — | — | `src/apps/result/compute.py::compute_covote`、`src/apps/result/whitelist.py` |
