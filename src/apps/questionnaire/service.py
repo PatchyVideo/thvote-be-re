@@ -40,8 +40,12 @@ class QuestionnaireService:
 
 def _flatten_answer_state(answers: list[dict]) -> list[dict]:
     """Flat answer array → list of paper_answer row dicts."""
+    if not isinstance(answers, list):
+        raise ValueError("answers must be a list")
     rows = []
     for a in answers:
+        if not isinstance(a, dict):
+            raise ValueError("each answer must be a dict")
         rows.append({
             "questionnaire_id": a.get("questionnaireId"),
             "group_id": a.get("groupId"),
