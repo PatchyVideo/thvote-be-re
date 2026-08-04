@@ -55,6 +55,7 @@ def parse_structure_tree(
                     "introduction": q.get("introduction", ""),
                     "order": q.get("order", 0),
                     "max_input_len": q.get("maxInputLen", 1000),
+                    "code": q.get("code"),
                 }
                 if q_id is not None:
                     qn_row["id"] = q_id
@@ -69,6 +70,7 @@ def parse_structure_tree(
                         "mutex_option_ids": o.get("mutexOptionIds") or [],
                         "option_group": o.get("optionGroup", 0),
                         "order": o.get("order", 0),
+                        "code": o.get("code"),
                     }
                     if o_id is not None:
                         o_row["id"] = o_id

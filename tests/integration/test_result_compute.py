@@ -23,7 +23,7 @@ from src.apps.result.dao import ResultDAO, ResultNotComputedError
 from src.apps.result.whitelist import load_whitelist
 from src.common.config import Settings
 from src.db_model.base import Base
-from src.db_model.questionnaire import Questionnaire
+from src.db_model.questionnaire_def import OptionDef, PaperAnswer, QuestionDef
 from src.db_model.raw_submit import RawCharacterSubmit
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
@@ -60,14 +60,19 @@ def settings():
     s.__dict__["vote_year"] = 2026
     s.__dict__["vote_start_iso"] = "2026-01-01T00:00:00Z"
     s.__dict__["vote_end_iso"] = "2026-12-31T23:59:59Z"
-    s.__dict__["gender_question_id"] = "q11011"
-    s.__dict__["gender_male_value"] = "male"
-    s.__dict__["gender_female_value"] = "female"
+    s.__dict__["gender_question_code"] = "11011"
+    s.__dict__["gender_male_option_code"] = "1101101"
+    s.__dict__["gender_female_option_code"] = "1101102"
     return s
 
 
 async def _seed_data(session: AsyncSession) -> None:
-    """Insert raw_* votes using real whitelist ids + a questionnaire row for gender."""
+    """Insert raw_* votes using real whitelist ids + a paper_answer row for gender.
+
+    问卷 feed 读 paper_answer(B-039 结构化表,Task 2 迁移)。gender_* 配置
+    (Task 3)已切到语义 code,与 feed 产出的 QuestionDef.code / OptionDef.code
+    直接对应,build_segment_map 能正确判出性别。
+    """
     wl = load_whitelist("character")
     id1 = sorted(wl.ids)[0]
     session.add_all([
@@ -80,10 +85,15 @@ async def _seed_data(session: AsyncSession) -> None:
                            user_ip="",
                            payload=[{"id": id1, "first": False, "reason": None}]),
     ])
-    # 问卷表仍被 load_questionnaire_votes 读取 → 驱动 gender_map
-    session.add(Questionnaire(
-        id="user-1", submit_datetime=datetime(2026, 1, 2, tzinfo=timezone.utc),
-        questionnaire_list=[{"id": "q11011", "answer": ["male"], "answer_str": None}],
+    gender_q = QuestionDef(group_id=1, type="Single", content="性别", code="11011")
+    session.add(gender_q)
+    await session.flush()
+    opt_male = OptionDef(question_id=gender_q.id, content="男", code="1101101")
+    session.add(opt_male)
+    await session.flush()
+    session.add(PaperAnswer(
+        vote_id="user-1", vote_year=2026, questionnaire_id=1, group_id=1,
+        active_question_id=gender_q.id, selected_option_ids=[opt_male.id],
     ))
     await session.commit()
 
@@ -124,4 +134,6 @@ async def test_compute_global_stats(session, fake_redis, settings):
     result_dao = ResultDAO(fake_redis, settings)
     stats = await result_dao.get_global_stats(2026)
     assert stats["num_char"] == 2   # user-1, user-2
-    assert stats["num_male"] == 1   # user-1 answered questionnaire male
+    # user-1 在 paper_answer 里选了 opt_male("1101101"),gender_question_code
+    # 配置("11011")与 QuestionDef.code 对应,build_segment_map 判出 male。
+    assert stats["num_male"] == 1

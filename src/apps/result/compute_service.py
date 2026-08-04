@@ -10,10 +10,10 @@ from datetime import datetime, timezone
 import redis.asyncio as aioredis
 
 from src.apps.result.compute import (
+    build_segment_map,
     compute_completion_rates,
     compute_covote,
     compute_cp_ranking,
-    compute_gender_map,
     compute_global_stats,
     compute_paper_results,
     compute_ranking,
@@ -71,27 +71,30 @@ class ComputeService:
             char_votes = await self.dao.load_char_votes()
             music_votes = await self.dao.load_music_votes()
             cp_votes = await self.dao.load_cp_votes()
-            q_votes = await self.dao.load_questionnaire_votes()
+            q_votes = await self.dao.load_questionnaire_votes(vote_year)
 
             # 白名单（id→名/系统ID）；CP 成员是角色 → 用角色白名单
             char_wl = load_whitelist("character")
             music_wl = load_whitelist("music")
 
-            # Compute
-            gender_map = compute_gender_map(
-                q_votes,
-                s.gender_question_id,
-                s.gender_male_value,
-                s.gender_female_value,
+            # Compute — gender 是"被指定为人口学轴心的那道问卷题"的分段，
+            # 不再特殊处理；label_by_option 把该题的两个选项 code 映射到
+            # male/female 标签。
+            label_by_option = {
+                s.gender_male_option_code: "male",
+                s.gender_female_option_code: "female",
+            }
+            segment_map = build_segment_map(
+                q_votes, s.gender_question_code, label_by_option,
             )
             char_ranking, char_global = compute_ranking(
-                char_votes, char_wl, gender_map, {}, vote_start, total_hours,
+                char_votes, char_wl, segment_map, {}, vote_start, total_hours,
             )
             music_ranking, music_global = compute_ranking(
-                music_votes, music_wl, gender_map, {}, vote_start, total_hours,
+                music_votes, music_wl, segment_map, {}, vote_start, total_hours,
             )
             cp_ranking, cp_global = compute_cp_ranking(
-                cp_votes, char_wl, gender_map, {}, vote_start, total_hours,
+                cp_votes, char_wl, segment_map, {}, vote_start, total_hours,
             )
 
             all_voters = (
@@ -101,14 +104,14 @@ class ComputeService:
                 | {uid for uid, _ in q_votes}
             )
             global_stats = compute_global_stats(
-                char_votes, music_votes, cp_votes, q_votes, gender_map
+                char_votes, music_votes, cp_votes, q_votes, segment_map
             )
             completion_rates = compute_completion_rates(
                 char_votes, music_votes, cp_votes, q_votes, all_voters
             )
-            paper_results = compute_paper_results(q_votes, vote_start, total_hours)
-            char_covote = compute_covote(char_votes, top_k=100)
-            music_covote = compute_covote(music_votes, top_k=100)
+            paper_results = compute_paper_results(q_votes, segment_map)
+            char_covote = compute_covote(char_votes, char_wl, top_k=100)
+            music_covote = compute_covote(music_votes, music_wl, top_k=100)
 
             # Bulk write to Redis
             pipe = self.redis.pipeline()

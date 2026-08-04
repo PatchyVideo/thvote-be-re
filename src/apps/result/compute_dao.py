@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db_model.candidate import CandidateCharacter, CandidateMusic, FinalRanking
-from src.db_model.questionnaire import Questionnaire
+from src.db_model.questionnaire_def import OptionDef, PaperAnswer, QuestionDef
 from src.db_model.raw_submit import (
     RawCharacterSubmit,
     RawCPSubmit,
     RawMusicSubmit,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_items(raw_list: list) -> list[dict]:
@@ -61,9 +64,55 @@ class ComputeDAO:
         rows = (await self.session.execute(select(RawCPSubmit))).scalars().all()
         return self._latest_per_vote(rows)
 
-    async def load_questionnaire_votes(self) -> list[tuple[str, list[dict]]]:
-        rows = (await self.session.execute(select(Questionnaire))).scalars().all()
-        return [(r.id, r.questionnaire_list or []) for r in rows]
+    async def load_questionnaire_votes(
+        self, vote_year: int
+    ) -> list[tuple[str, list[dict]]]:
+        """从 paper_answer(B-039 结构化表)读问卷回答,按语义 code 输出。
+
+        注意:paper_answer 没有 invalidated 标志,admin 作废动作触达不到问卷答案。
+        题/选项缺 code 的会被跳过(无法按语义码寻址):整行(问题缺 code)或单个
+        选项(选项缺 code,该行其余有 code 的选项仍保留)都计入跳过汇总。
+        """
+        q_codes = dict(
+            (await self.session.execute(select(QuestionDef.id, QuestionDef.code))).all()
+        )
+        o_codes = dict(
+            (await self.session.execute(select(OptionDef.id, OptionDef.code))).all()
+        )
+        rows = (
+            await self.session.execute(
+                select(PaperAnswer).where(PaperAnswer.vote_year == vote_year)
+            )
+        ).scalars().all()
+
+        grouped: dict[str, list[dict]] = {}
+        skipped_questions = 0
+        skipped_options = 0
+        for r in rows:
+            if r.active_question_id is None:
+                continue
+            qcode = q_codes.get(r.active_question_id)
+            if not qcode:
+                skipped_questions += 1
+                continue
+            answers = []
+            for oid in r.selected_option_ids or []:
+                ocode = o_codes.get(oid)
+                if ocode:
+                    answers.append(ocode)
+                else:
+                    skipped_options += 1
+            grouped.setdefault(r.vote_id, []).append(
+                {"id": qcode, "answer": answers, "answer_str": r.input_text}
+            )
+        if skipped_questions or skipped_options:
+            logger.debug(
+                "questionnaire feed: skipped %d rows (question without code), "
+                "%d options without code",
+                skipped_questions,
+                skipped_options,
+            )
+        return list(grouped.items())
 
     async def upsert_candidates(
         self, vote_year: int, category: str, items: list[dict]

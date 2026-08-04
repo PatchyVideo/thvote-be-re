@@ -57,6 +57,9 @@ class QuestionDef(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     introduction: Mapped[str] = mapped_column(Text, nullable=False, default="")
     order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 语义码(7 位编码体系:题 5 位,如 "11011")。区别于自增 id ——线上库的
+    # id 是纯自增,不是语义码;可空以兼容尚未编码的历史/纯自增题库。
+    code: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     max_input_len: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1000
     )
@@ -76,6 +79,8 @@ class OptionDef(Base):
     )
     option_group: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 语义码(7 位编码体系:选项 7 位,如 "1101101")。同上,独立于自增 id。
+    code: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
 
 
 class PaperAnswer(Base):

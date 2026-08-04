@@ -6,12 +6,18 @@ from pydantic import BaseModel
 
 
 class RankingEntityData(BaseModel):
-    """Ranking entity data for vote counts."""
+    """Ranking entity data for vote counts.
+
+    百分比字段是 **0..1 的分数**（旧网关口径：前端 toPercentageString 自己 *100
+    拼 '%'），不是 0..100 的百分数。2026-07-19 修正：此处原为 `int`，编码的是已
+    被废弃的 0..100 约定；本类目前无实例化方（router 一律 response_model=dict），
+    保留正确标注以免将来接上时静默复活单位 bug。
+    """
 
     rank: int
     vote_count: int
     favorite_vote_count: int
-    favorite_percentage: int
+    favorite_percentage: float
     vote_percentage: float
 
 

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from src.apps.result.compute import compute_ranking
+from src.apps.result.compute import compute_cp_ranking, compute_ranking
 from src.apps.result.whitelist import Whitelist, WhitelistEntry
 
 VS = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -64,10 +64,11 @@ def test_metrics_weighted_and_ratios():
     e = ranking[0]
     assert e["id"] == "id_a" and e["name"] == "角色甲"
     assert e["favorite_vote_count_weighted"] == 3 + 2  # 票数+本命数
-    assert e["favorite_percentage"] == 66.67  # 本命率 2/3
+    # 百分比字段是 0..1 的分数(旧网关口径,前端自己 *100 拼 '%'),不是 0..100。
+    assert e["favorite_percentage"] == 0.6667  # 本命率 2/3
     assert e["rank"][0]["vote_count"] == 3
-    # 票数占比 = 3/3 账号 = 100%
-    assert e["rank"][0]["vote_percentage"] == 100.0
+    # 票数占比 = 3/3 账号 = 1.0(即 100%,但存的是分数)
+    assert e["rank"][0]["vote_percentage"] == 1.0
 
 
 def test_favorite_percentage_of_all():
@@ -79,4 +80,45 @@ def test_favorite_percentage_of_all():
     ]
     ranking, _ = compute_ranking(votes, _wl(), {}, {}, VS, 1)
     by = {e["name"]: e for e in ranking}
-    assert by["角色甲"]["favorite_percentage_of_all"] == 66.67  # 本命占比 2/3 → 百分数
+    # 本命占比 2/3 → 分数 0.6667,不是百分数 66.67
+    assert by["角色甲"]["favorite_percentage_of_all"] == 0.6667
+
+
+# ── MUST FIX 1 回归(2026-07-19 fix-wave):百分比字段必须是分数,不是 0..100 ──
+#
+# 前端 toPercentageString(num) = (num*100).toFixed(2)+'%' 自己乘 100；如果
+# compute 已经乘过一次,前端会再乘一次，得到形如 8000.00% 这种荒谬值。
+
+
+def test_vote_percentage_is_fraction_in_0_1_character():
+    # 5 个投票人,4 个投 id_a → vote_percentage 必须是分数 0.8,不是 80.0
+    votes = [
+        _vote("u1", [{"id": "id_a"}]),
+        _vote("u2", [{"id": "id_a"}]),
+        _vote("u3", [{"id": "id_a"}]),
+        _vote("u4", [{"id": "id_a"}]),
+        _vote("u5", [{"id": "id_b"}]),
+    ]
+    ranking, _ = compute_ranking(votes, _wl(), {}, {}, VS, 1)
+    e = next(x for x in ranking if x["id"] == "id_a")
+    assert e["rank"][0]["vote_percentage"] == 0.8
+    assert 0.0 <= e["rank"][0]["vote_percentage"] <= 1.0
+
+
+def test_vote_percentage_is_fraction_in_0_1_cp():
+    # 5 个 CP 投票人,4 个投 id_a×id_b → vote_percentage 必须是分数 0.8,不是 80.0；
+    # 第 5 个投 id_a×id_c,组合票数==1 被排名过滤掉，但仍计入 total_voters 分母
+    # （与 total_male/total_female 分母不同，vote_percentage 分母始终是全体
+    # 本类别投票人数）。
+    votes = [
+        ("u1", VS, [{"id_a": "id_a", "id_b": "id_b"}]),
+        ("u2", VS, [{"id_a": "id_a", "id_b": "id_b"}]),
+        ("u3", VS, [{"id_a": "id_a", "id_b": "id_b"}]),
+        ("u4", VS, [{"id_a": "id_a", "id_b": "id_b"}]),
+        ("u5", VS, [{"id_a": "id_a", "id_b": "id_c"}]),
+    ]
+    ranking, _ = compute_cp_ranking(votes, _wl(), {}, {}, VS, 1)
+    assert len(ranking) == 1  # id_a×id_c 只 1 票，被"组合票数==1 不计入"过滤
+    e = ranking[0]
+    assert e["rank"][0]["vote_percentage"] == 0.8
+    assert 0.0 <= e["rank"][0]["vote_percentage"] <= 1.0
