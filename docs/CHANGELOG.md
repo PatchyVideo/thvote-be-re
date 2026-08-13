@@ -4,6 +4,11 @@
 >
 > 创建日期：2026-04-27
 
+## [2026-08-14] 高级搜索/筛选 DSL 设计稿（文档，无代码变更）
+
+### Added
+- `docs/superpowers/specs/2026-08-14-advanced-search-dsl-design.md`：B-050-后补5（P0）实现设计定稿。方案选型记录（服务端 lark 小型解析器；被否方案：砍指令模式改 JSON 契约 / 前端解析传 AST——性能担忧定位为"子集重算而非解析器"，且重算成本与约束表达形式无关）；架构=新子包 `src/apps/result/advanced_search/`（dsl/subset/service 三模块），子集圈选后**原样复用** compute 纯函数整包重算，缓存 key 镜像现有布局加 `adv:{快照版本}:{指纹}` 前缀（TTL 24h + compute 后版本翻转失效 + 单飞锁）；已拍板语义：未知名字报错指名（`ADVANCED_SEARCH_UNKNOWN_NAME`）、名字按 name/name_jp 双字段精确匹配;护栏：原串 ≤1KB、原子 ≤20、深度 ≤5、`ADVANCED_SEARCH_TOO_COMPLEX`。covote cs/mi 确认不做（需求无此页）。B-053 复用同一子集原语。
+
 ## [2026-08-14] 结果统计层三方审计（文档，无代码变更）
 
 ### Added
