@@ -4,6 +4,11 @@
 >
 > 创建日期：2026-04-27
 
+## [2026-08-14] 结果统计层三方审计（文档，无代码变更）
+
+### Added
+- `docs/migration/result-stats-audit-2026-08-14.md`：前端 `packages/result` 需求 × Python `src/apps/result` × legacy Rust `result-query` 三方对照 + 缺口分类 + 优先级。结论：接口面基本迁全，真缺口是**高级搜索 DSL**（前端 AdvancedSearch 已生成 DSL，后端抛 `ADVANCED_SEARCH_NOT_IMPLEMENTED`）+ 往届对比（-1 哨兵 + historical 恒 {}）+ 问卷趋势/numDoujin/covote cs·mi 等桩，多与前端占位页或 B-054 数据未录入配对。实测 `/res-be` 通路已通（result 站可联调）。
+
 ## [2026-08-14] 测试登录旁路（TEST_LOGIN_BYPASS，临时测试设施）
 
 ### Added

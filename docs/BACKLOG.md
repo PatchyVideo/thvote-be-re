@@ -94,7 +94,8 @@
 - **B-019** 错误响应 `{"detail"}` → 与 Rust `{"error","service"}` 统一（等前端反馈是否需要）
 - **B-024** `UserDAO.save()` 加 `session.merge()`（防御性加固）
 - **B-033** 删除 legacy-compat 路由层（移除条件：Rust gateway 下线 + 前端迁 `/api/v1` 新 shape；与 B-019 同属契约收敛，详见 `docs/migration/legacy-rest-compat.md`）
-- **B-050-后补2/3/5 + B-053** 记票深水区（trend 需 append-only 存储改造；上届对比依赖 B-057③ 数据；高级搜索/交叉分析共用"子集重算"原语）——适合打包出一份设计稿再动手
+- **B-050-后补2/3/5 + B-053** 记票深水区（trend 需 append-only 存储改造；上届对比依赖 B-057③ 数据；高级搜索/交叉分析共用"子集重算"原语）——适合打包出一份设计稿再动手。**2026-08-14 结果统计三方审计确认**：这几项正是结果站前端已具备入口、后端仍是桩的缺口——前端 `AdvancedSearch` 已生成 DSL、`characterCompare` 有往届对比页、`QuestionnaireDetail` 拿问卷趋势，后端一实现即点亮；`/res-be` 通路已通、result 站可联调。详见 [result-stats-audit-2026-08-14](./migration/result-stats-audit-2026-08-14.md)
+- **前端 result 可维护性债（Touhou-Vote 仓，B-055 归口）** 审计新发现：`voteYear:11`+`voteStart` 硬编码散落 20+ 处未走 `lib/voteYear.ts`；characterEvolution.vue 过期日期文案；`/test` 调试路由在生产路由表；Doujin 页总票数等全硬编码（每届手改代码）。见审计文档 §三E/§C
 - **B-049 尾项** admin-ui legacy 面板视觉验收后删除；无 UI 端点可选补
 - **B-047** IP→ASN 机房归属取证（可独立，属反作弊 Phase 2）
 - **B-056** 迁移命名约定与 zfq 沟通（顺带同步：下一个迁移编号 **0017**、down=0016）
