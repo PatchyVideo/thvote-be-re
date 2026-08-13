@@ -11,9 +11,12 @@
 ### Fixed
 - 测试机 2026-08-07 重启后 R-NACOS 容器 `mynacos`（restart 策略 `no`）未被拉起，后端拿不到配置回退 localhost DB 持续 crash-loop，登录等全部功能不可用六天。借 CI SSH 通道 `docker start mynacos` + `docker update --restart unless-stopped mynacos` + 重启后端恢复；临时诊断分支 `ops/test-env-diagnose` 用后即删。详见 `docs/operations/nacos-config-center.md` §八 事故记录。
 
+### Changed
+- `deploy-test.yml`：删除等待 `thvote-postgres` 容器的死循环（该机无此容器，DB 为外部实例，每次部署白等 60 秒），换成 Nacos 容器（`mynacos`）存活前置检查——不在跑则以明确报错终止部署，正是本次事故当时缺的那道闸。
+
 ### 兼容性
 - 无代码/接口变更。服务器侧变更一处：`mynacos` restart 策略 `no` → `unless-stopped`（防复发）。
-- 遗留：`deploy-test.yml` 等待 `thvote-postgres` 容器的循环是死代码（该机无此容器，DB 为外部实例）；后端 Nacos 不可达时静默回退默认配置的行为宜改 fail-fast。
+- 遗留：后端 Nacos 不可达时静默回退默认配置的行为宜改 fail-fast（与 B-030 一并处理）。
 
 ## [2026-07-23] voteable/work 重构合入 main（补记）+ 分支收口
 

@@ -183,7 +183,7 @@ docker restart thvote-backend                     # 结束 crash-loop
 
 **教训 / 遗留**：
 - 服务器上手工 `docker run` 起的基础设施容器必须带 `--restart unless-stopped`；本次已就地改掉 mynacos 的策略。
-- 这台机上**没有** `thvote-postgres` 容器（DB 是外部实例，DATABASE_URL 由 Nacos 下发）——`deploy-test.yml` 里等 `thvote-postgres` 就绪的循环永远超时后继续，属于死代码 + 误导排障，宜清理。
+- 这台机上**没有** `thvote-postgres` 容器（DB 是外部实例，DATABASE_URL 由 Nacos 下发）——`deploy-test.yml` 里等 `thvote-postgres` 就绪的死循环已于 2026-08-13 移除，换成 `mynacos` 存活前置检查（不在跑则部署直接报错终止）。
 - 后端在 Nacos 不可达时**静默回退**默认配置（localhost DB）再崩，错误信息掩盖了真实根因；宜改为显式 fail-fast 并打明确日志（与 B-030 一并处理）。
 
 ---
