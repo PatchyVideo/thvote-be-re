@@ -4,7 +4,16 @@
 >
 > 创建日期：2026-04-27
 
-> 最后更新：2026-07-23（补记 voteable/work 重构合入 main + 分支收口；升级记票白名单对撞点 B-050-后补6）
+> 最后更新：2026-08-13（测试环境事故修复：mynacos 重启后未拉起导致后端 crash-loop 六天）
+
+## [2026-08-13] 测试环境事故修复（运维，无代码变更）
+
+### Fixed
+- 测试机 2026-08-07 重启后 R-NACOS 容器 `mynacos`（restart 策略 `no`）未被拉起，后端拿不到配置回退 localhost DB 持续 crash-loop，登录等全部功能不可用六天。借 CI SSH 通道 `docker start mynacos` + `docker update --restart unless-stopped mynacos` + 重启后端恢复；临时诊断分支 `ops/test-env-diagnose` 用后即删。详见 `docs/operations/nacos-config-center.md` §八 事故记录。
+
+### 兼容性
+- 无代码/接口变更。服务器侧变更一处：`mynacos` restart 策略 `no` → `unless-stopped`（防复发）。
+- 遗留：`deploy-test.yml` 等待 `thvote-postgres` 容器的循环是死代码（该机无此容器，DB 为外部实例）；后端 Nacos 不可达时静默回退默认配置的行为宜改 fail-fast。
 
 ## [2026-07-23] voteable/work 重构合入 main（补记）+ 分支收口
 
