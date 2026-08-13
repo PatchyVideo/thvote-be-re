@@ -366,6 +366,12 @@ class Settings(BaseSettings):
         "closed", validation_alias="ALIYUN_CAPTCHA_FAIL_MODE"
     )
 
+    # TEST_LOGIN_BYPASS——测试登录旁路(⚠️ 临时测试设施,公开上线前整体移除,
+    # grep TEST_LOGIN_BYPASS 全量定位)。两者同时非空才激活;生产 Nacos 永不配置。
+    # 见 docs/superpowers/specs/2026-08-14-test-login-bypass-design.md
+    test_login_bypass_accounts: list[str] = Field(default_factory=list)
+    test_login_bypass_code: str = Field("")
+
     @property
     def database_url(self) -> str:
         """兼容性别段，返回数据库连接 URL。"""

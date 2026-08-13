@@ -4,6 +4,16 @@
 >
 > 创建日期：2026-04-27
 
+## [2026-08-14] 测试登录旁路（TEST_LOGIN_BYPASS，临时测试设施）
+
+### Added
+- **验码侧白名单固定码旁路**：`TEST_LOGIN_BYPASS_ACCOUNTS`（JSON 数组）+ `TEST_LOGIN_BYPASS_CODE` 双非空时，白名单账号提交固定码即通过短信/邮件验证码校验（不打 PNVS/不查 Redis），供自动化端到端测试跑通登录→投票链路。发码链路（captcha/PNVS/限流）不动，真人真号不受影响；命中打脱敏 WARNING。新模块 `src/common/verification/test_bypass.py` + 两个 `consume` 短路 + 7 条单测（496 passed）。设计稿 `docs/superpowers/specs/2026-08-14-test-login-bypass-design.md`，操作说明 captcha-onboarding §六点五。
+
+### 兼容性
+- 默认双空 = 功能不存在（fail-closed）；**生产 Nacos 永不配置这两个 key**。
+- **移除条件**：公开上线前整体删除，`grep -r TEST_LOGIN_BYPASS` 全量定位。
+- 需配置变更：测试 Nacos `thvote_be` 加两个 key 并重启容器方可使用。
+
 > 最后更新：2026-08-13（测试环境事故修复：mynacos 重启后未拉起导致后端 crash-loop 六天）
 
 ## [2026-08-13] 测试环境事故修复（运维，无代码变更）
