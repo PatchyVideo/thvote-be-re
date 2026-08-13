@@ -1,18 +1,21 @@
-from src.apps.result.whitelist import Whitelist, WhitelistEntry, load_whitelist
+from src.apps.result.whitelist import Whitelist, WhitelistEntry
 
 
 def _wl() -> Whitelist:
     return Whitelist([
-        WhitelistEntry("aaaa1111", "博丽灵梦", "博麗霊夢", "东方红魔乡", "旧作", "19961103", None, 0),
-        WhitelistEntry("bbbb2222", "雾雨魔理沙", "霧雨魔理沙", "东方封魔录", "旧作", "19970815", None, 1),
+        WhitelistEntry(1, 1, "aaaa1111", "博丽灵梦", "博麗霊夢", "东方红魔乡",
+                        "旧作", "19961103", None, 0),
+        WhitelistEntry(2, 2, "bbbb2222", "雾雨魔理沙", "霧雨魔理沙", "东方封魔录",
+                        "旧作", "19970815", None, 1),
     ])
 
 
 def test_contains_and_ids():
     wl = _wl()
-    assert "aaaa1111" in wl
+    assert "aaaa1111" in wl  # old_id 旧 token 仍可命中
+    assert "1" in wl  # candidate_id 才是 canonical token
     assert "zzzz9999" not in wl
-    assert wl.ids == {"aaaa1111", "bbbb2222"}
+    assert wl.ids == {"1", "2"}  # ids 是 canonical token 集合，不是 old_id
 
 
 def test_name_and_system_id_lookup():
@@ -24,14 +27,8 @@ def test_name_and_system_id_lookup():
     assert wl.system_id_of("zzzz9999") == 10**9
 
 
-def test_load_real_snapshot_character_count():
-    wl = load_whitelist("character")
-    assert len(wl.ids) == 244  # 与 candidate_character 一致
-    # 系统ID 覆盖 0..243 连续
-    sids = sorted(wl.system_id_of(i) for i in wl.ids)
-    assert sids[0] == 0 and sids[-1] == 243
-
-
-def test_load_real_snapshot_music_nonempty():
-    wl = load_whitelist("music")
-    assert len(wl.ids) > 0
+# JSON 快照直读的两条测试(test_load_real_snapshot_character_count /
+# test_load_real_snapshot_music_nonempty)随 Task 6 一并删除——它们验证的是
+# 已退役的 load_whitelist() JSON loader；快照→DB 的等价覆盖见
+# tests/integration/test_result_compute.py(经 seed_voteables_from_snapshot
+# 导入通道 + load_whitelist_db 读回）。

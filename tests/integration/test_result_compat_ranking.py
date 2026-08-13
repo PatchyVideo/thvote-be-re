@@ -24,11 +24,13 @@ except ImportError:
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.integration.conftest import seed_voteables_from_snapshot
+
 import src.api.graphql.resolvers.result as result_resolver_module
 from src.api.graphql.schema import schema
 from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeService
-from src.apps.result.whitelist import load_whitelist
+from src.apps.result.whitelist import load_whitelist_db
 from src.common.config import Settings
 from src.db_model.questionnaire_def import OptionDef, PaperAnswer, QuestionDef
 from src.db_model.raw_submit import RawCharacterSubmit, RawCPSubmit
@@ -94,8 +96,13 @@ async def _seed_and_compute(session: AsyncSession, fake_redis, settings) -> None
     性别问卷答案 -> compute_all 落 Redis(2026)。
 
     落到 result:2026:*;result:11:* 故意留空,用于验证 voteYear 回落行为。
+
+    白名单先走 Task 4 导入通道种子进 DB（seed_voteables_from_snapshot，
+    dogfooding scripts/whitelist_to_import.convert）——Task 6 起
+    compute_service 只读 DB 白名单，不再读 JSON 快照。
     """
-    wl = load_whitelist("character")
+    await seed_voteables_from_snapshot(session, "character", 2026)
+    wl = await load_whitelist_db(session, "character", 2026)
     id1, id2, id3 = sorted(wl.ids)[:3]
     session.add_all([
         RawCharacterSubmit(
@@ -247,8 +254,15 @@ async def test_query_character_ranking_not_computed_is_stable_and_leak_free(
 
 
 @pytest.mark.asyncio
-async def test_query_cp_ranking_adapts_two_and_three_member_entries(gql_schema) -> None:
-    """CP 适配器覆盖 2 人(cp.c 为 None)和 3 人(cp.c 非 None)两种成员数形状。"""
+async def test_query_cp_ranking_adapts_two_and_three_member_entries(
+    gql_schema, session
+) -> None:
+    """CP 适配器覆盖 2 人(cp.c 为 None)和 3 人(cp.c 非 None)两种成员数形状。
+
+    CP 名字现在直接读 compute_cp_ranking 产出的 member_names(Task 6 摘除
+    resolver 里的 whitelist 反查),这里仍用 DB 白名单算出期望名字——不是在
+    验证 resolver 的实现细节,是在验证"人名对得上真实白名单条目"这件事。
+    """
     result = await gql_schema.execute(QUERY_CP_RANKING)
     assert result.errors is None
     ranking = result.data["queryCPRanking"]
@@ -259,15 +273,15 @@ async def test_query_cp_ranking_adapts_two_and_three_member_entries(gql_schema) 
     by_c_none = {e["cp"]["c"] is None: e for e in entries}
     assert set(by_c_none.keys()) == {True, False}
 
+    wl = await load_whitelist_db(session, "character", 2026)
+    id1, id2, id3 = sorted(wl.ids)[:3]
+
     two_member = by_c_none[True]
     assert two_member["voteCount"] == 2
     assert {two_member["cp"]["a"], two_member["cp"]["b"]} == {
-        load_whitelist("character").name_of(sorted(load_whitelist("character").ids)[0]),
-        load_whitelist("character").name_of(sorted(load_whitelist("character").ids)[1]),
+        wl.name_of(id1), wl.name_of(id2),
     }
 
     three_member = by_c_none[False]
     assert three_member["voteCount"] == 2
-    assert three_member["cp"]["c"] == (
-        load_whitelist("character").name_of(sorted(load_whitelist("character").ids)[2])
-    )
+    assert three_member["cp"]["c"] == wl.name_of(id3)

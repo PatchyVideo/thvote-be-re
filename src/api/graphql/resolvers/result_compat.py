@@ -45,7 +45,6 @@ from src.apps.result.schemas import (
     RankingQuery,
 )
 from src.apps.result.service import ResultService
-from src.apps.result.whitelist import Whitelist, load_whitelist
 from src.common.config import Settings
 from src.common.exceptions import NotFoundError, ValidationError
 
@@ -208,21 +207,29 @@ def _ranking_entry_from_dict(e: dict) -> RankingEntry:
     )
 
 
-def _cp_ranking_entry_from_dict(e: dict, char_whitelist: Whitelist) -> CPRankingEntry:
+def _cp_ranking_entry_from_dict(e: dict) -> CPRankingEntry:
     """compute_cp_ranking() 产出的单条 dict → CPRankingEntry。
 
-    CP 成员是角色 id（id_a/id_b/id_c），前端 CPItem 要的是人名 → 用角色白名单
-    ``name_of()`` 转换（CP 永远不查音乐白名单，两个白名单不可混用）。
+    CP 成员人名直接读 ``member_names``（Task 3 起 compute_cp_ranking 产出，
+    按 id_a/id_b/id_c 同一顺序排列）——不再反查角色白名单，去掉一次 DB 往返。
+
+    兜底：Task 6 部署前算出的旧 Redis 缓存没有 ``member_names`` 字段，退化用
+    原始 id（canonical candidateId 或历史 8-hex old_id）展示，不崩溃；部署后
+    应重新跑一次 compute 让缓存补齐该字段（迁移顺序见设计稿），这里的兜底
+    只是过渡期防御，不是长期行为。
     """
+    names = e.get("member_names") or [
+        t for t in (e.get("id_a"), e.get("id_b"), e.get("id_c")) if t
+    ]
     male = e["male_vote_count"]
     female = e["female_vote_count"]
     return CPRankingEntry(
         rank=e["rank"][0]["rank"],
         display_rank=e["display_rank"],
         cp=CPItem(
-            a=char_whitelist.name_of(e["id_a"]),
-            b=char_whitelist.name_of(e["id_b"]),
-            c=char_whitelist.name_of(e["id_c"]) if e["id_c"] else None,
+            a=names[0] if len(names) > 0 else "",
+            b=names[1] if len(names) > 1 else "",
+            c=names[2] if len(names) > 2 else None,
         ),
         a_active=e["active_a"],
         b_active=e["active_b"],
@@ -268,11 +275,8 @@ async def _query_cp_ranking(
     svc = await _get_result_service()
     year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
     data = await _fetch_ranking(svc, "cp", year)
-    char_whitelist = load_whitelist("character")
     return CPRanking(
-        entries=[
-            _cp_ranking_entry_from_dict(e, char_whitelist) for e in data["rankings"]
-        ],
+        entries=[_cp_ranking_entry_from_dict(e) for e in data["rankings"]],
         global_=_ranking_global_from_dict(data["global"]),
     )
 
@@ -313,10 +317,7 @@ async def _query_cp_single(
     svc = await _get_result_service()
     year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
     data = await _fetch_ranking(svc, "cp", year)
-    char_whitelist = load_whitelist("character")
-    return _cp_ranking_entry_from_dict(
-        _find_by_ordinal(data["rankings"], rank), char_whitelist
-    )
+    return _cp_ranking_entry_from_dict(_find_by_ordinal(data["rankings"], rank))
 
 
 # ── 趋势(按 name 列表，逐个取) ───────────────────────────────────────

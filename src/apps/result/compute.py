@@ -6,6 +6,7 @@ return computed results. No database or Redis access.
 
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from itertools import combinations
@@ -13,6 +14,38 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from src.apps.result.whitelist import Whitelist
+
+_HEX8_RE = re.compile(r"^[0-9a-f]{8}$")
+
+_DROPPED_KEYS = ("legacy_8hex_unmatched", "candidate_id_unknown", "malformed")
+
+
+def _as_token(value: Any) -> str:
+    """把一个原始 payload 字段安全转换成 str token；非 str（含历史脏数据里的裸
+    数字、list/dict 等）一律归一成空串，交给 ``classify_dropped_token`` 分到
+    ``malformed``——不在这里抛异常，一条脏行不该让整年计票崩掉（review Finding 1）。
+    """
+    return value if isinstance(value, str) else ""
+
+
+def classify_dropped_token(raw: str) -> str:
+    """把一个未命中白名单的原始 token 分类到三个丢弃桶之一（设计稿 §4.3）。
+
+    - 8 位十六进制 → 旧格式 id，但白名单里查不到（``legacy_8hex_unmatched``）。
+    - 纯数字 → 看起来像 candidateId，但不在白名单（``candidate_id_unknown``）。
+    - 其余（含空串、"undefined" 等前端漂移期垃圾、非 str 类型）→ ``malformed``。
+
+    非 str 输入（如历史 raw_submit 行里的裸 JSON 数字/布尔）在这里防御性兜底为
+    ``malformed``，不抛异常——调用方应已用 ``_as_token`` 预先归一，这里的 guard
+    是纵深防御（review Finding 1）。
+    """
+    if not isinstance(raw, str):
+        return "malformed"
+    if raw and _HEX8_RE.fullmatch(raw):
+        return "legacy_8hex_unmatched"
+    if raw and raw.isdigit():
+        return "candidate_id_unknown"
+    return "malformed"
 
 
 # ── Segmentation (generalized gender) ──────────────────────────────────
@@ -112,12 +145,13 @@ def compute_ranking(
     历史键仍按 name（final_ranking 是 name-keyed）；v1 传空 dict。
     返回 (ranking_list, global_stats_dict)
     """
-    vote_count: dict[str, int] = defaultdict(int)      # 按 oid
+    vote_count: dict[str, int] = defaultdict(int)      # 按 oid(canonical)
     first_count: dict[str, int] = defaultdict(int)
     reasons: dict[str, list[str]] = defaultdict(list)
     segment_count: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     trend: dict[str, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
     trend_first: dict[str, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
+    dropped: Counter = Counter()
     total_voters = len(votes)
     # 每个 label(如 male/female)在本类别投票人群中的总人数——
     # percentage_per_total 的分母（旧网关口径，见 _segment_breakdown）。
@@ -133,8 +167,10 @@ def compute_ranking(
             int((submit_dt - vote_start).total_seconds() / 3600), total_hours - 1))
         seen_in_vote: set[str] = set()
         for item in items:
-            oid = item.get("id", "")
-            if not oid or oid not in whitelist:
+            raw_id = _as_token(item.get("id", ""))
+            oid = whitelist.canonical(raw_id)
+            if oid is None:
+                dropped[classify_dropped_token(raw_id)] += 1
                 continue
             if oid in seen_in_vote:  # 同一账号同一 id 只计一次
                 continue
@@ -206,7 +242,9 @@ def compute_ranking(
         ranking.append({
             "rank": rank_snapshots,
             "display_rank": prev_display_rank,
-            "id": oid,
+            "id": meta.old_id if meta else None,  # 旧语义：8-hex，可 None
+            # 与 rank_snapshots[0]["vote_count"] 同一个局部变量 vc，两处必须同步。
+            "vote_count": vc,
             "name": name,
             "favorite_vote_count_weighted": vc + fc,
             "type": (meta.type if meta else "") or "未知",
@@ -233,6 +271,7 @@ def compute_ranking(
         "total_votes": total_votes,
         "average_votes_per_item": total_votes / len(all_ids) if all_ids else 0.0,
         "median_votes_per_item": _median(list(vote_count.values())),
+        "dropped": {k: dropped.get(k, 0) for k in _DROPPED_KEYS},
     }
     return ranking, global_stats
 
@@ -260,8 +299,11 @@ def compute_cp_ranking(
     """按无序 multiset 归票的 CP 排名（B-050）。
 
     item: {"id_a","id_b","id_c","active","first","reason"}
-    key = tuple(sorted([id_a,id_b,id_c?去None]))；顺序/主动方/first 不进 key。
-    任一成员不在白名单 → 整条 CP 丢弃；组合票数==1 不计入。
+    key = tuple(sorted([id_a,id_b,id_c?去None]))；顺序/主动方/first 不进 key；
+    每个成员先经 ``whitelist.canonical`` 归一，key/``members_of``/``active`` 桶
+    全部用 canonical token，新旧 id 格式的同一实体才能正确合并（设计稿 §4.3）。
+    任一成员未命中白名单 → 整条 CP 丢弃，按**第一个未命中成员**分类计入
+    ``dropped``；组合票数==1 不计入排名。
     segment_map: vote_id → 分段标签，用法同 compute_ranking。
     """
     vote_count: dict[tuple, int] = defaultdict(int)
@@ -272,6 +314,7 @@ def compute_cp_ranking(
     members_of: dict[tuple, list[str]] = {}
     trend: dict[tuple, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
     trend_first: dict[tuple, list[int]] = defaultdict(lambda: [0] * max(total_hours, 1))
+    dropped: Counter = Counter()
     total_voters = len(cp_votes)
     # 每个 label 在本类别(CP)投票人群中的总人数——percentage_per_total 的分母。
     segment_totals = Counter(
@@ -286,18 +329,28 @@ def compute_cp_ranking(
             int((submit_dt - vote_start).total_seconds() / 3600), total_hours - 1))
         seen_in_vote: set[tuple] = set()
         for item in items:
-            raw_members = [item.get("id_a", ""), item.get("id_b", "")]
+            raw_members = [
+                _as_token(item.get("id_a", "")), _as_token(item.get("id_b", "")),
+            ]
             if item.get("id_c"):
-                raw_members.append(item["id_c"])
-            if any((not m) or (m not in whitelist) for m in raw_members):
-                continue  # 未知成员 → 整条丢
-            key = tuple(sorted(raw_members))  # multiset，保留重复
+                raw_members.append(_as_token(item["id_c"]))
+            canon_members = [whitelist.canonical(m) for m in raw_members]
+            if any(c is None for c in canon_members):
+                # 未知成员 → 整条丢；按第一个未命中的成员分类计数。
+                first_unmatched = next(
+                    raw for raw, c in zip(raw_members, canon_members) if c is None
+                )
+                dropped[classify_dropped_token(first_unmatched)] += 1
+                continue
+            key = tuple(sorted(canon_members))  # multiset，保留重复，canonical 后聚合
             if key in seen_in_vote:
                 continue
             seen_in_vote.add(key)
             is_first = bool(item.get("first", False))
             reason = item.get("reason")
-            active = item.get("active") or "none"
+            raw_active = _as_token(item.get("active"))
+            active_canon = whitelist.canonical(raw_active) if raw_active else None
+            active = active_canon if active_canon is not None else "none"
 
             vote_count[key] += 1
             if is_first:
@@ -361,7 +414,10 @@ def compute_cp_ranking(
                 ),
             }],
             "display_rank": prev_display_rank,
+            # 与 "rank"[0]["vote_count"] 同一个局部变量 vc，两处必须同步。
+            "vote_count": vc,
             "name": "×".join(whitelist.name_of(m) for m in members),
+            "member_names": [whitelist.name_of(m) for m in members],
             "id_a": a,
             "id_b": b,
             "id_c": c,
@@ -393,6 +449,7 @@ def compute_cp_ranking(
         "total_votes": total_votes,
         "average_votes_per_item": total_votes / len(all_keys) if all_keys else 0.0,
         "median_votes_per_item": _median([vote_count[k] for k in all_keys]),
+        "dropped": {k: dropped.get(k, 0) for k in _DROPPED_KEYS},
     }
     return ranking, global_stats
 
@@ -545,16 +602,18 @@ def compute_covote(
 ) -> list[dict]:
     """Compute pairwise co-vote statistics for the top-k whitelisted entities.
 
-    id 先经白名单过滤（不在白名单的 id 直接丢弃，不参与配对），输出的
-    ``a``/``b`` 用 ``whitelist.name_of()`` 转成人名，而不是原始 8 位 hash id。
+    id 先经 ``whitelist.canonical`` 归一（未命中的直接丢弃，不参与配对，新旧
+    id 格式的同一实体会合并计数），输出的 ``a``/``b`` 用 ``whitelist.name_of()``
+    转成人名，而不是原始 id。
     """
     vote_count: dict[str, int] = defaultdict(int)
     user_voted: dict[str, set[str]] = {}
 
     for user_id, _, items in votes:
         ids = {
-            item.get("id", "") for item in items
-            if item.get("id") and item["id"] in whitelist
+            c for item in items
+            if (c := whitelist.canonical(_as_token(item.get("id", ""))))
+            is not None
         }
         user_voted[user_id] = ids
         for oid in ids:

@@ -36,12 +36,14 @@ from src.apps.admin.schemas import (
 )
 from src.apps.admin.service import AdminService, SyncService
 from src.apps.admin.sync.progress import set_current_run
+from src.apps.admin.voteable_import_service import VoteableImportService
 from src.apps.admin.work_service import WorkService
 from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeInProgressError, ComputeService
 from src.apps.result.dao import ResultNotComputedError
 from src.common.config import Settings, get_settings
 from src.common.database import get_db_session, get_session_maker
+from src.common.exceptions import AppException
 from src.common.redis import get_redis
 
 _logger = logging.getLogger(__name__)
@@ -86,7 +88,14 @@ async def compute_results(
         result = await service.compute_results(year)
         return ComputeResultsResponse(**result)
     except ComputeInProgressError:
+        # ComputeInProgressError 是 AppException 子类,必须排在通用分支前面,
+        # 否则会被下面的 except AppException 吞掉,丢失 409 语义。
         raise HTTPException(status_code=409, detail="COMPUTE_IN_PROGRESS")
+    except AppException as exc:
+        # 例如 WHITELIST_EMPTY(compute_service.py)——同 user/router.py 的
+        # _raise_http 约定:details 是 int 就当 HTTP 状态码,否则兜底 500。
+        status = int(exc.details) if isinstance(exc.details, int) else 500
+        raise HTTPException(status_code=status, detail=exc.message)
 
 
 @router.post("/import-candidates", response_model=ImportCandidatesResponse)
@@ -684,3 +693,34 @@ async def delete_work(
         raise HTTPException(status_code=404, detail="NOT_FOUND")
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
+
+
+# ── Voteable import (统一导入通道) ──────────────────────────────────────────
+
+
+@router.post("/voteables/import")
+async def import_voteables(
+    body: dict,
+    session: AsyncSession = Depends(get_db_session),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict:
+    category = body.get("category")
+    if category not in ("character", "music"):
+        raise HTTPException(
+            status_code=422, detail="category must be character|music"
+        )
+    dry_run = bool(body.get("dry_run", True))
+    svc = VoteableImportService(session)
+    try:
+        result = await svc.run(
+            category, body.get("vote_year"), body.get("format", "json"),
+            body.get("content", ""), dry_run,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    if "parse_error" in result:
+        raise HTTPException(status_code=400, detail=result["parse_error"])
+    if not dry_run:
+        # 只在真正写库后才需要让 vote-objects 缓存失效,与 create_work 同款。
+        await _clear_vote_objects_cache(redis)
+    return result

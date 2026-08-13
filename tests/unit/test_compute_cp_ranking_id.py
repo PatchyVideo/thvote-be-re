@@ -8,9 +8,9 @@ VS = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 def _wl():
     return Whitelist([
-        WhitelistEntry("A", "甲", "", "", "旧作", None, None, 0),
-        WhitelistEntry("B", "乙", "", "", "旧作", None, None, 1),
-        WhitelistEntry("C", "丙", "", "", "旧作", None, None, 2),
+        WhitelistEntry(1, 1, "A", "甲", "", "", "旧作", None, None, 0),
+        WhitelistEntry(2, 2, "B", "乙", "", "", "旧作", None, None, 1),
+        WhitelistEntry(3, 3, "C", "丙", "", "", "旧作", None, None, 2),
     ])
 
 
@@ -27,7 +27,9 @@ def test_unordered_key_merges_and_drops_singletons():
     ranking, _ = compute_cp_ranking(votes, _wl(), {}, {}, VS, 1)
     assert len(ranking) == 1
     e = ranking[0]
-    assert e["id_a"] == "A" and e["id_b"] == "B"  # 排序后
+    # Task 3 起 id_a/id_b 是 canonical(candidate_id) token，不再是投票原始
+    # old_id；排序后 candidate_id 1(A) < 2(B)。
+    assert e["id_a"] == "1" and e["id_b"] == "2"
     assert e["name"] == "甲×乙"
     assert e["rank"][0]["vote_count"] == 2
 
@@ -74,7 +76,8 @@ def test_three_member_cp():
     ranking, _ = compute_cp_ranking(votes, _wl(), {}, {}, VS, 1)
     assert len(ranking) == 1
     e = ranking[0]
-    assert e["id_c"] == "C"
+    # Task 3 起 id_c 是 canonical(candidate_id) token（C 的 candidate_id=3）。
+    assert e["id_c"] == "3"
     assert e["name"] == "甲×乙×丙"
     assert e["active_c"] == 0.5  # 1/2 票 C 主动
 
@@ -87,5 +90,6 @@ def test_self_cp_preserved():
     ]
     ranking, _ = compute_cp_ranking(votes, _wl(), {}, {}, VS, 1)
     assert len(ranking) == 1
-    assert ranking[0]["id_a"] == "A" and ranking[0]["id_b"] == "A"
+    # Task 3 起 id_a/id_b 是 canonical(candidate_id) token（A 的 candidate_id=1）。
+    assert ranking[0]["id_a"] == "1" and ranking[0]["id_b"] == "1"
     assert ranking[0]["name"] == "甲×甲"

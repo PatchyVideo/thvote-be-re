@@ -30,11 +30,13 @@ def _vote(user_id: str, items: list[dict]) -> tuple[str, datetime, list[dict]]:
 def _wl() -> Whitelist:
     return Whitelist([
         WhitelistEntry(
-            id="id_a", name="角色甲", name_jp="", origin="", type="",
+            candidate_id=1, voteable_id=1, old_id="id_a",
+            name="角色甲", name_jp="", origin="", type="",
             first_appearance=None, album=None, system_id=1,
         ),
         WhitelistEntry(
-            id="id_b", name="角色乙", name_jp="", origin="", type="",
+            candidate_id=2, voteable_id=2, old_id="id_b",
+            name="角色乙", name_jp="", origin="", type="",
             first_appearance=None, album=None, system_id=2,
         ),
     ])

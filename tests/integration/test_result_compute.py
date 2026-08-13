@@ -17,10 +17,12 @@ except ImportError:
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from tests.integration.conftest import seed_voteables_from_snapshot
+
 from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeService
 from src.apps.result.dao import ResultDAO, ResultNotComputedError
-from src.apps.result.whitelist import load_whitelist
+from src.apps.result.whitelist import load_whitelist_db
 from src.common.config import Settings
 from src.db_model.base import Base
 from src.db_model.questionnaire_def import OptionDef, PaperAnswer, QuestionDef
@@ -72,9 +74,18 @@ async def _seed_data(session: AsyncSession) -> None:
     问卷 feed 读 paper_answer(B-039 结构化表,Task 2 迁移)。gender_* 配置
     (Task 3)已切到语义 code,与 feed 产出的 QuestionDef.code / OptionDef.code
     直接对应,build_segment_map 能正确判出性别。
+
+    白名单先走 Task 4 的统一导入通道种子进 DB（Task 6 起 compute_service 只
+    读 DB 白名单,JSON loader 已退役）。user-2 故意用 id1 的 ``old_id``
+    (8-hex,旧前端格式)投票而不是 candidate_id——验证 DB 白名单(导入时
+    old_id 已回填)下,新旧两种 id 格式的票仍归并到同一个 candidate,这是
+    本次"JSON loader → DB 白名单"切换必须保持不变的核心行为(见
+    task-6-brief.md 的 CRITICAL BEHAVIORAL INVARIANT)。
     """
-    wl = load_whitelist("character")
+    await seed_voteables_from_snapshot(session, "character", 2026)
+    wl = await load_whitelist_db(session, "character", 2026)
     id1 = sorted(wl.ids)[0]
+    id1_old = wl.get(id1).old_id
     session.add_all([
         RawCharacterSubmit(vote_id="user-1", attempt=1,
                            created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
@@ -83,7 +94,7 @@ async def _seed_data(session: AsyncSession) -> None:
         RawCharacterSubmit(vote_id="user-2", attempt=1,
                            created_at=datetime(2026, 1, 3, tzinfo=timezone.utc),
                            user_ip="",
-                           payload=[{"id": id1, "first": False, "reason": None}]),
+                           payload=[{"id": id1_old, "first": False, "reason": None}]),
     ])
     gender_q = QuestionDef(group_id=1, type="Single", content="性别", code="11011")
     session.add(gender_q)
@@ -101,19 +112,26 @@ async def _seed_data(session: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_compute_and_read_ranking(session, fake_redis, settings):
     await _seed_data(session)
-    wl = load_whitelist("character")
+    wl = await load_whitelist_db(session, "character", 2026)
     id1 = sorted(wl.ids)[0]
     dao = ComputeDAO(session)
     svc = ComputeService(dao, fake_redis, settings)
     result = await svc.compute_all(2026)
     assert result["ok"] is True
-    assert result["counts"]["chars"] == 1  # only id1 (both users voted it)
+    # 只有 id1 一个候选进榜：user-1 用 candidate_id 投,user-2 用它的 old_id
+    # (8-hex)投——两种格式的票必须归并成同一个 candidate,不能拆成两条。
+    assert result["counts"]["chars"] == 1
 
     result_dao = ResultDAO(fake_redis, settings)
     ranking, global_stats = await result_dao.get_ranking("character", [], 2026)
     assert len(ranking) == 1
-    assert ranking[0]["id"] == id1
+    # Task 3 起 "id" 字段一律取旧语义 old_id(8-hex)，不再是投票时提交的原始
+    # token（这里种子数据用的是 candidate_id 本身 id1，两者不再相等）。
+    assert ranking[0]["id"] == wl.get(id1).old_id
     assert ranking[0]["name"] == wl.name_of(id1)
+    # vote_count == 2 是本次切换要保住的核心不变式：user-1(candidate_id 格式)
+    # + user-2(old_id/8-hex 格式)两种 id 写法的票被 DB 白名单(old_id 已由
+    # Task 4 导入通道回填)正确归并到同一个 candidate，而不是各算各的。
     assert ranking[0]["rank"][0]["vote_count"] == 2
     assert ranking[0]["rank"][0]["favorite_vote_count"] == 1
 

@@ -167,7 +167,28 @@ uvicorn src.main:app --reload
 
 ---
 
-## 八、Follow-up
+## 八、事故记录：2026-08-13 测试环境后端全挂（根因 = mynacos 无 restart 策略）
+
+**现象**：合作者无法登录；公网探测 `:18000`（后端）、`:8848`/`:10848`（R-NACOS）全部 502，三个前端容器正常。
+
+**根因链**：测试机 **2026-08-07 18:14 UTC 重启**过一次（所有容器同时收到 SIGTERM，主机 19:07 回来）。其他容器 restart 策略都是 `unless-stopped` 自动恢复，唯独 R-NACOS 容器 **`mynacos` 的 restart 策略是 `no`**，干净退出后再没被拉起。后端每次重启拿不到 Nacos 配置（`get access token failed`），回退默认 `localhost:5432` DATABASE_URL → 连接拒绝 → lifespan 抛错 → crash-loop 六天。
+
+**修复**（2026-08-13，无 SSH 直连，借 CI 的 SSH 通道执行，临时分支 `ops/test-env-diagnose` 已删）：
+```bash
+docker start mynacos                              # 原容器原数据，安全
+docker update --restart unless-stopped mynacos    # 防复发
+docker restart thvote-backend                     # 结束 crash-loop
+```
+修复后 `/health` = ok、GraphQL 经 nginx v11/v12 路由均 200、`:10848` 控制台 302 正常。
+
+**教训 / 遗留**：
+- 服务器上手工 `docker run` 起的基础设施容器必须带 `--restart unless-stopped`；本次已就地改掉 mynacos 的策略。
+- 这台机上**没有** `thvote-postgres` 容器（DB 是外部实例，DATABASE_URL 由 Nacos 下发）——`deploy-test.yml` 里等 `thvote-postgres` 就绪的死循环已于 2026-08-13 移除，换成 `mynacos` 存活前置检查（不在跑则部署直接报错终止）。
+- 后端在 Nacos 不可达时**静默回退**默认配置（localhost DB）再崩，错误信息掩盖了真实根因；宜改为显式 fail-fast 并打明确日志（与 B-030 一并处理）。
+
+---
+
+## 九、Follow-up
 
 - **B-017** Nacos + `lru_cache` 热更新不生效 → 文档化或给客户端加 `reload()`
 - **B-030** import-time 阻塞加载 → 改 lazy + 超时熔断

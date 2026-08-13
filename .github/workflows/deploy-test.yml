@@ -288,15 +288,15 @@ jobs:
               docker-compose up -d redis
             fi
 
-            # 等 Postgres 就绪
-            for i in $(seq 1 30); do
-              if docker exec thvote-postgres pg_isready -U thvote >/dev/null 2>&1; then
-                echo "postgres 就绪"
-                break
-              fi
-              echo "等待 postgres 就绪... ($i/30)"
-              sleep 2
-            done
+            # 前置检查:Nacos 容器必须在跑(DATABASE_URL 等配置全由它下发;
+            # DB 是外部实例,本机没有 thvote-postgres 容器,不在此检查)。
+            # 2026-08-13 事故:主机重启后 mynacos(restart=no)未被拉起,后端
+            # 拿不到配置 crash-loop 六天,此处曾是等一个不存在容器的死循环。
+            if ! docker ps --format '{{.Names}}' | grep -q '^mynacos$'; then
+              echo "Nacos 容器(mynacos)未运行,后端将拿不到任何配置。请先 docker start mynacos。终止部署。"
+              exit 1
+            fi
+            echo "nacos 就绪"
 
             # 应用 Alembic 迁移（DATABASE_URL 由 Nacos 下发）
             echo "执行 alembic upgrade head ..."
