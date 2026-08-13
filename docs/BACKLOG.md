@@ -62,7 +62,7 @@
 
 按依赖顺序：
 
-1. **提交侧切 candidateId**（B-057④）——后端前置(B-050-后补6)已于 08-13 解除，需与 zfq 协调切换时点
+1. **提交侧切 candidateId**（B-057④）——✅ **前端已上线并端到端验证** (2026-08-14)：测试机前端已全打 `/v12-be/`、vote-objects 返回 candidateId，投 candidateId 13/22/21→compute vote_year=12→queryCharacterRanking 正确归票（雾雨魔理沙/明罗/Flower战车），B-050-后补6 真实验证通过。剩：与 zfq 收口分支（功能修复在 zfq_dev_fe，dev 落后）
 2. **B-039** questionnaireV2 改拉后端结构（一次性切换）
 3. **B-040** 角色/音乐/CP 投票对象改拉后端 `/vote-objects/*`
 4. **B-041** 问卷前端消费数组契约
@@ -104,6 +104,7 @@
 - **autocomplete CP 搜索**：`src/apps/autocomplete/dao.py` 的 `search_cps()` 仍 `return []`（角色/音乐已实现）；需从已提交 `cp.cp_list` JSON 提取唯一 CP 名
 - **`GET /server-time` 端点**：旧 gateway 有，Python 侧未移植（低优先级）
 - **scraper 测试**：18 站点全部移植但无测试（外部 HTTP 依赖，需 mock）
+- **monitor invalidate 过时文案**：`_B050_NOTE`（`src/apps/admin/monitor/router.py`）作废投票时返回"影响排名需 B-050 计票重写落地后生效"——2026-08-14 实测作废后 compute 排名确实变化（chars 3→0），B-050 v1 早落地，此文案已过时误导，应更新（一行改动）
 
 ---
 
