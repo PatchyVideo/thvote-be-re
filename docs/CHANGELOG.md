@@ -7,7 +7,8 @@
 ## [2026-08-14] 结果统计层三方审计（文档，无代码变更）
 
 ### Added
-- `docs/migration/result-stats-audit-2026-08-14.md`：前端 `packages/result` 需求 × Python `src/apps/result` × legacy Rust `result-query` 三方对照 + 缺口分类 + 优先级。结论：接口面基本迁全，真缺口是**高级搜索 DSL**（前端 AdvancedSearch 已生成 DSL，后端抛 `ADVANCED_SEARCH_NOT_IMPLEMENTED`）+ 往届对比（-1 哨兵 + historical 恒 {}）+ 问卷趋势/numDoujin/covote cs·mi 等桩，多与前端占位页或 B-054 数据未录入配对。实测 `/res-be` 通路已通（result 站可联调）。
+- `docs/migration/result-stats-audit-2026-08-14.md`：前端 `packages/result` 需求 × Python `src/apps/result` × legacy Rust `result-query` 三方对照 + 缺口分类 + 优先级。结论：接口面基本迁全，真缺口是**高级搜索 DSL**（前端 AdvancedSearch 已生成 DSL，后端抛 `ADVANCED_SEARCH_NOT_IMPLEMENTED`）+ 往届对比（-1 哨兵 + historical 恒 {}）+ 问卷趋势/numDoujin 等桩，多与前端占位页或 B-054 数据未录入配对。实测 `/res-be` 通路已通（result 站可联调）。
+- **§六 需求文档对照(补)**：通读结果页需求文档后两处认知修正——① **covote/"同投"不是需求项**（需求无此页，"同投率"只是高级搜索筛选下"票数占比"列的改名），前端 connect 占位页可弃、后端 covote `cs`/`mi` 桩不必实现，从缺口划掉；② **高级搜索 DSL 升 P0**（需求 §846-923 硬核心，"子集重算"语义，覆盖所有主表页）。BACKLOG B-050-后补5 相应升 P0。
 
 ## [2026-08-14] 测试登录旁路（TEST_LOGIN_BYPASS，临时测试设施）
 
