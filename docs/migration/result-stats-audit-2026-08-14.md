@@ -50,10 +50,19 @@
 
 - **Doujin 页**:总票数 1272、提名前十、评论全是源码字面量,每届手改代码。后端无对应端点。若要数据化,前后端都要新建(优先级看运营是否接受手改)。
 
-### D. 部署 / 联调前置 —— ✅ 已确认通路 OK
+### D. result 站部署拓扑与 `/res-be` 通道(2026-08-14 实测厘清)
 
-- 前端 result 走 GraphQL endpoint **`/res-be/graphql`**(不是 vote 的 `/v12-be`)。**2026-08-14 实测:测试机 `:8084/res-be/graphql` 返回 200**,nginx 反代到后端已就位,result 站可联调。
-- 同日实测确认:`queryGlobalStats(voteYear:12)` 正常返回(`numDoujin` 确为 0=桩);`queryCharacterRanking(query:"chars:[...]")` 确实抛 `ADVANCED_SEARCH_NOT_IMPLEMENTED`(A-1 实锤:前端一用高级搜索即报错)。
+前端 result 包(`packages/result`)Apollo client **硬编码相对路径 `/res-be/graphql`**(dev 与 zfq_dev_fe 一致);谁来接 `/res-be` 完全由部署环境的 nginx/proxy 决定,不同环境指向不同后端:
+
+| 环境 | result 前端在哪 | `/res-be` → 后端 | 实测 |
+|---|---|---|---|
+| **本地 dev** | vite dev server | `vite.config.ts` proxy → `https://touhou.ai/vote-be`(**老 Rust**) | 源码 |
+| **测试机(联调主场)** | `154.37.215.62:8084`(容器 `thvote-result`,`result-image.yml` 部署) | 容器 nginx → **我们的 Python 后端 `:18000`** | ✅ `:8084/res-be/graphql` 与 `:18000` 直连响应逐字一致,确认打到 Python |
+| **生产** | **无独立 result 部署**:`vote.thwiki.cc/result/` 返回的是 vote 站 SPA fallback(title=第11回…),不是 result 站;result 无 Vercel 生产 CI(只有 `result-image.yml` 发测试机,对比 vote 有 `vote-ci.yml`) | `vote.thwiki.cc/res-be` POST=**405**(没接后端);生产真实结果后端是 `touhou.ai/vote-be/graphql`(**老 Rust**,POST=200) | ✅ |
+
+**结论**:`/res-be` 是前端约定的相对 endpoint;**只有测试机把它反代到了我们的 Python 后端**——所以测试机 `:8084` 是一套完整的"我方 result 前端 → Python 后端"联调环境,可用。生产侧 result 尚无独立部署,结果数据仍走老 Rust `touhou.ai/vote-be`(待整体替换)。
+
+同日实测另确认:`queryGlobalStats(voteYear:12)` 正常返回(`numDoujin`=0 桩);`queryCharacterRanking(query:"chars:[...]")` 抛 `ADVANCED_SEARCH_NOT_IMPLEMENTED`(A-1 实锤)。
 
 ### E. 可维护性债(前端,记录待收敛)
 
