@@ -22,6 +22,7 @@ from src.common.aliyun.pnvs_client import (
     get_pnvs_client,
 )
 from src.common.exceptions import ValidationError
+from src.common.verification.test_bypass import is_test_login_bypass
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,8 @@ class SmsCodeService:
         same passed code returns UNKNOWN — so no extra bookkeeping needed
         on our side.
         """
+        if is_test_login_bypass(phone, submitted_code):  # TEST_LOGIN_BYPASS 上线前移除
+            return
         result = await self.pnvs_client.check_sms_verify_code(phone, submitted_code)
         if not result.passed:
             raise ValidationError("INCORRECT_VERIFY_CODE", details=400)

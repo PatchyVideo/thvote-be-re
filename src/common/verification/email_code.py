@@ -20,6 +20,7 @@ from functools import lru_cache
 from src.common.aliyun.dm_smtp_client import AliyunDmSmtpClient, get_dm_smtp_client
 from src.common.exceptions import RateLimitError, ValidationError
 from src.common.redis import get_redis
+from src.common.verification.test_bypass import is_test_login_bypass
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,8 @@ class EmailCodeService:
         Successful validation deletes the code (one-shot).  Mismatch /
         absence raises ValidationError("INCORRECT_VERIFY_CODE").
         """
+        if is_test_login_bypass(email, submitted_code):  # TEST_LOGIN_BYPASS 上线前移除
+            return
         redis = await get_redis()
         expected = await redis.get(_code_key(email))
         if expected is None or expected != submitted_code:
