@@ -21,6 +21,7 @@
 - 问卷原子（`q<code>=<option>`）在 **B-054**（运营录题回填 `question_def`/`option_def` 的 `code` 列）之前恒匹配为空（线上问卷仍是占位内容），这是数据阻塞，不是代码缺陷，与 B-050-后补1/4 同源已知限制。
 - **筛选路径下 `RESULT_NOT_COMPUTED` 不可达**：预计算路径在该年从未跑过 `compute_all` 时报 `RESULT_NOT_COMPUTED`；但带 `query` 的筛选路径（`ensure_filtered_results`）不依赖预计算快照存在，会现场从 DB 载票直接算出结果——即"该年未跑过 compute 时，带筛选条件的查询反而能工作"，是行为更优的已知语义差异，不是 bug。
 - 新增依赖 `lark`（纯 Python 实现，无需编译工具链，不影响现有部署/CI 流程）。
+- 测试依赖 `fakeredis` 改为 `fakeredis[lua]`（拉入 `lupa`）：单飞锁 compare-and-delete 走 Redis `EVAL`（Lua），裸 fakeredis 不支持 eval——首次推送 CI"运行测试"即因此失败（本地因单独装过 lupa 而全绿），部署被跳过；修复后 CI 恢复。
 
 ## [2026-08-14] 高级搜索/筛选 DSL 设计稿（文档，无代码变更）
 

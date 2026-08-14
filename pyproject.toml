@@ -39,7 +39,9 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "freezegun>=1.5.0",
-    "fakeredis>=2.20.0",
+    # [lua] 拉入 lupa:高级搜索单飞锁的 compare-and-delete 走 EVAL(Lua),
+    # 裸 fakeredis 不支持 eval 命令(CI 2026-08-14 实败教训)
+    "fakeredis[lua]>=2.20.0",
     "pytest-cov>=5.0.0",
 ]
 scripts = [
