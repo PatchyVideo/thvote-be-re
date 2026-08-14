@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
@@ -40,6 +41,13 @@ _LOCK_TTL_MS = 30_000
 _WAIT_PROBES = 25
 _WAIT_INTERVAL_SECONDS = 0.2
 
+# Compare-and-delete:只删自己持有的锁(value 匹配自己的 token 才删),防止锁在
+# 计算超时自然过期后被别的持锁者(第二个抢到同一 lock_key 的调用者)误删。
+_UNLOCK_SCRIPT = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "return redis.call('del', KEYS[1]) else return 0 end"
+)
+
 
 def snapshot_version_key(vote_year: int) -> str:
     return f"result:{vote_year}:snapshot_version"
@@ -65,8 +73,15 @@ async def ensure_filtered_results(
         return infix
 
     lock_key = f"adv_lock:{vote_year}:{fp}"
-    got_lock = await redis.set(lock_key, "1", nx=True, px=_LOCK_TTL_MS)
-    if not got_lock:
+    token = uuid.uuid4().hex
+    got_lock = await redis.set(lock_key, token, nx=True, px=_LOCK_TTL_MS)
+    if got_lock:
+        # 双检:上面的 exists(marker) 探测与这里的 SET NX 之间可能有别的协程
+        # 已经算完并写入 marker——拿到锁不代表还需要真去算一次。
+        if await redis.exists(marker):
+            await redis.eval(_UNLOCK_SCRIPT, 1, lock_key, token)
+            return infix
+    else:
         for _ in range(_WAIT_PROBES):
             await asyncio.sleep(_WAIT_INTERVAL_SECONDS)
             if await redis.exists(marker):
@@ -79,7 +94,7 @@ async def ensure_filtered_results(
         await _compute_filtered(redis, settings, vote_year, ast, infix)
     finally:
         if got_lock:
-            await redis.delete(lock_key)
+            await redis.eval(_UNLOCK_SCRIPT, 1, lock_key, token)
     return infix
 
 
@@ -107,15 +122,18 @@ async def _compute_filtered(
 
     session_maker = get_session_maker()
     async with session_maker() as session:
+        # 名字解析先于载票:未知名字应该零成本失败(不背四张全表 load_*_votes
+        # 的代价)——ADVANCED_SEARCH_UNKNOWN_NAME 是这里唯一的抛出点。
+        char_wl = await load_whitelist_db(session, "character", vote_year)
+        music_wl = await load_whitelist_db(session, "music", vote_year)
+        resolved = resolve_names(ast, char_wl, music_wl)
+
         dao = ComputeDAO(session)
         char_votes = await dao.load_char_votes()
         music_votes = await dao.load_music_votes()
         cp_votes = await dao.load_cp_votes()
         q_votes = await dao.load_questionnaire_votes(vote_year)
-        char_wl = await load_whitelist_db(session, "character", vote_year)
-        music_wl = await load_whitelist_db(session, "music", vote_year)
 
-    resolved = resolve_names(ast, char_wl, music_wl)
     facts = build_facts(char_votes, music_votes, cp_votes, q_votes, char_wl, music_wl)
     subset = evaluate_subset(ast, facts, resolved)
     logger.info(

@@ -109,6 +109,33 @@ async def test_cache_hit_skips_recompute(seeded, fake_redis, settings, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_version_flip_invalidates_cache(
+    seeded, fake_redis, settings, monkeypatch
+):
+    """版本翻转(定时重算后)让旧筛选缓存自然失效,同一 query 必须重新计算
+    (设计稿 §九.5)。"""
+    name1, _ = seeded
+    q = f'chars: ["{name1}"]'
+    infix1 = await ensure_filtered_results(fake_redis, settings, 2026, q)
+
+    await fake_redis.set(snapshot_version_key(2026), "999999")
+
+    calls = {"n": 0}
+    real = adv_service_module._compute_filtered
+
+    async def counting(*args, **kwargs):
+        calls["n"] += 1
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(adv_service_module, "_compute_filtered", counting)
+    infix2 = await ensure_filtered_results(fake_redis, settings, 2026, q)
+
+    assert infix2 != infix1
+    assert "adv:999999:" in infix2
+    assert calls["n"] == 1
+
+
+@pytest.mark.asyncio
 async def test_unknown_name_raises(seeded, fake_redis, settings):
     with pytest.raises(ValidationError) as exc_info:
         await ensure_filtered_results(
