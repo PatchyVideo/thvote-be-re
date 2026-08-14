@@ -33,6 +33,7 @@ from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.whitelist import load_whitelist_db
 from src.common.config import Settings
 from src.common.database import get_session_maker
+from src.common.exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,36 @@ ADV_TTL_SECONDS = 24 * 3600
 _LOCK_TTL_MS = 30_000
 _WAIT_PROBES = 25
 _WAIT_INTERVAL_SECONDS = 0.2
+
+# 全局(跨指纹)miss 重算限频:GraphQL 入口本身无限流,且 `q<code>=<opt>`
+# 原子的 code 不经白名单校验(B-054 前刻意保留),指纹空间无界——轮换指纹可
+# 绕过按指纹隔离的单飞锁。每个新指纹 miss = 4 张全表 SELECT + 数百 ms 纯
+# CPU(阻塞事件循环)。实测单次重算约 0.3s;30 次/分钟对应事件循环占用上限
+# 约 15%,正常用户流量远够用,同时给恶意轮换指纹枚举设了硬上限。
+# 缓存命中路径不计数(见 ensure_filtered_results 里判定位置)。
+ADV_MISS_LIMIT_PER_MINUTE = 30
+_MISS_BUDGET_WINDOW_SECONDS = 60
+
+
+def miss_budget_key(vote_year: int) -> str:
+    return f"adv_miss_budget:{vote_year}"
+
+
+async def _check_miss_budget(redis: aioredis.Redis, vote_year: int) -> None:
+    """全局 miss 重算限频(INCR+EXPIRE 固定窗口),超限抛可辨识错误。
+
+    必须在进入 miss 计算分支之后、拿单飞锁之前调用——缓存命中路径不应
+    调用本函数;等锁成功后从缓存读到结果的路径同样不消耗预算。
+    """
+    key = miss_budget_key(vote_year)
+    count = await redis.incr(key)
+    if count == 1:
+        await redis.expire(key, _MISS_BUDGET_WINDOW_SECONDS)
+    if count > ADV_MISS_LIMIT_PER_MINUTE:
+        raise ValidationError(
+            "ADVANCED_SEARCH_BUSY",
+            human_readable_message="高级搜索请求过于频繁,请稍后再试",
+        )
 
 # Compare-and-delete:只删自己持有的锁(value 匹配自己的 token 才删),防止锁在
 # 计算超时自然过期后被别的持锁者(第二个抢到同一 lock_key 的调用者)误删。
@@ -60,7 +91,9 @@ async def ensure_filtered_results(
 
     解析/限制/未知名字错误直接向上抛(可辨识 ValidationError,契约层经
     map_app_errors 出口)。单飞锁防击穿:等锁超时兜底自己算——重复计算
-    只浪费几百毫秒,不出错。
+    只浪费几百毫秒,不出错。缓存命中直接返回,不消耗任何预算;仅 miss
+    分支受 ``ADV_MISS_LIMIT_PER_MINUTE`` 全局限频,超限抛
+    ``ADVANCED_SEARCH_BUSY``。
     """
     ast = parse_query(query_str)
     fp = fingerprint(ast)
@@ -71,6 +104,9 @@ async def ensure_filtered_results(
     marker = f"result:{vote_year}:{infix}:global_stats"
     if await redis.exists(marker):
         return infix
+
+    # 缓存 miss,即将进入重算分支——在拿单飞锁之前先扣全局预算(见常量注释)。
+    await _check_miss_budget(redis, vote_year)
 
     lock_key = f"adv_lock:{vote_year}:{fp}"
     token = uuid.uuid4().hex

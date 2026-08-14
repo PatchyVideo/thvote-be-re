@@ -12,7 +12,8 @@
 - 缓存布局镜像预计算路径，多一段 infix：`result:{year}:adv:{快照版本}:{指纹}:*`（TTL 24h，`compute_all` 写入新快照版本后旧筛选缓存整批自然失效，不用主动清理）。
 - 无数据库 schema 变更（纯计算层 + Redis 缓存布局扩展）。
 - 新依赖：`lark`（纯 Python 实现，无 C 扩展/编译工具链，用于 DSL 文法解析）。
-- 测试：5 万合成票性能冒烟（`tests/unit/test_advanced_search_perf.py`，事实索引→求值→子集重排名全程 5 次实测 225~301ms，均值约 261ms，阈值 2000ms，约 7~9 倍余量）+ 契约层端到端补测（音乐榜/CP 榜/全局统计/完成率四端点同一非空 query 下的子集口径互查、`queryCharacterSingle` 筛选后命中/未命中、21 原子 `ADVANCED_SEARCH_TOO_COMPLEX` 端到端）。
+- 测试：5 万合成票性能冒烟（`tests/unit/test_advanced_search_perf.py`，纯内存管道（事实索引→求值→子集重排名，不含 DB 载票）5 次实测 225~301ms，均值约 261ms，阈值 2000ms，约 7~9 倍余量）+ 契约层端到端补测（音乐榜/CP 榜/全局统计/完成率四端点同一非空 query 下的子集口径互查、`queryCharacterSingle` 筛选后命中/未命中、21 原子 `ADVANCED_SEARCH_TOO_COMPLEX` 端到端）。
+- **终审修复波**（2026-08-14）：`ensure_filtered_results` 在进入 miss 计算分支之后、拿单飞锁之前，新增 miss 重算全局限频——Redis `INCR`+`EXPIRE` 固定窗口对 `adv_miss_budget:{year}` 计数，超过 `ADV_MISS_LIMIT_PER_MINUTE`（=30，依据见 `service.py` 常量注释）抛新增可辨识错误 `ADVANCED_SEARCH_BUSY`（`human_readable_message="高级搜索请求过于频繁,请稍后再试"`），堵住指纹空间无界 + 按指纹隔离单飞锁对轮换指纹攻击无效的口子；缓存命中路径不计数、不受影响。
 
 ### 兼容性
 - **前端零改动**：前端 `AdvancedSearch` 组件早已按此语法生成 `query` 参数（`decodeAdditionalConstraint.ts`），此前只是后端拒绝；本轮上线后原样点亮，无需前端配合发版。

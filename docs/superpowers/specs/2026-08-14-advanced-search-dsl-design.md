@@ -13,7 +13,7 @@
 前端 `AdvancedSearch` 组件(图形 + 指令双模式)已在生成 DSL `query` 参数并传给角色/音乐/组合/问卷各结果页;Python 后端契约层(`src/api/graphql/resolvers/result_compat.py`)目前对非空 `query` 一律抛 `ADVANCED_SEARCH_NOT_IMPLEMENTED`。本设计落地服务端 DSL 解析 + 按投票子集重算,点亮高级搜索全功能。
 
 **目标**:
-1. 完整实现需求 §846-923 的指令语法(6 种原子条件 + AND/OR/括号);
+1. 完整实现需求 §846-923 的指令语法(5 种原子条件 + AND/OR/括号);
 2. 语义为"**换一个投票子集重算榜**"——先圈出满足约束的 `vote_id` 集合,再对子集重新聚合,而非对现成榜单做后置过滤(后者的百分比/名次基数是错的);
 3. 约束贯穿契约层所有带 `query` 参数的 10 个查询(排名×3、单条×3、全局统计、完成率、问卷、问卷趋势),`RankingEntry` 内嵌的 trend/reasons 随重算自然变为子集口径(满足 §938);
 4. 为 B-053(任意问卷题 × 投票结果交叉分析)沉淀可复用的子集圈选原语。
@@ -24,7 +24,7 @@
 
 设计前专门评估过"是否真的需要 DSL / 解析器会不会成为性能风险"。结论:
 
-- **解析器不是成本中心**。本语法仅 6 种原子 + 布尔组合,lark 文法约 40 行,解析一条查询是微秒级纯 CPU 操作,且原串长度受限(≤1KB)。
+- **解析器不是成本中心**。本语法仅 5 种原子 + 布尔组合,lark 文法约 40 行,解析一条查询是微秒级纯 CPU 操作,且原串长度受限(≤1KB)。
 - **真正的成本是子集重算**,而它与"约束用什么形式表达"无关——换成 JSON 契约、砍指令模式只留图形模式,子集重算一分不省。
 - 数据规模(本届预期几万票以内)+ 访问模式(过程开放、**定时更新非实时**)下,单次重算为几百毫秒量级,配合版本化缓存后风险很低。
 
@@ -179,7 +179,7 @@ per `(year, 指纹)` 的 Redis 锁(SET NX,TTL 30s,复用 `compute_lock` 模式):
 2. 缓存:版本翻转 + TTL 双重失效;归一化提升命中率;
 3. 单飞锁防击穿;
 4. 求值与重算全内存,DB 压力仅"载票"的几条现有全表 SELECT;
-5. 复用现有 per-IP 限流基础设施(若 GraphQL 入口未覆盖,实施时补;非本设计新增机制)。
+5. **全局 miss 重算限频**(终审修复波已实现,见 `service.py::_check_miss_budget`):GraphQL 入口本身无限流,且 `q<code>=<opt>` 原子的 code 不经白名单校验(B-054 前刻意保留)、指纹空间无界,按指纹隔离的单飞锁对轮换指纹攻击无效——在 `ensure_filtered_results` 进入 miss 计算分支之后、拿单飞锁之前,用 Redis `INCR`+`EXPIRE` 固定窗口对 `adv_miss_budget:{year}` 计数,超过 `ADV_MISS_LIMIT_PER_MINUTE`(=30,依据:单次重算实测约 0.3s,30 次/分钟对应事件循环占用上限约 15%)抛 `ADVANCED_SEARCH_BUSY`;缓存命中路径不计数。**per-IP 细化为后续项**(依赖 GraphQL 层拿 client IP,见 BACKLOG)。
 
 ## 八、错误处理
 
@@ -189,14 +189,15 @@ per `(year, 指纹)` 的 Redis 锁(SET NX,TTL 30s,复用 `compute_lock` 模式):
 | 超限 | `ADVANCED_SEARCH_TOO_COMPLEX` | 指明超的是哪个限制 |
 | 未知名字 | `ADVANCED_SEARCH_UNKNOWN_NAME` | 列出全部未匹配的名字 |
 | 空子集 | 不是错误 | 空榜/全 0 正常返回 |
-| 该年未跑 compute | `RESULT_NOT_COMPUTED`(现有) | 与无筛选路径一致 |
+| 该年未跑 compute | `RESULT_NOT_COMPUTED`(现有) | **筛选路径不可达**:`ensure_filtered_results` 不依赖预计算快照存在,会现场从 DB 载票直接算出结果;此错误仅在无筛选(query 为空)路径可能出现。与 CHANGELOG 2026-08-14 条目"兼容性"一致 |
 | 单条查询序号不在筛选后榜内 | `ENTITY_NOT_FOUND`(现有) | 与现行为一致 |
+| miss 重算全局限频超限 | `ADVANCED_SEARCH_BUSY` | 缓存命中路径不触发;见 §7.5 第 5 条 |
 
 全部经现有 `map_app_errors` 出口,错误 shape 与 `ADVANCED_SEARCH_NOT_IMPLEMENTED` 相同——前端现有错误通道原样保留,仅 kind 更细。`_reject_query_dsl` 及其 kind 在本设计落地时移除。
 
 ## 九、测试计划
 
-1. **解析器单测**:6 种原子、AND/OR 优先级、括号嵌套;需求文档全部原例逐条断言;归一化等价(`A AND B` ≡ `B AND A` 同指纹;组内乱序同指纹);三类错误(语法/超限/长度)。
+1. **解析器单测**:5 种原子、AND/OR 优先级、括号嵌套;需求文档全部原例逐条断言;归一化等价(`A AND B` ≡ `B AND A` 同指纹;组内乱序同指纹);三类错误(语法/超限/长度)。
 2. **求值单测**:手造小票集覆盖:`chars:["a"] AND chars:["b"]`(都投)vs `chars:["a","b"]`(投任一)、跨部门 AND、缺部门提交判 False、`*_first`、多选题包含判定、未知名字报错。
 3. **过滤重算集成测**:小数据集断言**百分比/名次基数按子集口径**(子集重算 vs 后置过滤的分水岭,必须锁住);空子集返回形状。
 4. **契约测**:GraphQL 带 query → 筛选结果;空 query/`"NONE"` → 与现路径结果一致;三类错误 shape;单条查询 + 筛选。

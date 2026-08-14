@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timezone
 
@@ -155,3 +156,63 @@ async def test_empty_subset_is_valid_result(seeded, fake_redis, settings):
     stats = json.loads(await fake_redis.get(f"result:2026:{infix}:global_stats"))
     assert ranking == []
     assert stats["num_vote"] == 0
+
+
+@pytest.mark.asyncio
+async def test_miss_budget_limits_distinct_queries(
+    seeded, fake_redis, settings, monkeypatch
+):
+    """全局 miss 限频:阈值 monkeypatch 成 2,连发 3 个不同(各自都是 miss 的)
+    查询,第 3 个必须抛 ADVANCED_SEARCH_BUSY(必须项,审查者方案 a)。"""
+    name1, name2 = seeded
+    monkeypatch.setattr(adv_service_module, "ADV_MISS_LIMIT_PER_MINUTE", 2)
+    q1 = f'chars: ["{name1}"]'
+    q2 = f'chars: ["{name2}"]'
+    q3 = f'chars_first="{name1}"'
+    await ensure_filtered_results(fake_redis, settings, 2026, q1)
+    await ensure_filtered_results(fake_redis, settings, 2026, q2)
+    with pytest.raises(ValidationError) as exc_info:
+        await ensure_filtered_results(fake_redis, settings, 2026, q3)
+    assert exc_info.value.message == "ADVANCED_SEARCH_BUSY"
+
+
+@pytest.mark.asyncio
+async def test_miss_budget_cache_hit_does_not_consume_budget(
+    seeded, fake_redis, settings, monkeypatch
+):
+    """预算打满后,重复同一(已缓存)query 命中缓存路径,不消耗预算、仍成功。"""
+    name1, name2 = seeded
+    monkeypatch.setattr(adv_service_module, "ADV_MISS_LIMIT_PER_MINUTE", 2)
+    q1 = f'chars: ["{name1}"]'
+    q2 = f'chars: ["{name2}"]'
+    infix1 = await ensure_filtered_results(fake_redis, settings, 2026, q1)
+    await ensure_filtered_results(fake_redis, settings, 2026, q2)
+    # 预算已耗尽(2/2);重复 q1 命中缓存,不应该抛 ADVANCED_SEARCH_BUSY。
+    infix_again = await ensure_filtered_results(fake_redis, settings, 2026, q1)
+    assert infix_again == infix1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_same_query_single_flight(
+    seeded, fake_redis, settings, monkeypatch
+):
+    """并发路径:两个协程同时对同一新查询调 ensure_filtered_results,
+    单飞锁下 _compute_filtered 至多被调 2 次(锁竞争允许 1 或 2),
+    两者返回同一 infix,缓存最终存在。"""
+    name1, _ = seeded
+    calls = {"n": 0}
+    real = adv_service_module._compute_filtered
+
+    async def counting(*args, **kwargs):
+        calls["n"] += 1
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(adv_service_module, "_compute_filtered", counting)
+    q = f'chars: ["{name1}"]'
+    infix1, infix2 = await asyncio.gather(
+        ensure_filtered_results(fake_redis, settings, 2026, q),
+        ensure_filtered_results(fake_redis, settings, 2026, q),
+    )
+    assert infix1 == infix2
+    assert 1 <= calls["n"] <= 2
+    assert await fake_redis.exists(f"result:2026:{infix1}:global_stats")
