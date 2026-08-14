@@ -1,4 +1,4 @@
-"""排名查询契约桥行为集成测:voteYear 回落 / query DSL 拒绝 / 未计算错误 / CP 适配。
+"""排名查询契约桥行为集成测:voteYear 回落 / 高级搜索筛选子集重算 / 未计算错误 / CP 适配。
 
 session 用 tests/integration/conftest.py 的共享 fixture;fake_redis/settings
 照抄 tests/integration/test_result_compute.py 顶部。用真实白名单 id 起
@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tests.integration.conftest import seed_voteables_from_snapshot
 
 import src.api.graphql.resolvers.result as result_resolver_module
+import src.apps.result.advanced_search.service as adv_service_module
 from src.api.graphql.schema import schema
 from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeService
@@ -176,10 +177,14 @@ async def _seed_and_compute(session: AsyncSession, fake_redis, settings) -> None
 
 
 @pytest_asyncio.fixture
-async def gql_schema(monkeypatch, session, fake_redis, settings):
-    """schema，其 result_compat resolver(经 _get_result_service)指向测试夹具。"""
+async def gql_schema(monkeypatch, session, session_maker, fake_redis, settings):
+    """schema，其 result_compat resolver(经 _get_result_service)指向测试夹具；
+    同时把 advanced_search.service 的 get_session_maker 接到同一个
+    session_maker——非空 query(高级搜索 DSL)会经这条路径载票重算,见
+    test_query_character_ranking_with_query_filters_subset。"""
     await _seed_and_compute(session, fake_redis, settings)
     _patch_result_service(monkeypatch, fake_redis, settings)
+    monkeypatch.setattr(adv_service_module, "get_session_maker", lambda: session_maker)
     return schema
 
 
@@ -215,17 +220,28 @@ async def test_query_character_ranking_vote_year_fallback(gql_schema) -> None:
 
 
 @pytest.mark.asyncio
-async def test_query_character_ranking_rejects_query_dsl(gql_schema) -> None:
-    """非空 query(高级搜索 DSL)-> 可辨识错误,且不是 INTERNAL_ERROR
-    (静默忽略会让用户误以为看到的是筛选后的结果,这是要避免的失败模式)。"""
+async def test_query_character_ranking_with_query_filters_subset(
+    gql_schema, session
+) -> None:
+    """非空 query(高级搜索 DSL)-> 不再报错,而是圈子集重算(取代旧的
+    ADVANCED_SEARCH_NOT_IMPLEMENTED 拒绝行为;新行为的完整覆盖见
+    tests/integration/test_result_compat_advanced_search.py)。
+
+    _seed_and_compute:user-1/user-2 投 id1,user-3 投 id2 -> 用
+    ``chars: ["<id1 的名字>"]`` 筛选后,子集只剩 {user-1, user-2},榜上只剩
+    id1 一条,基数=2。"""
+    wl = await load_whitelist_db(session, "character", 2026)
+    id1 = sorted(wl.ids)[0]
+    name1 = wl.name_of(id1)
     result = await gql_schema.execute(
         QUERY_CHARACTER_RANKING,
-        variable_values={"voteYear": None, "query": 'chars:["x"]'},
+        variable_values={"voteYear": None, "query": f'chars: ["{name1}"]'},
     )
-    assert result.errors is not None
-    error_kind = result.errors[0].extensions["error_kind"]
-    assert error_kind != "INTERNAL_ERROR"
-    assert error_kind == "ADVANCED_SEARCH_NOT_IMPLEMENTED"
+    assert result.errors is None
+    ranking = result.data["queryCharacterRanking"]
+    assert [e["name"] for e in ranking["entries"]] == [name1]
+    assert ranking["entries"][0]["voteCount"] == 2
+    assert ranking["global"]["totalVotes"] == 2
 
 
 @pytest.mark.asyncio

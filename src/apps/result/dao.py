@@ -23,15 +23,25 @@ class EntityNotFoundError(AppException):
 
 
 class ResultDAO:
-    def __init__(self, redis: aioredis.Redis, settings: Settings):
+    def __init__(
+        self,
+        redis: aioredis.Redis,
+        settings: Settings,
+        key_infix: str | None = None,
+    ):
         self.redis = redis
         self.settings = settings
+        # 高级搜索筛选结果的 key 中缀(adv:{版本}:{指纹});None = 预计算主榜。
+        self.key_infix = key_infix
 
     def _year(self, vote_year: int | None) -> int:
         return vote_year if vote_year is not None else self.settings.vote_year
 
     def _key(self, vote_year: int, *parts: str) -> str:
-        return f"result:{vote_year}:" + ":".join(parts)
+        base = f"result:{vote_year}:"
+        if self.key_infix:
+            base += f"{self.key_infix}:"
+        return base + ":".join(parts)
 
     async def _get_json(self, key: str) -> Any:
         raw = await self.redis.get(key)

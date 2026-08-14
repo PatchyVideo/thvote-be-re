@@ -3,8 +3,9 @@
 前端(vote-result)历史 gql 文档按名字严格校验，直接查
 ``queryCharacterRanking`` / ``queryMusicRanking`` / ``queryCPRanking`` 会得到
 "Cannot query field ... on type 'Query'"。本模块只做 dict → strawberry 类型
-转换 + 契约层三个行为(voteYear 回落 / query DSL 拒绝 / 上届字段置零)，核心
-计算逻辑仍在 compute.py / compute_service.py(Task 3/4)。输出类型全部来自
+转换 + 契约层三个行为(voteYear 回落 / query DSL 高级搜索子集重算 / 上届字段
+置零)，核心计算逻辑仍在 compute.py / compute_service.py(Task 3/4)以及
+advanced_search/service.py(Task 4)。输出类型全部来自
 ``src.api.graphql.types``(Rust gateway result_query.rs 对齐版，Task 5 之前
 未被任何 resolver 引用)。
 
@@ -37,6 +38,7 @@ from src.api.graphql.types import (
     Trends,
     VotingTrendItem,
 )
+from src.apps.result.advanced_search.service import ensure_filtered_results
 from src.apps.result.dao import EntityNotFoundError, ResultDAO, ResultNotComputedError
 from src.apps.result.schemas import (
     CompletionRatesQuery,
@@ -91,18 +93,25 @@ async def _resolve_vote_year(
         return settings.vote_year
 
 
-def _reject_query_dsl(query: Optional[str]) -> None:
-    """非空(且非 "NONE")→ 抛「高级搜索暂未实现」；经 map_app_errors 成为可辨识错误。
+async def _apply_advanced_search(
+    svc: ResultService, query: Optional[str], year: int
+) -> ResultService:
+    """query 为空/"NONE" → 原样返回(预计算主榜路径,零改动);否则确保
+    筛选缓存就绪(miss 时载票→圈子集→整包重算,advanced_search/service.py),
+    返回读 result:{year}:adv:{版本}:{指纹}:* 的 ResultService。
 
-    前端的高级搜索 DSL(如 ``chars:["x"]``)本轮未实现；静默忽略并返回未过滤
-    的全量排名，会让用户误以为看到的是筛选后的结果——这是要明确避免的失败
-    模式，所以非空 query 一律报错，而不是退化为"当作没传"。
+    解析/未知名字错误(可辨识 ValidationError)从这里向上穿透,经
+    map_app_errors 出口——不再有 ADVANCED_SEARCH_NOT_IMPLEMENTED。
     """
-    if query and query != "NONE":
-        raise ValidationError(
-            "ADVANCED_SEARCH_NOT_IMPLEMENTED",
-            human_readable_message="高级搜索暂未实现",
-        )
+    if not query or query == "NONE":
+        return svc
+    infix = await ensure_filtered_results(
+        svc.result_dao.redis, svc.result_dao.settings, year, query
+    )
+    dao = ResultDAO(
+        svc.result_dao.redis, svc.result_dao.settings, key_infix=infix
+    )
+    return ResultService(dao)
 
 
 async def _map_not_computed_error(coro):
@@ -257,10 +266,10 @@ def _cp_ranking_entry_from_dict(e: dict) -> CPRankingEntry:
 async def _query_character_or_music_ranking(
     category: str, vote_year: Optional[int], query: Optional[str]
 ) -> CharacterOrMusicRanking:
-    _reject_query_dsl(query)
     svc = await _get_result_service()
     # settings 直接取 dao 上已持有的那份(同一个 get_settings() 单例)，不重复调用。
     year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    svc = await _apply_advanced_search(svc, query, year)
     data = await _fetch_ranking(svc, category, year)
     return CharacterOrMusicRanking(
         entries=[_ranking_entry_from_dict(e) for e in data["rankings"]],
@@ -271,9 +280,9 @@ async def _query_character_or_music_ranking(
 async def _query_cp_ranking(
     vote_year: Optional[int], query: Optional[str]
 ) -> CPRanking:
-    _reject_query_dsl(query)
     svc = await _get_result_service()
     year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    svc = await _apply_advanced_search(svc, query, year)
     data = await _fetch_ranking(svc, "cp", year)
     return CPRanking(
         entries=[_cp_ranking_entry_from_dict(e) for e in data["rankings"]],
@@ -303,9 +312,9 @@ def _find_by_ordinal(rankings: list[dict], rank: int) -> dict:
 async def _query_character_or_music_single(
     category: str, rank: int, vote_year: Optional[int], query: Optional[str]
 ) -> RankingEntry:
-    _reject_query_dsl(query)
     svc = await _get_result_service()
     year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    svc = await _apply_advanced_search(svc, query, year)
     data = await _fetch_ranking(svc, category, year)
     return _ranking_entry_from_dict(_find_by_ordinal(data["rankings"], rank))
 
@@ -313,9 +322,9 @@ async def _query_character_or_music_single(
 async def _query_cp_single(
     rank: int, vote_year: Optional[int], query: Optional[str]
 ) -> CPRankingEntry:
-    _reject_query_dsl(query)
     svc = await _get_result_service()
     year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    svc = await _apply_advanced_search(svc, query, year)
     data = await _fetch_ranking(svc, "cp", year)
     return _cp_ranking_entry_from_dict(_find_by_ordinal(data["rankings"], rank))
 
@@ -363,9 +372,9 @@ async def _query_character_or_music_trend(
 async def _query_global_stats(
     vote_year: Optional[int], query: Optional[str]
 ) -> ResultGlobalStats:
-    _reject_query_dsl(query)
     svc = await _get_result_service()
     year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    svc = await _apply_advanced_search(svc, query, year)
     data = await _map_not_computed_error(
         svc.get_global_stats(GlobalStatsQuery(vote_year=year))
     )
@@ -386,9 +395,9 @@ async def _query_global_stats(
 async def _query_completion_rates(
     vote_year: Optional[int], query: Optional[str]
 ) -> CompletionRate:
-    _reject_query_dsl(query)
     svc = await _get_result_service()
     year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    svc = await _apply_advanced_search(svc, query, year)
     data = await _map_not_computed_error(
         svc.get_completion_rates(CompletionRatesQuery(vote_year=year))
     )
@@ -431,9 +440,9 @@ async def _query_questionnaire_entries(
     "该年确实算过"这个前提就成立，per-id 的 ``ResultNotComputedError`` 才能
     被安全地解读为"这道具体题没数据"而不是"整体没算过"，跳过才是正确行为。
     """
-    _reject_query_dsl(query)
     svc = await _get_result_service()
     year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    svc = await _apply_advanced_search(svc, query, year)
     await _map_not_computed_error(
         svc.get_global_stats(GlobalStatsQuery(vote_year=year))
     )
@@ -478,9 +487,9 @@ async def _query_questionnaire_trend_entries(
     一致），这样"该年确实一次都没算过"和"该年算过、只是这项指标退化成空"
     是两种可辨识的状态，不会被"反正也是空"的降级逻辑悄悄合并掉。
     """
-    _reject_query_dsl(query)
     svc = await _get_result_service()
     year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
+    svc = await _apply_advanced_search(svc, query, year)
     await _map_not_computed_error(
         svc.get_global_stats(GlobalStatsQuery(vote_year=year))
     )
@@ -499,7 +508,7 @@ class ResultCompatQuery:
         # 保留，不参与计算。
         vote_start: Optional[DateTimeUtc] = None,
         vote_year: Optional[int] = None,
-        # 高级搜索 DSL：见 _reject_query_dsl。
+        # 高级搜索 DSL：见 _apply_advanced_search。
         query: Optional[str] = None,
     ) -> CharacterOrMusicRanking:
         async with map_app_errors(service=_SERVICE):
