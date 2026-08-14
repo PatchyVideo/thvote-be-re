@@ -98,7 +98,7 @@
 - **B-049 尾项** admin-ui legacy 面板视觉验收后删除；无 UI 端点可选补
 - **B-047** IP→ASN 机房归属取证（可独立，属反作弊 Phase 2）
 - **B-056** 迁移命名约定与 zfq 沟通（顺带同步：下一个迁移编号 **0017**、down=0016）
-- **B-060** 高级搜索 per-IP 限流细化（现为全局 miss 限频，粒度粗——所有用户共享同一个 `adv_miss_budget:{year}` 预算，单个恶意方可挤占正常用户的额度；细化需按 client IP 分桶，依赖 GraphQL 层拿到 client IP，见 `src/apps/result/advanced_search/service.py::_check_miss_budget`）
+- **B-060** 高级搜索 per-IP 限流细化（现为全局 miss 限频，粒度粗——所有用户共享同一个 `adv_miss_budget:{year}` 预算，单个恶意方可挤占正常用户的额度；细化需按 client IP 分桶，依赖 GraphQL 层拿到 client IP，见 `src/apps/result/advanced_search/service.py::_check_miss_budget`）。**终审复审另记两条同域小尾巴**（2026-08-14，均已裁定不阻塞）：① 预算在"同一新指纹的并发赛跑者"上每人各扣 1（双检/轮询命中缓存者也扣）——比设计意图更保守、非绕过，但 `service.py` 相关注释称"命中不计数"与实现不符，做 B-060 时顺手订正注释或把扣费后置到真正进入计算处；② `test_version_flip`/并发测试在 fakeredis 单事件循环下从未真正触发单飞锁竞争分支（协程实际顺序执行，覆盖为空）——竞争分支靠两轮人工审查兜底，最坏失败=幂等重复计算，补真竞争测试需注入 yield 点
 
 ## 🟢 模块功能缺口（不在 B 编号体系内）
 
