@@ -145,6 +145,12 @@ class ComputeService:
             pipe.set(self._key(vote_year, "covote", "musics"), json.dumps(music_covote))
             for qid, data in paper_results.items():
                 pipe.set(self._key(vote_year, "paper", qid), json.dumps(data))
+            # 快照版本:高级搜索缓存 key 的组成部分(advanced_search/service.py),
+            # 定时重算后版本翻转 → 旧筛选缓存自然失效。
+            pipe.set(
+                self._key(vote_year, "snapshot_version"),
+                str(int(time.time())),
+            )
             await pipe.execute()
 
             duration = round(time.monotonic() - t0, 2)
