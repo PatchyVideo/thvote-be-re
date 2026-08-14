@@ -4,6 +4,23 @@
 >
 > 创建日期：2026-04-27
 
+## [2026-08-14] 高级搜索/筛选 DSL 实现落地（B-050-后补5，Task 1-6 全部完成）
+
+### Added
+- 新子包 `src/apps/result/advanced_search/`（`dsl.py`/`subset.py`/`service.py`）：lark 文法解析器（`chars`/`musics`/`chars_first`/`musics_first`/`q<code>=<option>` 五种原子 + `AND`/`OR`/括号组合）+ AST 归一化（交换律排序/去重/嵌套拍平，决定缓存命中率）+ 指纹（`fingerprint`）+ 复杂度护栏（原子数 ≤20、嵌套深度 ≤5、原串 ≤1KB，超限报 `ADVANCED_SEARCH_TOO_COMPLEX`）+ 事实索引（`build_facts`，O(票数) 一遍扫描）+ 名字解析（`resolve_names`，name/name_jp 精确匹配，未知名字报 `ADVANCED_SEARCH_UNKNOWN_NAME`，歧义命中多个 id 按并集处理不报错）+ AST 求值圈子集（`evaluate_subset`）+ 子集整包重算服务（`ensure_filtered_results`，单飞锁防击穿 + 快照版本化缓存失效）。
+- 契约层接通（`result_compat.py::_apply_advanced_search`）：**10 个** `query*` 查询点亮 query 参数（`queryCharacterRanking`/`queryMusicRanking`/`queryCPRanking`/`queryCharacterSingle`/`queryMusicSingle`/`queryCPSingle`/`queryGlobalStats`/`queryCompletionRates`/`queryQuestionnaire`/`queryQuestionnaireTrend`）——非空 `query` 不再抛 `ADVANCED_SEARCH_NOT_IMPLEMENTED`，而是圈子集重算（原样复用 compute 纯函数，子集内百分比/名次基数正确，不是对预计算榜单做后置过滤）。三种可辨识错误 kind：`ADVANCED_SEARCH_SYNTAX_ERROR`/`ADVANCED_SEARCH_UNKNOWN_NAME`/`ADVANCED_SEARCH_TOO_COMPLEX`（取代原来单一的 `ADVANCED_SEARCH_NOT_IMPLEMENTED`）。
+- 缓存布局镜像预计算路径，多一段 infix：`result:{year}:adv:{快照版本}:{指纹}:*`（TTL 24h，`compute_all` 写入新快照版本后旧筛选缓存整批自然失效，不用主动清理）。
+- 无数据库 schema 变更（纯计算层 + Redis 缓存布局扩展）。
+- 新依赖：`lark`（纯 Python 实现，无 C 扩展/编译工具链，用于 DSL 文法解析）。
+- 测试：5 万合成票性能冒烟（`tests/unit/test_advanced_search_perf.py`，事实索引→求值→子集重排名全程 5 次实测 225~301ms，均值约 261ms，阈值 2000ms，约 7~9 倍余量）+ 契约层端到端补测（音乐榜/CP 榜/全局统计/完成率四端点同一非空 query 下的子集口径互查、`queryCharacterSingle` 筛选后命中/未命中、21 原子 `ADVANCED_SEARCH_TOO_COMPLEX` 端到端）。
+
+### 兼容性
+- **前端零改动**：前端 `AdvancedSearch` 组件早已按此语法生成 `query` 参数（`decodeAdditionalConstraint.ts`），此前只是后端拒绝；本轮上线后原样点亮，无需前端配合发版。
+- `ADVANCED_SEARCH_NOT_IMPLEMENTED` 错误 kind 移除，改为三种细分错误——若有调用方（内部脚本/监控）按旧 kind 字符串匹配，需跟进改为匹配三种新 kind 之一。
+- 问卷原子（`q<code>=<option>`）在 **B-054**（运营录题回填 `question_def`/`option_def` 的 `code` 列）之前恒匹配为空（线上问卷仍是占位内容），这是数据阻塞，不是代码缺陷，与 B-050-后补1/4 同源已知限制。
+- **筛选路径下 `RESULT_NOT_COMPUTED` 不可达**：预计算路径在该年从未跑过 `compute_all` 时报 `RESULT_NOT_COMPUTED`；但带 `query` 的筛选路径（`ensure_filtered_results`）不依赖预计算快照存在，会现场从 DB 载票直接算出结果——即"该年未跑过 compute 时，带筛选条件的查询反而能工作"，是行为更优的已知语义差异，不是 bug。
+- 新增依赖 `lark`（纯 Python 实现，无需编译工具链，不影响现有部署/CI 流程）。
+
 ## [2026-08-14] 高级搜索/筛选 DSL 设计稿（文档，无代码变更）
 
 ### Added

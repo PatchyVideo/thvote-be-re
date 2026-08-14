@@ -30,7 +30,7 @@
 | **问卷趋势** questionnaireTrend | QuestionnaireDetail(✅ 拿 q11011 一条线) | 🔴 恒返回空 `Trends`(无问卷时间维度) | ✅ |
 | **同人本统计** numDoujin | QuestionnaireDetail 的 globalStats 取 numDoujin(✅ 读) | 🔴 恒 0 硬编码 | ✅ global_stats 含 |
 | **covote 关联**(cs 卡方/mi 互信息/cv 共投率) | characterConnect/MusicConnect(🔴 占位"维护中",入口已注释) | 🔴 `cs`/`mi` 恒 0,`cv` 真算;有 GraphQL `covote`+REST | ✅ 完整 |
-| **高级搜索 DSL**(交叉分析过滤) | AdvancedSearch 组件(✅ **生成 query 参数**传各 detail 页) | 🔴 非空 query → 抛 `ADVANCED_SEARCH_NOT_IMPLEMENTED` | ✅ pest DSL,贯穿所有接口 |
+| **高级搜索 DSL**(交叉分析过滤) | AdvancedSearch 组件(✅ **生成 query 参数**传各 detail 页) | ✅ lark DSL 解析 + 子集重算真算(2026-08-14 实现,待部署;10 个 query* 端点接通,取代 `ADVANCED_SEARCH_NOT_IMPLEMENTED`) | ✅ pest DSL,贯穿所有接口 |
 | **作品提名结果** | Doujin 页(🔴 **全硬编码**,总票数 1272 字面量,不调后端) | —(无端点) | —(scraper 侧) |
 
 ## 三、缺口分类
@@ -74,7 +74,7 @@
 ## 四、优先级建议
 
 1. **先确认 `/res-be` nginx 通路**(D)——不通则 result 站根本联调不了,是所有验证的前置,成本最低。
-2. **高级搜索 DSL**(A-1)——前端已具备完整入口,后端一实现就点亮 AdvancedSearch 全功能;是"投入产出比"最高的一块,但也是设计量最大的(子集重算 + 与分段共用索引,B-050-后补5/B-053 同组)。
+2. **高级搜索 DSL**(A-1)——✅ **已完成(2026-08-14,分支 `feat/advanced-search-dsl`,B-050-后补5)**:前端已具备完整入口,后端已接通全部 10 个 `query*` 端点,子集重算复用 compute 纯函数(非后置过滤);与分段共用索引(`subset.py`)已就位,B-053 可直接复用。
 3. **往届对比**(A-2)——依赖导入上届 `final_ranking`(B-057③)+ 接通 `historical`;数据到位后是纯展示增益。
 4. **问卷真实数据**(B-054,运营侧)——问卷结果/性别/趋势多项受此阻塞,管道都通,等录题。
 5. covote cs/mi、numDoujin、Doujin 数据化 —— 低优先,与前端占位页/运营手改现状匹配,按需再做。
@@ -108,7 +108,7 @@
 
 | 需求章节 | 后端 | 判定 |
 |---|---|---|
-| 搜索与筛选组件 §846(DSL/子集重算) | 🔴 桩 | **P0**,需求硬核心 |
+| 搜索与筛选组件 §846(DSL/子集重算) | ✅ 已实现(2026-08-14,待部署) | **P0**,需求硬核心,已完成 |
 | 上届对比 §172/§430 | 🔴 -1 哨兵+历届未导入 | P1,需导入 final_ranking |
 | 投票演进比对 §222(多角色≤10) | ✅ trend 真算、query 支持多 name | 已满足 |
 | 详情页问卷回答 §307(旭日/雷达/地图/男女相对比例) | 🟡 管道真算,受 B-054 占位阻塞 | 数据前置 |
