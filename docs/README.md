@@ -38,6 +38,7 @@
 | [`operations/nacos-config-center.md`](./operations/nacos-config-center.md) | Nacos 配置中心 + 服务注册接入说明（2026-05-12 替换原 Apollo；含 R-NACOS 双控制台访问） |
 | [`operations/login-config-checklist.md`](./operations/login-config-checklist.md) | 🎯 登录模块所需 Nacos 配置项**待填清单**（按登录方式分组 + JSON 骨架 + 访问入口）|
 | [`operations/captcha-onboarding.md`](./operations/captcha-onboarding.md) | 验证码 2.0 人机验证**傻瓜式接入手册**（B-043：开通/建场景/RAM AK/Nacos 六键/smoke + **个人→公家账户切换清单**） |
+| [`operations/mock-vote-data.md`](./operations/mock-vote-data.md) | Mock 投票数据生成器手册（`scripts/generate_mock_votes.py`：一条命令灌几千合成投票供 result 联调/演示,`mock-` 前缀可随时清理,**仅测试环境**;测试机榜单上的几千票就是它灌的） |
 
 ## 设计稿与实施记录（`superpowers/specs/`）
 

@@ -23,6 +23,16 @@
 - 新增依赖 `lark`（纯 Python 实现，无需编译工具链，不影响现有部署/CI 流程）。
 - 测试依赖 `fakeredis` 改为 `fakeredis[lua]`（拉入 `lupa`）：单飞锁 compare-and-delete 走 Redis `EVAL`（Lua），裸 fakeredis 不支持 eval——首次推送 CI"运行测试"即因此失败（本地因单独装过 lupa 而全绿），部署被跳过；修复后 CI 恢复。
 
+## [2026-08-14] Mock 投票数据生成器（测试工具，不进请求路径）
+
+### Added
+- `scripts/generate_mock_votes.py`:向测试库灌可复现的合成投票(角色/音乐/CP/问卷四表)。`vote_id` 一律 `mock-` 前缀,默认先清旧 mock 行再重灌(幂等),`--wipe-only` 一键清理,**真人数据零接触**(集成测试锁死)。分布:3 偏好簇 × Zipf(头部/长尾+子集筛选有区分度)、提交时间铺满投票窗口偏晚间(趋势有形状)、性别 55/45。顺带给占位问卷题回填测试 code(性别题用 Nacos 配置 code,其余 9 系;只填空值,B-054 真题录入不受影响)。使用手册 `docs/operations/mock-vote-data.md`(含容器内执行/清理/compute 触发的逐条命令)。
+- 测试:`tests/unit/test_generate_mock_votes.py`(20 项分布/形状/确定性/回填规划不变量)+ `tests/integration/test_generate_mock_votes_db.py`(写入/幂等/真人行不受影响/wipe 只删 mock)。
+
+### 兼容性
+- 纯手动运维脚本,不进 CI/请求路径;生产库禁跑(运行前打印目标库要求确认,`--force` 仅供测试容器非交互执行)。
+- `paper_answer` 每票每题组一行(UNIQUE 约束),生成器按组产行、组内优先答性别题——与提交侧 `questionnaire/dao.py` 口径一致。
+
 ## [2026-08-14] 高级搜索/筛选 DSL 设计稿（文档，无代码变更）
 
 ### Added
