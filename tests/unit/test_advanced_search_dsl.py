@@ -90,7 +90,10 @@ class TestErrors:
         assert exc_info.value.message == "ADVANCED_SEARCH_TOO_COMPLEX"
 
 
-from src.apps.result.advanced_search.dsl import canonical, fingerprint, normalize  # noqa: E402
+from src.apps.result.advanced_search.dsl import (  # noqa: E402
+    canonical,
+    fingerprint,
+)
 
 
 class TestNormalization:
@@ -116,7 +119,9 @@ class TestNormalization:
 
     def test_canonical_is_deterministic(self):
         node = parse_query('musics: ["x"] OR chars_first="y"')
-        assert canonical(node) == canonical(parse_query('chars_first="y" OR musics: ["x"]'))
+        assert canonical(node) == canonical(
+            parse_query('chars_first="y" OR musics: ["x"]')
+        )
 
 
 class TestLimits:
@@ -127,7 +132,10 @@ class TestLimits:
         assert exc_info.value.message == "ADVANCED_SEARCH_TOO_COMPLEX"
 
     def test_too_deep(self):
-        query = 'q1 = 1 AND (q2 = 2 OR (q3 = 3 AND (q4 = 4 OR (q5 = 5 AND (q6 = 6 OR q7 = 7)))))'
+        query = (
+            'q1 = 1 AND (q2 = 2 OR (q3 = 3 AND (q4 = 4 OR '
+            '(q5 = 5 AND (q6 = 6 OR q7 = 7)))))'
+        )
         with pytest.raises(ValidationError) as exc_info:
             parse_query(query)
         assert exc_info.value.message == "ADVANCED_SEARCH_TOO_COMPLEX"
