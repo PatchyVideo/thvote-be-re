@@ -37,7 +37,7 @@
 
 ### A. 前端在用、后端是桩 —— 真实功能缺口(会影响展示)
 
-1. **高级搜索 DSL**(最大):前端 `AdvancedSearch` 把用户选择(角色/音乐/问卷题答案 + AND 组合)编码成 `query` 参数,经 `decodeAdditionalConstraint.ts` 传给 characterDetail/MusicDetail/CoupleDetail/QuestionnaireDetail。后端收到非空 query **直接抛 `ADVANCED_SEARCH_NOT_IMPLEMENTED`**——即用户一旦用高级搜索,目标页报错。对应 BACKLOG **B-050-后补5 / B-053**,需"按投票子集重算榜"能力(非后置过滤)。
+1. **高级搜索 DSL**(最大):前端 `AdvancedSearch` 把用户选择(角色/音乐/问卷题答案 + AND 组合)编码成 `query` 参数,经 `decodeAdditionalConstraint.ts` 传给 characterDetail/MusicDetail/CoupleDetail/QuestionnaireDetail。~~后端收到非空 query **直接抛 `ADVANCED_SEARCH_NOT_IMPLEMENTED`**——即用户一旦用高级搜索,目标页报错。~~ **✅ 已解决(2026-08-14,分支 `feat/advanced-search-dsl`,待部署)**:后端已实现"按投票子集重算榜"(lark DSL 解析 + `subset.py` 圈子集 + 复用 compute 纯函数整包重算,非后置过滤),对应 BACKLOG **B-050-后补5**(已归档)/ **B-053**(共用同一子集原语,尚未做)。
 2. **往届对比**:characterCompare/MusicCompare 是专门的对比页,后端 `*Last1/2` 全是 `-1` 哨兵。前端用 `<0 ? '-'` 优雅降级(不报错,但对比列全空)。需 ① `compute_service` 传非空 `historical` ② 导入 `final_ranking` 历史(B-050-后补3 + B-057③)。
 3. **问卷趋势**:QuestionnaireDetail 拿 questionnaireTrend 画一条线,后端恒空 → 图表空。需问卷 append-only 时间维度(B-050-后补2 同源)。
 4. **numDoujin**:QuestionnaireDetail 的 globalStats 读 numDoujin,后端恒 0。同人本统计未做。
