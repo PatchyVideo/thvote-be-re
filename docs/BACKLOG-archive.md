@@ -21,6 +21,7 @@
 | **B-017** | ~~Nacos 热更新与 `lru_cache` 客户端不兼容——`nacos.py` 注册了 listener 但 `get_pnvs_client` / `get_dm_smtp_client` / `get_*_code_service` 全 `lru_cache(maxsize=1)`，hot reload 触达不到这些缓存实例。文档化「改 Aliyun 配置必须重启容器」~~ | ✅ 已完成 (2026-05-16, `ab7a642`) | — | `docs/architecture/nacos-hot-reload-limits.md` |
 | **B-018** | ~~`_safe_log` 失败无可见性——加 `audit_log_failures_total` 计数器 + `/health` degraded 状态~~ | ✅ 已完成 (2026-05-17, `fe993e4`) | — | `/health` 暴露审计失败计数 |
 | **B-021** | ~~Pydantic V1 弃用 API（`Field(..., env="X")`）→ V2（`SettingsConfigDict` + `validation_alias`）~~ | ✅ 已完成（2026-08-13 盘点确认：`config.py` 已全量 `SettingsConfigDict`+`validation_alias`，pytest 无 pydantic deprecation 告警，完成时间不详、此前漏记） | — | `src/common/config.py` |
+| **B-023** | ~~`tests/integration/conftest.py` 的 `pytest.importorskip("fakeredis")` 改为硬 `import`~~ |  ✅ 已完成（2026-08-18）  | — | `tests/integration/conftest.py` |
 | **B-025** | ~~移除 `init_db()` 与 DEBUG 后门，改为启动时 DB 连通性检查失败立即 raise~~ | ✅ 已完成 (2026-05-17, `76facaa`) | — | 移除 init_db DEBUG 后门 + 加连通性检查（`init_db()` 函数体仍保留但不再自动调用） |
 | **B-027** | ~~`pylint.yml` 与 `deploy-test.yml` lint 重复，删一个 + 把另一个改硬失败；`deploy-test.yml` 内 `flake8 \|\| true` 软门禁改硬~~ | ✅ 已完成 (2026-05-17, `6d73de6`) | — | flake8 违规清零 + CI 门禁改硬失败 |
 | **B-029** | ~~deploy 步骤里 `docker-compose up -d redis` / `docker exec thvote-postgres` 依赖部署机上**仓库外**维护的 `docker-compose.yml`（`docker/` 目录已从仓库删除）。这层耦合需要文档化~~ | ✅ 已完成 (2026-05-16, `0e340e9`) | — | `docs/operations/deploy-server-setup.md` |

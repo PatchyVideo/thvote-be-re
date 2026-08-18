@@ -8,11 +8,16 @@ and run alembic upgrade head instead.
 
 Aliyun PNVS / DM SMTP clients are always mocked here.
 """
-
 from __future__ import annotations
 
 import os
 from typing import AsyncGenerator
+try:
+    import fakeredis.aioredis as fakeredis_aioredis
+    FakeRedis = fakeredis_aioredis.FakeRedis
+except ImportError:
+    import fakeredis
+    FakeRedis = fakeredis.FakeRedis
 from unittest.mock import AsyncMock
 
 import pytest
@@ -112,8 +117,12 @@ async def seed_voteables_from_snapshot(session, category: str, vote_year: int):
 @pytest.fixture(autouse=True)
 def patch_redis(monkeypatch):
     """Replace common.redis.get_redis with a fakeredis client per test."""
-    fakeredis_mod = pytest.importorskip("fakeredis")
-    fake = fakeredis_mod.aioredis.FakeRedis(decode_responses=True)
+    #fakeredis_mod = pytest.importorskip("fakeredis")
+    #fake = fakeredis_mod.aioredis.FakeRedis(decode_responses=True)
+    try:
+        fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    except:
+        fake = fakeredis.FakeRedis(decode_responses=True)
 
     async def _get_redis_stub():
         return fake
