@@ -34,21 +34,28 @@ from src.apps.result.whitelist import load_whitelist_db
 from src.common.config import Settings
 from src.common.database import get_session_maker
 from src.common.exceptions import ValidationError
+from src.common.middleware.client_ip import client_ip_var
 
 logger = logging.getLogger(__name__)
 
 ADV_TTL_SECONDS = 24 * 3600
 _LOCK_TTL_MS = 30_000
-_WAIT_PROBES = 25
+# 等锁上限:等待跟随锁存活(锁没了就提前接手),此值只兜"marker 与锁双双
+# 异常缺失"的极端情况;量级须覆盖真实重算耗时(测试机 4 万行问卷 ~8s,
+# 真实届数据更大),B-060 由固定 5s(25×200ms)改为 60s。
+_WAIT_MAX_SECONDS = 60.0
 _WAIT_INTERVAL_SECONDS = 0.2
 
-# 全局(跨指纹)miss 重算限频:GraphQL 入口本身无限流,且 `q<code>=<opt>`
+# miss 重算限频(B-060 双层):GraphQL 入口本身无限流,且 `q<code>=<opt>`
 # 原子的 code 不经白名单校验(B-054 前刻意保留),指纹空间无界——轮换指纹可
-# 绕过按指纹隔离的单飞锁。每个新指纹 miss = 4 张全表 SELECT + 数百 ms 纯
-# CPU(阻塞事件循环)。实测单次重算约 0.3s;30 次/分钟对应事件循环占用上限
-# 约 15%,正常用户流量远够用,同时给恶意轮换指纹枚举设了硬上限。
-# 缓存命中路径不计数(见 ensure_filtered_results 里判定位置)。
+# 绕过按指纹隔离的单飞锁。每次真实重算 = 4 张全表 SELECT + 纯 CPU 聚合
+# (测试机 4 万行问卷实测 ~8s,阻塞事件循环)。
+# - per-IP 层(10/min):单个来源刷不同指纹的硬上限,正常用户切页远用不满;
+# - 全局层(30/min):多源分布式刷量的兜底,同时是事件循环占用的总闸。
+# 只有**真正执行重算**的调用者扣预算:缓存命中、等锁后从缓存拿到结果的
+# 路径都不扣(扣费点见 ensure_filtered_results 内两处 _check_miss_budget)。
 ADV_MISS_LIMIT_PER_MINUTE = 30
+ADV_MISS_LIMIT_PER_IP_PER_MINUTE = 10
 _MISS_BUDGET_WINDOW_SECONDS = 60
 
 
@@ -56,16 +63,35 @@ def miss_budget_key(vote_year: int) -> str:
     return f"adv_miss_budget:{vote_year}"
 
 
-async def _check_miss_budget(redis: aioredis.Redis, vote_year: int) -> None:
-    """全局 miss 重算限频(INCR+EXPIRE 固定窗口),超限抛可辨识错误。
+def miss_budget_ip_key(vote_year: int, client_ip: str) -> str:
+    return f"adv_miss_budget:{vote_year}:ip:{client_ip}"
 
-    必须在进入 miss 计算分支之后、拿单飞锁之前调用——缓存命中路径不应
-    调用本函数;等锁成功后从缓存读到结果的路径同样不消耗预算。
-    """
-    key = miss_budget_key(vote_year)
+
+async def _incr_window(redis: aioredis.Redis, key: str) -> int:
+    """固定窗口计数:INCR,首个计数设置过期(不滚动续期)。"""
     count = await redis.incr(key)
     if count == 1:
         await redis.expire(key, _MISS_BUDGET_WINDOW_SECONDS)
+    return int(count)
+
+
+async def _check_miss_budget(
+    redis: aioredis.Redis, vote_year: int, client_ip: str | None
+) -> None:
+    """miss 重算限频(per-IP + 全局双层),超限抛可辨识错误。
+
+    只在**即将真正执行重算**时调用(持锁双检未命中后 / 等锁退出接手后);
+    缓存命中与等锁后拿到缓存的路径都不经过这里。client_ip 为 None(非 HTTP
+    上下文:测试直调、脚本)时跳过 per-IP 层,只走全局层。
+    """
+    if client_ip:
+        ip_count = await _incr_window(redis, miss_budget_ip_key(vote_year, client_ip))
+        if ip_count > ADV_MISS_LIMIT_PER_IP_PER_MINUTE:
+            raise ValidationError(
+                "ADVANCED_SEARCH_BUSY",
+                human_readable_message="高级搜索请求过于频繁,请稍后再试",
+            )
+    count = await _incr_window(redis, miss_budget_key(vote_year))
     if count > ADV_MISS_LIMIT_PER_MINUTE:
         raise ValidationError(
             "ADVANCED_SEARCH_BUSY",
@@ -90,10 +116,13 @@ async def ensure_filtered_results(
     """确保该约束的筛选结果在缓存;返回 ResultDAO 的 key infix。
 
     解析/限制/未知名字错误直接向上抛(可辨识 ValidationError,契约层经
-    map_app_errors 出口)。单飞锁防击穿:等锁超时兜底自己算——重复计算
-    只浪费几百毫秒,不出错。缓存命中直接返回,不消耗任何预算;仅 miss
-    分支受 ``ADV_MISS_LIMIT_PER_MINUTE`` 全局限频,超限抛
-    ``ADVANCED_SEARCH_BUSY``。
+    map_app_errors 出口)。单飞锁防击穿:等锁者跟随锁存活轮询,锁消失或
+    等待超上限才接手自己算(重复计算幂等,只是浪费)。**只有真正执行重算
+    的调用者扣 miss 预算**(per-IP ``ADV_MISS_LIMIT_PER_IP_PER_MINUTE`` +
+    全局 ``ADV_MISS_LIMIT_PER_MINUTE`` 双层,超限抛 ``ADVANCED_SEARCH_BUSY``);
+    缓存命中与等锁后从缓存拿到结果的路径不扣。client IP 取自
+    ``client_ip_var``(HTTP 请求经 ClientIPMiddleware 注入,非 HTTP 上下文
+    为 None → 只走全局层)。
     """
     ast = parse_query(query_str)
     fp = fingerprint(ast)
@@ -105,33 +134,43 @@ async def ensure_filtered_results(
     if await redis.exists(marker):
         return infix
 
-    # 缓存 miss,即将进入重算分支——在拿单飞锁之前先扣全局预算(见常量注释)。
-    await _check_miss_budget(redis, vote_year)
-
     lock_key = f"adv_lock:{vote_year}:{fp}"
     token = uuid.uuid4().hex
     got_lock = await redis.set(lock_key, token, nx=True, px=_LOCK_TTL_MS)
-    if got_lock:
-        # 双检:上面的 exists(marker) 探测与这里的 SET NX 之间可能有别的协程
-        # 已经算完并写入 marker——拿到锁不代表还需要真去算一次。
-        if await redis.exists(marker):
-            await redis.eval(_UNLOCK_SCRIPT, 1, lock_key, token)
-            return infix
-    else:
-        for _ in range(_WAIT_PROBES):
-            await asyncio.sleep(_WAIT_INTERVAL_SECONDS)
+    try:
+        if got_lock:
+            # 双检:上面的 exists(marker) 探测与 SET NX 之间可能有别的协程
+            # 已经算完并写入 marker——拿到锁不代表还需要真去算一次。
             if await redis.exists(marker):
                 return infix
-        logger.warning(
-            "advanced search: lock wait timed out, computing anyway "
-            "(year=%d fp=%s)", vote_year, fp,
-        )
-    try:
+        else:
+            # 等锁:跟随锁存活轮询,而非固定短预算(B-060)。真实重算耗时
+            # 随数据量增长(测试机 4 万行问卷 ~8s),固定 5s 会让所有等锁者
+            # 在最贵的场景集体转入重复计算;上限 _WAIT_MAX_SECONDS 只防
+            # marker/锁双双异常缺失时的无限等待。
+            waited = 0.0
+            while waited < _WAIT_MAX_SECONDS:
+                await asyncio.sleep(_WAIT_INTERVAL_SECONDS)
+                waited += _WAIT_INTERVAL_SECONDS
+                if await redis.exists(marker):
+                    return infix
+                if not await redis.exists(lock_key):
+                    # 持锁者结束却没写 marker(计算失败/被限频/进程死亡)
+                    # → 不再空等,自己接手
+                    break
+            else:
+                logger.warning(
+                    "advanced search: lock wait exhausted %.0fs, computing "
+                    "anyway (year=%d fp=%s)", _WAIT_MAX_SECONDS, vote_year, fp,
+                )
+        # 走到这里 = 本调用者真的要执行重算 → 此刻才扣 miss 预算
+        # (per-IP + 全局双层;等锁后从缓存拿到结果的路径在上面已 return)。
+        await _check_miss_budget(redis, vote_year, client_ip_var.get())
         await _compute_filtered(redis, settings, vote_year, ast, infix)
+        return infix
     finally:
         if got_lock:
             await redis.eval(_UNLOCK_SCRIPT, 1, lock_key, token)
-    return infix
 
 
 async def _compute_filtered(
