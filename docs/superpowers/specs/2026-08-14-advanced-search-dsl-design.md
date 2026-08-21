@@ -171,7 +171,7 @@ miss 时一次性算好全部 section 写入(票已在内存,多算几个 sectio
 
 ### 7.4 防击穿(单飞)
 
-per `(year, 指纹)` 的 Redis 锁(SET NX,TTL 30s,复用 `compute_lock` 模式):拿到锁者计算;拿不到者短轮询等缓存出现(如 200ms × 25 次),超时兜底自己算(重复计算无害,仅浪费几百毫秒)。
+per `(year, 指纹)` 的 Redis 锁(SET NX,TTL 30s,token 化 compare-and-delete):拿到锁者计算;拿不到者**跟随锁存活轮询**(200ms 间隔,上限 60s;锁消失即提前接手,B-060 修订——原固定 5s 预算在真机实测重算 ~8s 面前会让等锁者集体转入重复计算),超时兜底自己算(重复计算幂等无害)。
 
 ### 7.5 护栏总表
 
@@ -179,7 +179,7 @@ per `(year, 指纹)` 的 Redis 锁(SET NX,TTL 30s,复用 `compute_lock` 模式):
 2. 缓存:版本翻转 + TTL 双重失效;归一化提升命中率;
 3. 单飞锁防击穿;
 4. 求值与重算全内存,DB 压力仅"载票"的几条现有全表 SELECT;
-5. **全局 miss 重算限频**(终审修复波已实现,见 `service.py::_check_miss_budget`):GraphQL 入口本身无限流,且 `q<code>=<opt>` 原子的 code 不经白名单校验(B-054 前刻意保留)、指纹空间无界,按指纹隔离的单飞锁对轮换指纹攻击无效——在 `ensure_filtered_results` 进入 miss 计算分支之后、拿单飞锁之前,用 Redis `INCR`+`EXPIRE` 固定窗口对 `adv_miss_budget:{year}` 计数,超过 `ADV_MISS_LIMIT_PER_MINUTE`(=30,依据:单次重算实测约 0.3s,30 次/分钟对应事件循环占用上限约 15%)抛 `ADVANCED_SEARCH_BUSY`;缓存命中路径不计数。**per-IP 细化为后续项**(依赖 GraphQL 层拿 client IP,见 BACKLOG)。
+5. **全局 miss 重算限频**(终审修复波已实现,见 `service.py::_check_miss_budget`):GraphQL 入口本身无限流,且 `q<code>=<opt>` 原子的 code 不经白名单校验(B-054 前刻意保留)、指纹空间无界,按指纹隔离的单飞锁对轮换指纹攻击无效——在 `ensure_filtered_results` 进入 miss 计算分支之后、拿单飞锁之前,用 Redis `INCR`+`EXPIRE` 固定窗口对 `adv_miss_budget:{year}` 计数,超过预算抛 `ADVANCED_SEARCH_BUSY`。**B-060(2026-08-22)升级为双层**:per-IP `ADV_MISS_LIMIT_PER_IP_PER_MINUTE`(=10,client IP 经 `ClientIPMiddleware` 以 ContextVar 注入,复用 B-044 可信代理解析)+ 全局 `ADV_MISS_LIMIT_PER_MINUTE`(=30)兜底;且扣费点后置——**只有真正执行重算的调用者扣预算**,缓存命中与等锁后从缓存拿到结果的路径不扣。
 
 ## 八、错误处理
 

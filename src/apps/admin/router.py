@@ -724,3 +724,100 @@ async def import_voteables(
         # 只在真正写库后才需要让 vote-objects 缓存失效,与 create_work 同款。
         await _clear_vote_objects_cache(redis)
     return result
+
+
+# ── Voteable 列表/编辑(B-057①,work 统一设计稿 §4.6) ────────────────────
+
+
+def _voteable_model(category: str | None):
+    from src.db_model.voteable import VoteableCharacter, VoteableMusic
+
+    model = {"character": VoteableCharacter, "music": VoteableMusic}.get(
+        category or ""
+    )
+    if model is None:
+        raise HTTPException(
+            status_code=422, detail="category must be character|music"
+        )
+    return model
+
+
+@router.get("/voteables")
+async def list_voteables(
+    category: str,
+    q: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+    session: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """voteable 列表(联 work 出 workId/workName/workType,admin 编辑用)。"""
+    from sqlalchemy import func as sqlfunc
+    from sqlalchemy import select
+
+    from src.db_model.work import Work
+
+    model = _voteable_model(category)
+    base = select(model, Work.name, Work.type).outerjoin(
+        Work, model.work_id == Work.id
+    )
+    if q:
+        base = base.where(model.name.ilike(f"%{q}%"))
+    total = (await session.execute(
+        select(sqlfunc.count()).select_from(base.subquery())
+    )).scalar_one()
+    rows = (await session.execute(
+        base.order_by(model.id)
+        .offset((max(page, 1) - 1) * page_size)
+        .limit(page_size)
+    )).all()
+    items = [
+        {
+            "id": v.id,
+            "name": v.name,
+            "nameJp": v.name_jp,
+            "type": v.type,
+            "firstAppearance": v.first_appearance,
+            "oldId": v.old_id,
+            "workId": v.work_id,
+            "workName": work_name,
+            "workType": work_type,
+        }
+        for v, work_name, work_type in rows
+    ]
+    return {"items": items, "total": total}
+
+
+@router.post("/voteables/{voteable_id}")
+async def update_voteable_work(
+    voteable_id: int,
+    body: dict,
+    session: AsyncSession = Depends(get_db_session),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict:
+    """编辑 voteable 的 work 归属(设计稿 §4.6 的缺失入口)。
+
+    body: {"category": "character"|"music", "work_id": int|null}。
+    work_id 为 null = 清空归属;指向不存在的 work → 409。
+    """
+    from sqlalchemy import select
+
+    from src.db_model.work import Work
+
+    model = _voteable_model(body.get("category"))
+    row = (await session.execute(
+        select(model).where(model.id == voteable_id)
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="NOT_FOUND")
+    work_id = body.get("work_id")
+    if work_id is not None:
+        work = await session.get(Work, int(work_id))
+        if work is None:
+            raise HTTPException(status_code=409, detail="WORK_NOT_FOUND")
+        row.work_id = int(work_id)
+    else:
+        row.work_id = None
+    await session.commit()
+    # vote-objects 公开接口按 work 出 filterMeta,归属变更后必须失效缓存
+    await _clear_vote_objects_cache(redis)
+    return {"ok": True}

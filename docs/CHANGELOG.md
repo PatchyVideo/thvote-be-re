@@ -23,6 +23,20 @@
 - 新增依赖 `lark`（纯 Python 实现，无需编译工具链，不影响现有部署/CI 流程）。
 - 测试依赖 `fakeredis` 改为 `fakeredis[lua]`（拉入 `lupa`）：单飞锁 compare-and-delete 走 Redis `EVAL`（Lua），裸 fakeredis 不支持 eval——首次推送 CI"运行测试"即因此失败（本地因单独装过 lupa 而全绿），部署被跳过；修复后 CI 恢复。
 
+## [2026-08-22] B-060 高级搜索限频/单飞加固 + B-057① admin voteables 端点
+
+### Added
+- **B-057①**:`GET /api/v1/admin/voteables`(category/q/分页,联 work 表出 `workId`/`workName`/`workType`)+ `POST /api/v1/admin/voteables/{id}`(编辑 work 归属,null 清空;不存在的 work→409),挂 `require_admin`,变更后清 vote-objects 缓存。5 个集成测试。admin-ui 消费页面可后补(B-049 无 UI 端点清单)。
+- **B-060**:`ClientIPMiddleware`(`src/common/middleware/client_ip.py`)把 B-044 可信代理解析的 client IP 放 ContextVar,供深层服务读取。
+
+### Changed
+- **B-060 高级搜索 miss 限频升级为双层**:per-IP `ADV_MISS_LIMIT_PER_IP_PER_MINUTE=10` + 全局 30/min 兜底;**扣费点后置到真正执行重算处**——缓存命中、等锁后从缓存拿到结果的赛跑者不再扣预算(消除终审小尾巴"注释与行为不符")。
+- **等锁策略**:由固定 5s(25×200ms)改为**跟随锁存活轮询**(200ms 间隔,上限 60s,锁消失提前接手)。依据:真机实测单次重算 ~8s(4 万行问卷载票),固定 5s 会让并发等锁者在最贵场景集体转入重复计算。
+- 新增 3 个测试真实覆盖等锁分支(等锁缓存命中零扣费/锁消失提前接手含耗时断言/per-IP 隔离)——终审小尾巴"锁竞争分支覆盖为空"销账。
+
+### 兼容性
+- 无契约变化;`ADVANCED_SEARCH_BUSY` 语义不变,只是触发口径更精确(真重算才计数)。无 DB 迁移。
+
 ## [2026-08-14] Mock 投票数据生成器（测试工具，不进请求路径）
 
 ### Added
