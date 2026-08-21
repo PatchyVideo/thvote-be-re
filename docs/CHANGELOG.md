@@ -31,6 +31,7 @@
 
 ### 兼容性
 - 纯手动运维脚本,不进 CI/请求路径;生产库禁跑(运行前打印目标库要求确认,`--force` 仅供测试容器非交互执行)。
+- **Dockerfile 变更(2026-08-21 补)**:development/production 两个 stage 增加 `COPY scripts/`——首次容器内执行时发现镜像里根本没有 `scripts/` 目录(此前 `import_mongo_dump.py` 等都是在宿主机 checkout 里跑的),重建镜像后 `docker exec ... python scripts/xxx.py` 才可用。
 - `paper_answer` 每票每题组一行(UNIQUE 约束),生成器按组产行、组内优先答性别题——与提交侧 `questionnaire/dao.py` 口径一致。
 
 ## [2026-08-14] 高级搜索/筛选 DSL 设计稿（文档，无代码变更）
