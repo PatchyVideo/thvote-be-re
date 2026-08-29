@@ -53,6 +53,32 @@ class ComputeDAO:
             if not r.invalidated  # 最新行被作废 → 丢弃整个 vote_id
         ]
 
+    @staticmethod
+    def _history_per_vote(rows) -> list[tuple[str, datetime, int, list[dict]]]:
+        """每个 vote_id 的**全部**提交行(而非仅最新一行)。
+
+        选民排除口径与 `_latest_per_vote` 完全一致:按 (created_at,
+        coalesce(attempt,0)) 判定该 vote_id 的最新行,若最新行被作废则整个
+        vote_id 的所有行都不返回;否则返回该 vote_id 的全部行——包括被
+        单独标记 invalidated 的历史行(作废历史行不影响计票口径,设计稿
+        §四)。返回顺序不做保证,消费方自行排序。
+        """
+        by_vote: dict[str, list] = {}
+        for r in rows:
+            by_vote.setdefault(r.vote_id, []).append(r)
+
+        result: list[tuple[str, datetime, int, list[dict]]] = []
+        for vote_rows in by_vote.values():
+            newest = max(vote_rows, key=lambda r: (r.created_at, r.attempt or 0))
+            if newest.invalidated:
+                continue  # 最新行被作废 → 丢弃整个 vote_id,与 _latest_per_vote 同口径
+            for r in vote_rows:
+                result.append((
+                    r.vote_id, r.created_at, r.attempt or 0,
+                    _normalize_items(r.payload),
+                ))
+        return result
+
     async def load_char_votes(self) -> list[tuple[str, datetime, list[dict]]]:
         rows = (await self.session.execute(select(RawCharacterSubmit))).scalars().all()
         return self._latest_per_vote(rows)
@@ -65,6 +91,53 @@ class ComputeDAO:
         rows = (await self.session.execute(select(RawCPSubmit))).scalars().all()
         return self._latest_per_vote(rows)
 
+    async def load_char_history(self) -> list[tuple[str, datetime, int, list[dict]]]:
+        rows = (await self.session.execute(select(RawCharacterSubmit))).scalars().all()
+        return self._history_per_vote(rows)
+
+    async def load_music_history(self) -> list[tuple[str, datetime, int, list[dict]]]:
+        rows = (await self.session.execute(select(RawMusicSubmit))).scalars().all()
+        return self._history_per_vote(rows)
+
+    async def load_cp_history(self) -> list[tuple[str, datetime, int, list[dict]]]:
+        rows = (await self.session.execute(select(RawCPSubmit))).scalars().all()
+        return self._history_per_vote(rows)
+
+    @staticmethod
+    def _answers_to_items(
+        rows, q_codes: dict, o_codes: dict
+    ) -> tuple[list[dict], int, int]:
+        """把一批 paper_answer 行映射为语义 code 的 items。
+
+        题/选项缺 code 的会被跳过(无法按语义码寻址):整行(问题缺 code)
+        或单个选项(选项缺 code,该行其余有 code 的选项仍保留)都计入跳过
+        汇总。返回 (items, skipped_questions, skipped_options)。
+        """
+        items: list[dict] = []
+        skipped_questions = 0
+        skipped_options = 0
+        for r in rows:
+            if r.active_question_id is None:
+                continue
+            qcode = q_codes.get(r.active_question_id)
+            if not qcode:
+                skipped_questions += 1
+                continue
+            answers = []
+            for oid in r.selected_option_ids or []:
+                ocode = o_codes.get(oid)
+                if ocode:
+                    answers.append(ocode)
+                else:
+                    skipped_options += 1
+            items.append({
+                "id": qcode,
+                "answer": answers,
+                "answer_str": r.input_text,
+                "ts": r.created_at,
+            })
+        return items, skipped_questions, skipped_options
+
     async def load_questionnaire_votes(
         self, vote_year: int
     ) -> list[tuple[str, list[dict]]]:
@@ -72,11 +145,9 @@ class ComputeDAO:
 
         底层为 append-only 批次存储(B-050-后补2):同一 vote_id 可能有多个批次
         (改票=追加新批次),按 vote_id 分组后先经 latest_batch 只取最新批,
-        再对存活行做 code 映射。
+        再对存活行做 code 映射(_answers_to_items)。
 
         注意:paper_answer 没有 invalidated 标志,admin 作废动作触达不到问卷答案。
-        题/选项缺 code 的会被跳过(无法按语义码寻址):整行(问题缺 code)或单个
-        选项(选项缺 code,该行其余有 code 的选项仍保留)都计入跳过汇总。
         """
         q_codes = dict(
             (await self.session.execute(select(QuestionDef.id, QuestionDef.code))).all()
@@ -86,7 +157,9 @@ class ComputeDAO:
         )
         rows = (
             await self.session.execute(
-                select(PaperAnswer).where(PaperAnswer.vote_year == vote_year)
+                select(PaperAnswer)
+                .where(PaperAnswer.vote_year == vote_year)
+                .order_by(PaperAnswer.created_at)
             )
         ).scalars().all()
 
@@ -98,26 +171,13 @@ class ComputeDAO:
         skipped_questions = 0
         skipped_options = 0
         for vote_id, vote_rows in rows_by_vote.items():
-            for r in latest_batch(vote_rows):
-                if r.active_question_id is None:
-                    continue
-                qcode = q_codes.get(r.active_question_id)
-                if not qcode:
-                    skipped_questions += 1
-                    continue
-                answers = []
-                for oid in r.selected_option_ids or []:
-                    ocode = o_codes.get(oid)
-                    if ocode:
-                        answers.append(ocode)
-                    else:
-                        skipped_options += 1
-                grouped.setdefault(vote_id, []).append({
-                    "id": qcode,
-                    "answer": answers,
-                    "answer_str": r.input_text,
-                    "ts": r.created_at
-                })
+            items, sq, so = self._answers_to_items(
+                latest_batch(vote_rows), q_codes, o_codes
+            )
+            skipped_questions += sq
+            skipped_options += so
+            if items:
+                grouped[vote_id] = items
         if skipped_questions or skipped_options:
             logger.debug(
                 "questionnaire feed: skipped %d rows (question without code), "
@@ -126,6 +186,53 @@ class ComputeDAO:
                 skipped_options,
             )
         return list(grouped.items())
+
+    async def load_questionnaire_history(
+        self, vote_year: int
+    ) -> list[tuple[str, datetime, int, list[dict]]]:
+        """问卷回答按批次(attempt)输出全历史,每个批次一个元组。
+
+        paper_answer 没有 invalidated 标志,故无需比照 `_history_per_vote`
+        做选民排除;按 (vote_id, coalesce(attempt,0)) 分批(NULL attempt =
+        0017 迁移前存量,视为单一批次),批次 created_at 取组内行的最大值,
+        items 复用 `_answers_to_items` 的 code 映射/跳过逻辑,与
+        `load_questionnaire_votes` 完全一致。
+        """
+        q_codes = dict(
+            (await self.session.execute(select(QuestionDef.id, QuestionDef.code))).all()
+        )
+        o_codes = dict(
+            (await self.session.execute(select(OptionDef.id, OptionDef.code))).all()
+        )
+        rows = (
+            await self.session.execute(
+                select(PaperAnswer)
+                .where(PaperAnswer.vote_year == vote_year)
+                .order_by(PaperAnswer.created_at)
+            )
+        ).scalars().all()
+
+        rows_by_batch: dict[tuple[str, int], list] = {}
+        for r in rows:
+            rows_by_batch.setdefault((r.vote_id, r.attempt or 0), []).append(r)
+
+        skipped_questions = 0
+        skipped_options = 0
+        history: list[tuple[str, datetime, int, list[dict]]] = []
+        for (vote_id, attempt), batch_rows in rows_by_batch.items():
+            items, sq, so = self._answers_to_items(batch_rows, q_codes, o_codes)
+            skipped_questions += sq
+            skipped_options += so
+            batch_created_at = max(r.created_at for r in batch_rows)
+            history.append((vote_id, batch_created_at, attempt, items))
+        if skipped_questions or skipped_options:
+            logger.debug(
+                "questionnaire history: skipped %d rows (question without code), "
+                "%d options without code",
+                skipped_questions,
+                skipped_options,
+            )
+        return history
 
     async def upsert_candidates(
         self, vote_year: int, category: str, items: list[dict]

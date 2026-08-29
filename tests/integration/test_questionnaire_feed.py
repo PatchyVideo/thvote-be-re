@@ -141,6 +141,43 @@ async def test_load_questionnaire_votes_skips_options_without_code(session, capl
 
 
 @pytest.mark.asyncio
+async def test_questionnaire_history_one_tuple_per_batch(session):
+    """load_questionnaire_history 按批次(attempt)拆分,一个批次一个元组——
+    v1 连提两次(如 replace_answers 追加新批次)应各自出现在结果里,而不是
+    像 load_questionnaire_votes 那样只保留最新批。"""
+    gender_q = QuestionDef(group_id=1, type="Single", content="性别", code="11011")
+    session.add(gender_q)
+    await session.flush()
+    opt_male = OptionDef(question_id=gender_q.id, content="男", code="1101101")
+    opt_female = OptionDef(question_id=gender_q.id, content="女", code="1101102")
+    session.add_all([opt_male, opt_female])
+    await session.flush()
+
+    from datetime import datetime, timedelta, timezone
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+    session.add_all([
+        # v1 批次 1
+        PaperAnswer(
+            vote_id="v1", vote_year=12, questionnaire_id=1, group_id=1,
+            active_question_id=gender_q.id, selected_option_ids=[opt_male.id],
+            attempt=1, created_at=base,
+        ),
+        # v1 批次 2(改票)
+        PaperAnswer(
+            vote_id="v1", vote_year=12, questionnaire_id=1, group_id=1,
+            active_question_id=gender_q.id, selected_option_ids=[opt_female.id],
+            attempt=2, created_at=base + timedelta(hours=1),
+        ),
+    ])
+    await session.commit()
+
+    dao = ComputeDAO(session)
+    hist = await dao.load_questionnaire_history(12)
+    assert [att for vid, _, att, _ in hist if vid == "v1"] == [1, 2]
+
+
+@pytest.mark.asyncio
 async def test_load_questionnaire_votes_uses_latest_batch(session):
     """改票后(批次 attempt 递增)只计最新批,撤答的组不再出现在 items 里。"""
     gender_q = QuestionDef(group_id=1, type="Single", content="性别", code="11011")

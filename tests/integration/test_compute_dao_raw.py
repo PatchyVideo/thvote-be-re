@@ -98,6 +98,30 @@ async def test_invalidated_latest_row_drops_vote_no_fallback(session):
 
 
 @pytest.mark.asyncio
+async def test_char_history_returns_all_rows_excluding_invalidated_voter(session):
+    """load_char_history 返回全部提交行(非仅最新),选民排除口径与
+    _latest_per_vote 完全一致:v1 两次有效提交全部保留;v2 唯一一次提交的
+    (也是最新)行被作废 → 整个 vote_id 出局。"""
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    session.add_all([
+        RawCharacterSubmit(vote_id="v1", attempt=1, created_at=base,
+                           user_ip="x", payload=[{"id": "aaaa1111", "first": False}]),
+        RawCharacterSubmit(vote_id="v1", attempt=2,
+                           created_at=base + timedelta(hours=1),
+                           user_ip="x", payload=[{"id": "bbbb2222", "first": True}]),
+        RawCharacterSubmit(vote_id="v2", attempt=1, created_at=base,
+                           user_ip="x", invalidated=True,
+                           payload=[{"id": "cccc3333", "first": False}]),
+    ])
+    await session.commit()
+
+    dao = ComputeDAO(session)
+    hist = await dao.load_char_history()
+    ids = {(vid, att) for vid, _, att, _ in hist}
+    assert ids == {("v1", 1), ("v1", 2)}  # v2 整体出局(与 _latest_per_vote 同口径)
+
+
+@pytest.mark.asyncio
 async def test_questionnaire_votes_carry_row_timestamp(session):
     """问卷数据加载时每项应携带 created_at 时间戳用于趋势数据分组。"""
     base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
