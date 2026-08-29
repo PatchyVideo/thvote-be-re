@@ -72,6 +72,11 @@ class ComputeService:
             music_votes = await self.dao.load_music_votes()
             cp_votes = await self.dao.load_cp_votes()
             q_votes = await self.dao.load_questionnaire_votes(vote_year)
+            # 全提交历史(append-only,B-050-后补2):trend 真实净增量的数据源。
+            char_history = await self.dao.load_char_history()
+            music_history = await self.dao.load_music_history()
+            cp_history = await self.dao.load_cp_history()
+            q_history = await self.dao.load_questionnaire_history(vote_year)
 
             # 白名单（id→名/系统ID）；CP 成员是角色 → 用角色白名单。
             # 数据源是 DB（voteable_* JOIN candidate_*(vote_year)），不再读
@@ -98,12 +103,15 @@ class ComputeService:
             )
             char_ranking, char_global = compute_ranking(
                 char_votes, char_wl, segment_map, {}, vote_start, total_hours,
+                history=char_history,
             )
             music_ranking, music_global = compute_ranking(
                 music_votes, music_wl, segment_map, {}, vote_start, total_hours,
+                history=music_history,
             )
             cp_ranking, cp_global = compute_cp_ranking(
                 cp_votes, char_wl, segment_map, {}, vote_start, total_hours,
+                history=cp_history,
             )
             logger.info(
                 "compute dropped tokens: vote_year=%d chars=%s musics=%s cps=%s",
@@ -125,6 +133,7 @@ class ComputeService:
             )
             paper_results = compute_paper_results(
                 q_votes, segment_map, vote_start=vote_start, total_hours=total_hours,
+                history=q_history,
             )
             char_covote = compute_covote(char_votes, char_wl, top_k=100)
             music_covote = compute_covote(music_votes, music_wl, top_k=100)

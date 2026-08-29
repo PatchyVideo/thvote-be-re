@@ -208,6 +208,11 @@ async def _compute_filtered(
         music_votes = await dao.load_music_votes()
         cp_votes = await dao.load_cp_votes()
         q_votes = await dao.load_questionnaire_votes(vote_year)
+        # 全提交历史:子集 trend 也走真实净增量(与 compute_all 同口径)。
+        char_history = await dao.load_char_history()
+        music_history = await dao.load_music_history()
+        cp_history = await dao.load_cp_history()
+        q_history = await dao.load_questionnaire_history(vote_year)
 
     facts = build_facts(char_votes, music_votes, cp_votes, q_votes, char_wl, music_wl)
     subset = evaluate_subset(ast, facts, resolved)
@@ -227,13 +232,20 @@ async def _compute_filtered(
     music_votes = [v for v in music_votes if v[0] in subset]
     cp_votes = [v for v in cp_votes if v[0] in subset]
     q_votes = [v for v in q_votes if v[0] in subset]
+    char_history = [h for h in char_history if h[0] in subset]
+    music_history = [h for h in music_history if h[0] in subset]
+    cp_history = [h for h in cp_history if h[0] in subset]
+    q_history = [h for h in q_history if h[0] in subset]
 
     char_ranking, char_global = compute_ranking(
-        char_votes, char_wl, segment_map, {}, vote_start, total_hours)
+        char_votes, char_wl, segment_map, {}, vote_start, total_hours,
+        history=char_history)
     music_ranking, music_global = compute_ranking(
-        music_votes, music_wl, segment_map, {}, vote_start, total_hours)
+        music_votes, music_wl, segment_map, {}, vote_start, total_hours,
+        history=music_history)
     cp_ranking, cp_global = compute_cp_ranking(
-        cp_votes, char_wl, segment_map, {}, vote_start, total_hours)
+        cp_votes, char_wl, segment_map, {}, vote_start, total_hours,
+        history=cp_history)
     all_voters = (
         {v[0] for v in char_votes} | {v[0] for v in music_votes}
         | {v[0] for v in cp_votes} | {v[0] for v in q_votes}
@@ -243,7 +255,8 @@ async def _compute_filtered(
     completion_rates = compute_completion_rates(
         char_votes, music_votes, cp_votes, q_votes, all_voters)
     paper_results = compute_paper_results(
-        q_votes, segment_map, vote_start=vote_start, total_hours=total_hours)
+        q_votes, segment_map, vote_start=vote_start, total_hours=total_hours,
+        history=q_history)
 
     def key(*parts: str) -> str:
         return f"result:{vote_year}:{infix}:" + ":".join(parts)
