@@ -148,3 +148,21 @@ async def test_compute_dao_latest_per_vote_after_three_submits(session):
     assert "vmulti" in by_vote
     # Should only have the newest (third) submit's payload
     assert by_vote["vmulti"] == [{"id": "char3", "first": True, "reason": "third"}]
+
+
+@pytest.mark.asyncio
+async def test_get_submit_ties_on_created_at_broken_by_attempt(session):
+    """created_at 同刻(sqlite 秒级精度可复现)时 get_*_submit 按 attempt 取最新
+    (append-only 后同 vote_id 多行,仅按 created_at 排序会取错)。"""
+    from datetime import datetime, timezone
+    ts = datetime(2026, 1, 5, tzinfo=timezone.utc)
+    session.add_all([
+        RawCharacterSubmit(vote_id="v-tie", attempt=1, created_at=ts, user_ip="",
+                           payload=[{"id": "old", "first": True}]),
+        RawCharacterSubmit(vote_id="v-tie", attempt=2, created_at=ts, user_ip="",
+                           payload=[{"id": "new", "first": True}]),
+    ])
+    await session.commit()
+    dao = SubmitDAO(session)
+    got = await dao.get_character_submit("v-tie")
+    assert got is not None and got["payload"][0]["id"] == "new"

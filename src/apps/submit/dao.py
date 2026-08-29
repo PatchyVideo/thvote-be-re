@@ -73,7 +73,8 @@ class SubmitDAO:
         stmt = (
             select(RawCharacterSubmit)
             .where(RawCharacterSubmit.vote_id == vote_id)
-            .order_by(desc(RawCharacterSubmit.created_at))
+            .order_by(desc(RawCharacterSubmit.created_at),
+                      desc(func.coalesce(RawCharacterSubmit.attempt, 0)))
             .limit(1)
         )
         row = (await self.session.execute(stmt)).scalars().first()
@@ -97,7 +98,8 @@ class SubmitDAO:
         stmt = (
             select(RawMusicSubmit)
             .where(RawMusicSubmit.vote_id == vote_id)
-            .order_by(desc(RawMusicSubmit.created_at))
+            .order_by(desc(RawMusicSubmit.created_at),
+                      desc(func.coalesce(RawMusicSubmit.attempt, 0)))
             .limit(1)
         )
         row = (await self.session.execute(stmt)).scalars().first()
@@ -121,7 +123,8 @@ class SubmitDAO:
         stmt = (
             select(RawCPSubmit)
             .where(RawCPSubmit.vote_id == vote_id)
-            .order_by(desc(RawCPSubmit.created_at))
+            .order_by(desc(RawCPSubmit.created_at),
+                      desc(func.coalesce(RawCPSubmit.attempt, 0)))
             .limit(1)
         )
         row = (await self.session.execute(stmt)).scalars().first()
@@ -145,7 +148,8 @@ class SubmitDAO:
         stmt = (
             select(RawPaperSubmit)
             .where(RawPaperSubmit.vote_id == vote_id)
-            .order_by(desc(RawPaperSubmit.created_at))
+            .order_by(desc(RawPaperSubmit.created_at),
+                      desc(func.coalesce(RawPaperSubmit.attempt, 0)))
             .limit(1)
         )
         row = (await self.session.execute(stmt)).scalars().first()
@@ -169,7 +173,8 @@ class SubmitDAO:
         stmt = (
             select(RawDojinSubmit)
             .where(RawDojinSubmit.vote_id == vote_id)
-            .order_by(desc(RawDojinSubmit.created_at))
+            .order_by(desc(RawDojinSubmit.created_at),
+                      desc(func.coalesce(RawDojinSubmit.attempt, 0)))
             .limit(1)
         )
         row = (await self.session.execute(stmt)).scalars().first()

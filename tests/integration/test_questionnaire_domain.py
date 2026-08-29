@@ -115,3 +115,22 @@ async def test_get_answers_null_attempt_legacy_rows_readable(session):
     dao = QuestionnaireDAO(session)
     got = await dao.get_answers("v-legacy", 12)
     assert len(got) == 2
+
+
+@pytest.mark.asyncio
+async def test_empty_paper_submit_rejected_not_silent_leak(session):
+    """append-only 下空提交无法表达"清空整卷"——必须显式拒绝,
+    否则旧批次会静默保持可见(终审修复)。"""
+    from src.apps.questionnaire.dao import QuestionnaireDAO
+    from src.apps.questionnaire.service import QuestionnaireService
+    from src.common.exceptions import ValidationError
+
+    svc = QuestionnaireService(QuestionnaireDAO(session))
+    await svc.submit_answers("v-empty", 12, [{
+        "questionnaireId": 1, "groupId": 1, "activeQuestionId": 100,
+        "selectedOptionIds": [11], "input": "",
+    }])
+    with pytest.raises(ValidationError):
+        await svc.submit_answers("v-empty", 12, [])
+    # 旧批次仍是"当前答案"(拒绝而非清空),且未新增空批次。
+    assert len(await svc.get_answers("v-empty", 12)) == 1
