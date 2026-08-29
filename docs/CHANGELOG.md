@@ -4,6 +4,19 @@
 >
 > 创建日期：2026-04-27
 
+## [2026-08-29] 问卷趋势接通近似版（B-050-后补2 Step 1，Task 3）
+
+### Added
+- `queryQuestionnaireTrend` GraphQL 字段接通真实数据：`_query_questionnaire_trend_entries` 不再固定返回空 `Trends` 列表，改为逐题读取 `compute_paper_results` 产出的 `"trend"`（近似口径：按每条问卷回答行 `created_at` 分桶，与 legacy Rust 网关口径一致，非真实净增量——问卷题允许改答案，`paper_answer` 同一 `vote_id`+`group_id` 只留最新一行）；`trendFirst` 恒为空列表（问卷题没有"本命"概念，是本字段永久形状，不是退化）；某道题从未算过时该条目仍退化为 `Trends(trend=[], trend_first=[])`，不中断其余题目。
+- DSL `query` 子集路径（`advanced_search/service.py::_compute_filtered`）同样接通 trend：筛选后的子集重算复用同一 `compute_paper_results(..., vote_start=, total_hours=)` 调用，子集 trend 与全集同口径。
+- 两个调用点补齐 `vote_start`/`total_hours` 透传：`compute_service.py::compute_all`（预计算主路径）与 `advanced_search/service.py::_compute_filtered`（筛选子集路径）。
+- 测试：`tests/integration/test_result_compat_rest.py` 新增/改写 `queryQuestionnaireTrend` 集成测试——不同小时 `created_at` 的问卷回答验证 trend 精确分桶、`trendFirst` 恒空；DSL `query` 子集路径同样返回非空 trend（子集 counts ≤ 全集）。
+
+### 兼容性
+- **无 GraphQL schema 变化**：字段签名/返回类型不变，只是内容从恒空变成真实近似值——消费方（`QuestionnaireDetail.vue`）本就按 `[Trends!]!` 消费，无需跟进。
+- **需重跑 compute 才有数据**：本轮改动只影响 `compute_paper_results` 调用参数，不改数据模型；线上现有 Redis 缓存需重跑一次 `compute_all`（或等定时任务下一轮）才会写入非空 `trend`，重跑前该字段行为不变（仍是恒空）。
+- 真实净增量（Step 2）仍需 append-only 提交历史存储落地，属于同一 BACKLOG 项（B-050-后补2）的后续步骤，本轮不含。
+
 ## [2026-08-14] 高级搜索/筛选 DSL 实现落地（B-050-后补5，Task 1-6 全部完成）
 
 ### Added

@@ -123,7 +123,9 @@ class ComputeService:
             completion_rates = compute_completion_rates(
                 char_votes, music_votes, cp_votes, q_votes, all_voters
             )
-            paper_results = compute_paper_results(q_votes, segment_map)
+            paper_results = compute_paper_results(
+                q_votes, segment_map, vote_start=vote_start, total_hours=total_hours,
+            )
             char_covote = compute_covote(char_votes, char_wl, top_k=100)
             music_covote = compute_covote(music_votes, music_wl, top_k=100)
 

@@ -242,7 +242,8 @@ async def _compute_filtered(
         char_votes, music_votes, cp_votes, q_votes, segment_map)
     completion_rates = compute_completion_rates(
         char_votes, music_votes, cp_votes, q_votes, all_voters)
-    paper_results = compute_paper_results(q_votes, segment_map)
+    paper_results = compute_paper_results(
+        q_votes, segment_map, vote_start=vote_start, total_hours=total_hours)
 
     def key(*parts: str) -> str:
         return f"result:{vote_year}:{infix}:" + ":".join(parts)
