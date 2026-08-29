@@ -7,7 +7,7 @@
 ## [2026-08-29] append-only 提交历史 + 真实净增量 trend（B-050-后补2 Step 2，Task 4-8）
 
 ### Changed
-- `raw_char_submit`/`raw_music_submit`/`raw_cp_submit`/`paper_answer` 四张提交历史表改为 append-only 存储：改票不再删除/覆盖旧行，`SubmitDAO._upsert` 与 `questionnaire/dao.py::replace_answers` 均改为追加新批次（`paper_answer` 新增可空 `attempt` 批次号列 + 索引，一次提交的所有行归入同一 `attempt`；raw_* 四表天然按行追加，无需批次号）。读方经 `latest_batch`/等价逻辑只取最新批次，行为与迁移前一致。
+- 提交存储改为 append-only：`SubmitDAO._upsert` 覆盖的全部 `raw_*` 表（`raw_character`/`raw_music`/`raw_cp`/`raw_paper`/`raw_dojin`）与结构化问卷表 `paper_answer` 改票不再删除/覆盖旧行，`_upsert` 与 `questionnaire/dao.py::replace_answers` 均改为追加（`paper_answer` 新增可空 `attempt` 批次号列 + 索引，一次提交的所有行归入同一 `attempt`；`raw_*` 天然按行追加，无需批次号）。读方经 `latest_batch`/等价逻辑只取最新批次，行为与迁移前一致。
 - `queryQuestionnaireTrend` 及角色/音乐/CP 三类榜单的 `trend`/`trendFirst` 全部升级为**真实净增量序列**：新纯函数 `src/apps/result/trend.py::net_delta_trends` 取代 Step 1 的"最新提交分桶"近似——改票产生的旧选择在原分桶记负值、新选择记正值，不变量为每个实体全部分桶净增量之和 == 该实体最终 `vote_count`。`compute_all`（预计算主路径）与 `advanced_search/service.py::_compute_filtered`（DSL 子集重算路径）均已接入。
 - 前端契约无变化：`Trends(trend, trend_first)` 字段本就按净增量语义消费（`QuestionnaireDetail.vue` 等组件直接绘制为增量柱状图），无需前端跟进发版。
 

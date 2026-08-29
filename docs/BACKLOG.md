@@ -85,7 +85,7 @@
 | **B-022** | CI PG-only 契约测试：partial unique index 行为验证 | 1 小时 |
 | **B-023** | `importorskip` → 硬 import | 5 分钟 |
 | **B-031** | Nacos 配置约束为标准 JSON 后删除 `_parse_config_content` 容错分支 | 1 小时（视上游配置是否能改） |
-| **B-011** | 移除 `at_least_one_identifier` CHECK 约束；需新 migration（编号从 **0017** 起） | 1 小时 |
+| **B-011** | 移除 `at_least_one_identifier` CHECK 约束；需新 migration（编号从 **0018** 起,0017 已被 B-050-后补2 消费） | 1 小时 |
 
 ## 🟡 需要判断 / 等条件成熟
 
@@ -98,7 +98,7 @@
 - **前端 result 可维护性债（Touhou-Vote 仓，B-055 归口）** 审计新发现：`voteYear:11`+`voteStart` 硬编码散落 20+ 处未走 `lib/voteYear.ts`；characterEvolution.vue 过期日期文案；`/test` 调试路由在生产路由表；Doujin 页总票数等全硬编码（每届手改代码）。见审计文档 §三E/§C
 - **B-049 尾项** admin-ui legacy 面板视觉验收后删除；无 UI 端点可选补
 - **B-047** IP→ASN 机房归属取证（可独立，属反作弊 Phase 2）
-- **B-056** 迁移命名约定与 zfq 沟通（顺带同步：下一个迁移编号 **0017**、down=0016）
+- **B-056** 迁移命名约定与 zfq 沟通（顺带同步：下一个迁移编号 **0018**、down=0017）
 - ~~**B-060** 高级搜索 per-IP 限流细化 + 两条终审小尾巴~~ ✅ **已完成**（2026-08-22，`feat/b060-b057`）：`ClientIPMiddleware`(ContextVar) + 双层预算(per-IP 10/min + 全局 30/min) + 扣费后置到真正执行重算处（小尾巴①注释失实随之消除）+ 等锁改跟随锁存活轮询（上限 60s，锁消失提前接手；真机实测重算 ~8s，原固定 5s 会让等锁者集体重复计算）+ 3 个新测试真实覆盖等锁分支（小尾巴②销账：sleep 让出事件循环即可在 fakeredis 下触发 waiter 路径）
 
 ## 🟢 模块功能缺口（不在 B 编号体系内）
