@@ -138,3 +138,47 @@ async def test_load_questionnaire_votes_skips_options_without_code(session, capl
     # 咸(缺 code)被排除,甜(有 code)保留,没有崩、也没有把裸 id 混进 answer。
     assert by_vote["vote-6"][0]["answer"] == ["1103101"]
     assert "1 options without code" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_load_questionnaire_votes_uses_latest_batch(session):
+    """改票后(批次 attempt 递增)只计最新批,撤答的组不再出现在 items 里。"""
+    gender_q = QuestionDef(group_id=1, type="Single", content="性别", code="11011")
+    session.add(gender_q)
+    await session.flush()
+    opt_male = OptionDef(question_id=gender_q.id, content="男", code="1101101")
+    session.add(opt_male)
+    await session.flush()
+
+    input_q = QuestionDef(group_id=1, type="Input", content="你喜欢什么", code="11021")
+    session.add(input_q)
+    await session.flush()
+
+    session.add_all([
+        # 批次 1:性别 + 输入
+        PaperAnswer(
+            vote_id="vote-batch", vote_year=2026, questionnaire_id=1, group_id=1,
+            active_question_id=gender_q.id, selected_option_ids=[opt_male.id],
+            attempt=1,
+        ),
+        PaperAnswer(
+            vote_id="vote-batch", vote_year=2026, questionnaire_id=1, group_id=2,
+            active_question_id=input_q.id, selected_option_ids=[],
+            input_text="喜欢", attempt=1,
+        ),
+        # 批次 2(改票):撤掉输入题,只留性别
+        PaperAnswer(
+            vote_id="vote-batch", vote_year=2026, questionnaire_id=1, group_id=1,
+            active_question_id=gender_q.id, selected_option_ids=[opt_male.id],
+            attempt=2,
+        ),
+    ])
+    await session.commit()
+
+    dao = ComputeDAO(session)
+    votes = await dao.load_questionnaire_votes(2026)
+    by_vote = {vid: items for vid, items in votes}
+
+    items = by_vote["vote-batch"]
+    assert len(items) == 1              # 批次1的输入题不再出现
+    assert items[0]["id"] == "11011"

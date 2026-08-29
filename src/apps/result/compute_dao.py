@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.apps.questionnaire.dao import latest_batch
 from src.db_model.candidate import CandidateCharacter, CandidateMusic, FinalRanking
 from src.db_model.questionnaire_def import OptionDef, PaperAnswer, QuestionDef
 from src.db_model.raw_submit import (
@@ -69,6 +70,10 @@ class ComputeDAO:
     ) -> list[tuple[str, list[dict]]]:
         """从 paper_answer(B-039 结构化表)读问卷回答,按语义 code 输出。
 
+        底层为 append-only 批次存储(B-050-后补2):同一 vote_id 可能有多个批次
+        (改票=追加新批次),按 vote_id 分组后先经 latest_batch 只取最新批,
+        再对存活行做 code 映射。
+
         注意:paper_answer 没有 invalidated 标志,admin 作废动作触达不到问卷答案。
         题/选项缺 code 的会被跳过(无法按语义码寻址):整行(问题缺 code)或单个
         选项(选项缺 code,该行其余有 code 的选项仍保留)都计入跳过汇总。
@@ -85,29 +90,34 @@ class ComputeDAO:
             )
         ).scalars().all()
 
+        rows_by_vote: dict[str, list] = {}
+        for r in rows:
+            rows_by_vote.setdefault(r.vote_id, []).append(r)
+
         grouped: dict[str, list[dict]] = {}
         skipped_questions = 0
         skipped_options = 0
-        for r in rows:
-            if r.active_question_id is None:
-                continue
-            qcode = q_codes.get(r.active_question_id)
-            if not qcode:
-                skipped_questions += 1
-                continue
-            answers = []
-            for oid in r.selected_option_ids or []:
-                ocode = o_codes.get(oid)
-                if ocode:
-                    answers.append(ocode)
-                else:
-                    skipped_options += 1
-            grouped.setdefault(r.vote_id, []).append({
-                "id": qcode,
-                "answer": answers,
-                "answer_str": r.input_text,
-                "ts": r.created_at
-            })
+        for vote_id, vote_rows in rows_by_vote.items():
+            for r in latest_batch(vote_rows):
+                if r.active_question_id is None:
+                    continue
+                qcode = q_codes.get(r.active_question_id)
+                if not qcode:
+                    skipped_questions += 1
+                    continue
+                answers = []
+                for oid in r.selected_option_ids or []:
+                    ocode = o_codes.get(oid)
+                    if ocode:
+                        answers.append(ocode)
+                    else:
+                        skipped_options += 1
+                grouped.setdefault(vote_id, []).append({
+                    "id": qcode,
+                    "answer": answers,
+                    "answer_str": r.input_text,
+                    "ts": r.created_at
+                })
         if skipped_questions or skipped_options:
             logger.debug(
                 "questionnaire feed: skipped %d rows (question without code), "
