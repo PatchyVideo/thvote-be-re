@@ -525,12 +525,29 @@ def compute_completion_rates(
 def compute_paper_results(
     questionnaire_votes: list[tuple[str, list[dict]]],
     segment_map: dict[str, str],
+    vote_start: datetime | None = None,
+    total_hours: int = 0,
 ) -> dict[str, dict]:
-    """Compute per-question statistics (incl. gender crosstab) from questionnaire votes.
+    """Compute per-question statistics (incl. crosstab and trend).
 
-    Returns {question_id: {"answers_cat": [...], "answers_str": [...], "total": int,
-    "total_male": int, "total_female": int}}，其中 answers_cat 项另带
-    male_votes/female_votes。
+    Args:
+        questionnaire_votes: List of (user_id, q_list) tuples where q_list
+            contains items with "id", "answer", "answer_str", "ts" (datetime).
+        segment_map: Mapping of user_id → segment label (e.g. male/female).
+        vote_start: Start datetime for trend bucketing; None → trend is empty.
+        total_hours: Window duration (hours) for trend bucketing and clamping.
+
+    Returns:
+        {question_id: {"answers_cat": [...], "answers_str": [...], "total": int,
+        "total_male": int, "total_female": int, "trend": [...]}}，其中 answers_cat 项另带
+        male_votes/female_votes。
+
+    Trend bucketing (近似口径):
+        - "trend" 是稀疏数组 [{"hrs": h, "cnt": c}, ...], h 为从 vote_start 开始的小时偏移，
+          仅包含 cnt > 0 的桶。
+        - 当 vote_start 为 None 或 item 无 "ts" 时，trend 为 []。
+        - 时间戳缺失 tzinfo 时按 UTC 处理（与 compute_ranking 平价）。
+        - 时间戳在 vote_start 之前的项被钳到 hrs=0；超过窗口的项被钳到 hrs=total_hours-1。
 
     简化说明（与设计稿的偏差，见 CHANGELOG）：聚合按**答案形状**分派——`answer`
     是非空 list → 按选项计数；`answer_str` 非空 → 收字符串——不引入
@@ -546,6 +563,9 @@ def compute_paper_results(
     question_gender_total: dict[str, dict[str, int]] = defaultdict(
         lambda: {"male": 0, "female": 0}
     )
+    question_trend: dict[str, list[int]] = defaultdict(
+        lambda: [0] * max(total_hours, 1)
+    )
 
     for user_id, q_list in questionnaire_votes:
         segment = segment_map.get(user_id, "unknown")
@@ -558,6 +578,14 @@ def compute_paper_results(
                 question_gender_total[qid]["male"] += 1
             elif segment == "female":
                 question_gender_total[qid]["female"] += 1
+            # Trend bucketing: mirror compute_ranking's clamp + tz handling (L164-167)
+            ts = item.get("ts")
+            if vote_start is not None and ts is not None:
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                bucket = max(0, min(int((ts - vote_start).total_seconds() / 3600),
+                                    total_hours - 1))
+                question_trend[qid][bucket] += 1
             ans = item.get("answer")
             ans_str = item.get("answer_str")
             if isinstance(ans, list):
@@ -588,6 +616,8 @@ def compute_paper_results(
             "total": question_total[qid],
             "total_male": question_gender_total[qid]["male"],
             "total_female": question_gender_total[qid]["female"],
+            "trend": [{"hrs": h, "cnt": c}
+                      for h, c in enumerate(question_trend[qid]) if c > 0],
         }
     return result
 
