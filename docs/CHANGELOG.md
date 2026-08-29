@@ -4,6 +4,25 @@
 >
 > 创建日期：2026-04-27
 
+## [2026-08-29] append-only 提交历史 + 真实净增量 trend（B-050-后补2 Step 2，Task 4-8）
+
+### Changed
+- `raw_char_submit`/`raw_music_submit`/`raw_cp_submit`/`paper_answer` 四张提交历史表改为 append-only 存储：改票不再删除/覆盖旧行，`SubmitDAO._upsert` 与 `questionnaire/dao.py::replace_answers` 均改为追加新批次（`paper_answer` 新增可空 `attempt` 批次号列 + 索引，一次提交的所有行归入同一 `attempt`；raw_* 四表天然按行追加，无需批次号）。读方经 `latest_batch`/等价逻辑只取最新批次，行为与迁移前一致。
+- `queryQuestionnaireTrend` 及角色/音乐/CP 三类榜单的 `trend`/`trendFirst` 全部升级为**真实净增量序列**：新纯函数 `src/apps/result/trend.py::net_delta_trends` 取代 Step 1 的"最新提交分桶"近似——改票产生的旧选择在原分桶记负值、新选择记正值，不变量为每个实体全部分桶净增量之和 == 该实体最终 `vote_count`。`compute_all`（预计算主路径）与 `advanced_search/service.py::_compute_filtered`（DSL 子集重算路径）均已接入。
+- 前端契约无变化：`Trends(trend, trend_first)` 字段本就按净增量语义消费（`QuestionnaireDetail.vue` 等组件直接绘制为增量柱状图），无需前端跟进发版。
+
+### Added
+- 迁移 `0017`：`paper_answer` 新增可空 `attempt` 列 + 索引，**删除** 原 `uq_paper_answer_voter_group` UNIQUE 约束（`vote_id, vote_year, questionnaire_id, group_id`），改由 append-only 语义承接（`down_revision=0016`）。
+- `ComputeDAO` 新增历史加载器：`load_char_history`/`load_music_history`/`load_cp_history`/`load_questionnaire_history`，按时间序读取 append-only 提交历史供净增量计算消费。
+- `src/apps/result/trend.py::net_delta_trends`：纯函数，输入按时间排序的提交历史（含改票批次），输出真实净增量分桶序列；配套不变量测试（每实体分桶净增量之和 == 最终票数）。
+
+### 兼容性
+- **需跑 `alembic upgrade head`（落地到 0017）**：`paper_answer` 表结构变化，未升级迁移则新版应用代码写入会失败（`attempt` 列不存在）。
+- **需重跑一次 `compute_all`**（或等定时任务下一轮）：Redis 里的旧近似 trend 快照需要用净增量口径重新计算才会生效；重跑前行为保持 Step 1 的近似值,不报错。
+- admin 监控投票列表会开始出现**历史行**（同一选民多次改票会看到多条 `paper_answer`/`raw_*` 记录，而非过去覆盖后的单行）——作废（软删）历史行不影响计票（只读最新批次），作废最新行的效果仍等价于该选民出局，管理员操作口径不变。
+- **历史断点**：迁移上线前发生的改票历史已被旧覆盖式存储永久抹掉，无法回填；真实净增量曲线从上线时刻起才开始积累，上线当天已存在的单行选民数据会被当作一次性净增量处理（近似值），属于数据侧自然退化，不需要额外兼容代码。
+- **已知限制**：同一选民短时间内**并发**重复提交理论上可能落在同一个 `attempt` 批次号（`prev + 1` 的读-算-写非原子），导致两次提交的行被误合并为一批——旧版本的 UNIQUE 约束曾意外挡住这种情况，现实并发窗口极窄、概率很低；问卷侧若观察到异常，可在读方按 `created_at` 取最大值兜底识别真正的最新批次。
+
 ## [2026-08-29] 问卷趋势接通近似版（B-050-后补2 Step 1，Task 3）
 
 ### Added

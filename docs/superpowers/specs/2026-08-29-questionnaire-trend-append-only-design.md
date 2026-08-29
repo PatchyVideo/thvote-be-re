@@ -1,7 +1,7 @@
 # 问卷趋势 + append-only 提交历史 设计稿(B-050-后补2)
 
 > 日期:2026-08-29
-> 状态:已批准(用户拍板:分两步交付,存储选型方案 1「原表就地 append-only」)
+> 状态:已实施(2026-08-29,`feat/questionnaire-trend-append-only`)
 > 前置调研:三方并行审计(legacy Rust `thvote-be` / 前端 `Touhou-Vote/packages/result`@renko_dev / Python 现状),结论见 §一
 
 ## 一、调研结论(设计前提)
