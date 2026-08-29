@@ -479,13 +479,14 @@ async def _query_questionnaire_entries(
 async def _query_questionnaire_trend_entries(
     question_ids: list[str], vote_year: Optional[int], query: Optional[str]
 ) -> list[Trends]:
-    """按 ``question_ids`` 顺序逐个返回**空** ``Trends``——问卷没有真正的时间
-    维度（``compute_paper_results`` 完全不产出按小时切片的数据），详见
+    """按 ``question_ids`` 顺序逐个返回该题的 ``Trends``，详见
     ``ResultCompatQuery.query_questionnaire_trend`` 的字段 docstring。
 
-    仍对该年是否算过做一次 ``RESULT_NOT_COMPUTED`` 探测（与其余 8 个查询
-    一致），这样"该年确实一次都没算过"和"该年算过、只是这项指标退化成空"
-    是两种可辨识的状态，不会被"反正也是空"的降级逻辑悄悄合并掉。
+    与 ``_query_questionnaire_entries`` 同构（镜像其逐题循环模式）：先对该年
+    是否算过做一次 ``RESULT_NOT_COMPUTED`` 探测，这样"该年确实一次都没算过"
+    和"该年算过、只是这道具体题没数据"是两种可辨识的状态；per-id 的
+    ``ResultNotComputedError`` 只在这个前提成立之后才能被安全地解读为
+    "退化成空 Trends"而不是"整体没算过"。
     """
     svc = await _get_result_service()
     year = await _resolve_vote_year(svc.result_dao, vote_year, svc.result_dao.settings)
@@ -493,7 +494,21 @@ async def _query_questionnaire_trend_entries(
     await _map_not_computed_error(
         svc.get_global_stats(GlobalStatsQuery(vote_year=year))
     )
-    return [Trends(trend=[], trend_first=[]) for _ in question_ids]
+    entries: list[Trends] = []
+    for question_id in question_ids:
+        code = _strip_question_prefix(question_id)
+        try:
+            raw = await svc.get_questionnaire(
+                QuestionnaireQuery(question_id=code, vote_year=year))
+        except ResultNotComputedError:
+            entries.append(Trends(trend=[], trend_first=[]))
+            continue
+        entries.append(Trends(
+            trend=[VotingTrendItem(hrs=t["hrs"], cnt=t["cnt"])
+                   for t in raw.get("trend", [])],
+            trend_first=[],
+        ))
+    return entries
 
 
 @strawberry.type
@@ -661,28 +676,32 @@ class ResultCompatQuery:
         vote_year: Optional[int] = None,
         query: Optional[str] = None,
     ) -> list[Trends]:
-        """按 ``questionIds`` 顺序返回**空** trend 序列——后端没有问卷时间维度。
+        """按 ``questionIds`` 顺序返回每道题的 trend 序列——**近似口径**。
 
-        ``compute_paper_results`` 完全忽略 ``vote_start``/``total_hours``，
-        不产出任何按小时切片的数据（问卷 trend 存储改造/C3 未落地，见设计稿
-        §七「已知限制」第 3 条），所以无法返回真实的时间序列。
+        ``compute_paper_results`` 按"每条问卷回答行的 ``created_at``"分桶，
+        与角色/音乐 trend（``compute_ranking``）用的是同一套 vote_start/
+        total_hours 钳位规则、同一个近似口径：与 legacy Rust 网关一致，都是
+        "该时刻收到了这条提交"，不是"该时刻这道题的净增量"——问卷题允许改
+        答案（同一 ``vote_id``+``group_id`` 在 ``paper_answer`` 里只留一行,
+        以最新一次提交时间为准),所以这里的 trend 反映的是"提交行的时间分布"
+        而不是"选项计数随时间的真实增量"。真实净增量需要 append-only 的提交
+        历史存储（BACKLOG 同一项存储改造）落地后才能给出，属于 Step 2，尚未
+        实现。
+
+        ``trendFirst`` 恒为空列表——问卷题没有"本命"这个概念（本命只对角色/
+        音乐排名有意义），不是退化，是本字段永久的形状。
 
         真实前端（`QuestionnaireDetail.vue`）与旧 Rust 网关
         （`gateway/src/schema.rs`）都按 ``[Trends!]!`` 消费这个字段
-        （`entries[0].trend`/`.trendFirst`）——**返回形状错误**会让 schema
-        校验直接失败、整个"调查问卷"页面挂掉；本字段返回**形状正确、内容为空**
-        的 ``Trends`` 列表（长度与 ``questionIds`` 一致，顺序保留），让页面
-        能渲染出一个空图表而不是整体报错。
+        （`entries[0].trend`/`.trendFirst`），返回列表长度与 ``questionIds``
+        一致、顺序保留；某道题从未被算过时该条目退化成
+        ``Trends(trend=[], trend_first=[])``，不中断其余题目。
 
         （早期实现曾把这里当 ``queryQuestionnaire`` 的别名、返回
         ``QueryQuestionnaireResponse``——这是对 task-6-brief.md/设计稿字面
         要求的忠实执行，但两份规划文档在这一点上判断有误：它们从"后端现有
         ``get_questionnaire_trend`` 是别名"反推字段契约，而不是从真实前端
         消费方反推；已更正。）
-
-        移除条件：真实问卷趋势需要 append-only 的提交历史存储（BACKLOG 里与
-        角色/音乐 trend 共用的同一项存储改造）落地后，才能在这里返回真实的
-        按小时序列，届时应删除这条"恒为空"的退化逻辑。
         """
         async with map_app_errors(service=_SERVICE):
             return await _query_questionnaire_trend_entries(

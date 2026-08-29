@@ -4,6 +4,38 @@
 >
 > 创建日期：2026-04-27
 
+## [2026-08-29] append-only 提交历史 + 真实净增量 trend（B-050-后补2 Step 2，Task 4-8）
+
+### Changed
+- 提交存储改为 append-only：`SubmitDAO._upsert` 覆盖的全部 `raw_*` 表（`raw_character`/`raw_music`/`raw_cp`/`raw_paper`/`raw_dojin`）与结构化问卷表 `paper_answer` 改票不再删除/覆盖旧行，`_upsert` 与 `questionnaire/dao.py::replace_answers` 均改为追加（`paper_answer` 新增可空 `attempt` 批次号列 + 索引，一次提交的所有行归入同一 `attempt`；`raw_*` 天然按行追加，无需批次号）。读方经 `latest_batch`/等价逻辑只取最新批次，行为与迁移前一致。
+- `queryQuestionnaireTrend` 及角色/音乐/CP 三类榜单的 `trend`/`trendFirst` 全部升级为**真实净增量序列**：新纯函数 `src/apps/result/trend.py::net_delta_trends` 取代 Step 1 的"最新提交分桶"近似——改票产生的旧选择在原分桶记负值、新选择记正值，不变量为每个实体全部分桶净增量之和 == 该实体最终 `vote_count`。`compute_all`（预计算主路径）与 `advanced_search/service.py::_compute_filtered`（DSL 子集重算路径）均已接入。
+- 前端契约无变化：`Trends(trend, trend_first)` 字段本就按净增量语义消费（`QuestionnaireDetail.vue` 等组件直接绘制为增量柱状图），无需前端跟进发版。
+
+### Added
+- 迁移 `0017`：`paper_answer` 新增可空 `attempt` 列 + 索引，**删除** 原 `uq_paper_answer_voter_group` UNIQUE 约束（`vote_id, vote_year, questionnaire_id, group_id`），改由 append-only 语义承接（`down_revision=0016`）。
+- `ComputeDAO` 新增历史加载器：`load_char_history`/`load_music_history`/`load_cp_history`/`load_questionnaire_history`，按时间序读取 append-only 提交历史供净增量计算消费。
+- `src/apps/result/trend.py::net_delta_trends`：纯函数，输入按时间排序的提交历史（含改票批次），输出真实净增量分桶序列；配套不变量测试（每实体分桶净增量之和 == 最终票数）。
+
+### 兼容性
+- **需跑 `alembic upgrade head`（落地到 0017）**：`paper_answer` 表结构变化，未升级迁移则新版应用代码写入会失败（`attempt` 列不存在）。
+- **需重跑一次 `compute_all`**（或等定时任务下一轮）：Redis 里的旧近似 trend 快照需要用净增量口径重新计算才会生效；重跑前行为保持 Step 1 的近似值,不报错。
+- admin 监控投票列表会开始出现**历史行**（同一选民多次改票会看到多条 `paper_answer`/`raw_*` 记录，而非过去覆盖后的单行）——作废（软删）历史行不影响计票（只读最新批次），作废最新行的效果仍等价于该选民出局，管理员操作口径不变。
+- **历史断点**：迁移上线前发生的改票历史已被旧覆盖式存储永久抹掉，无法回填；真实净增量曲线从上线时刻起才开始积累，上线当天已存在的单行选民数据会被当作一次性净增量处理（近似值），属于数据侧自然退化，不需要额外兼容代码。
+- **已知限制**：同一选民短时间内**并发**重复提交理论上可能落在同一个 `attempt` 批次号（`prev + 1` 的读-算-写非原子），导致两次提交的行被误合并为一批——旧版本的 UNIQUE 约束曾意外挡住这种情况，现实并发窗口极窄、概率很低；问卷侧若观察到异常，可在读方按 `created_at` 取最大值兜底识别真正的最新批次。
+
+## [2026-08-29] 问卷趋势接通近似版（B-050-后补2 Step 1，Task 3）
+
+### Added
+- `queryQuestionnaireTrend` GraphQL 字段接通真实数据：`_query_questionnaire_trend_entries` 不再固定返回空 `Trends` 列表，改为逐题读取 `compute_paper_results` 产出的 `"trend"`（近似口径：按每条问卷回答行 `created_at` 分桶，与 legacy Rust 网关口径一致，非真实净增量——问卷题允许改答案，`paper_answer` 同一 `vote_id`+`group_id` 只留最新一行）；`trendFirst` 恒为空列表（问卷题没有"本命"概念，是本字段永久形状，不是退化）；某道题从未算过时该条目仍退化为 `Trends(trend=[], trend_first=[])`，不中断其余题目。
+- DSL `query` 子集路径（`advanced_search/service.py::_compute_filtered`）同样接通 trend：筛选后的子集重算复用同一 `compute_paper_results(..., vote_start=, total_hours=)` 调用，子集 trend 与全集同口径。
+- 两个调用点补齐 `vote_start`/`total_hours` 透传：`compute_service.py::compute_all`（预计算主路径）与 `advanced_search/service.py::_compute_filtered`（筛选子集路径）。
+- 测试：`tests/integration/test_result_compat_rest.py` 新增/改写 `queryQuestionnaireTrend` 集成测试——不同小时 `created_at` 的问卷回答验证 trend 精确分桶、`trendFirst` 恒空；DSL `query` 子集路径同样返回非空 trend（子集 counts ≤ 全集）。
+
+### 兼容性
+- **无 GraphQL schema 变化**：字段签名/返回类型不变，只是内容从恒空变成真实近似值——消费方（`QuestionnaireDetail.vue`）本就按 `[Trends!]!` 消费，无需跟进。
+- **需重跑 compute 才有数据**：本轮改动只影响 `compute_paper_results` 调用参数，不改数据模型；线上现有 Redis 缓存需重跑一次 `compute_all`（或等定时任务下一轮）才会写入非空 `trend`，重跑前该字段行为不变（仍是恒空）。
+- 真实净增量（Step 2）仍需 append-only 提交历史存储落地，属于同一 BACKLOG 项（B-050-后补2）的后续步骤，本轮不含。
+
 ## [2026-08-14] 高级搜索/筛选 DSL 实现落地（B-050-后补5，Task 1-6 全部完成）
 
 ### Added

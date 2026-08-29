@@ -15,7 +15,6 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -103,13 +102,6 @@ class PaperAnswer(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "vote_id",
-            "vote_year",
-            "questionnaire_id",
-            "group_id",
-            name="uq_paper_answer_voter_group",
-        ),
-    )
+    attempt: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )  # 批次标记——同一 vote_id 每次整卷提交递增;NULL=0017 前存量(单批)

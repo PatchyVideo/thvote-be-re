@@ -4,6 +4,7 @@ from __future__ import annotations
 from src.apps.questionnaire.assembler import assemble_structure
 from src.apps.questionnaire.completion import is_complete
 from src.apps.questionnaire.dao import QuestionnaireDAO
+from src.common.exceptions import ValidationError
 
 
 class QuestionnaireService:
@@ -19,6 +20,11 @@ class QuestionnaireService:
     ) -> int:
         """Flatten a flat answer array into paper_answer rows."""
         rows = _flatten_answer_state(answers)
+        if not rows:
+            # append-only(B-050-后补2)下空批次无行可落,旧批次会保持可见——
+            # 旧实现的"空提交=清空整卷"语义已不可表达;完成度门禁本就要求答
+            # 满,清空不是产品流程,显式拒绝好过静默泄漏旧答案。
+            raise ValidationError("EMPTY_PAPER_SUBMIT", details=422)
         return await self.dao.replace_answers(vote_id, vote_year, rows)
 
     async def get_answers(self, vote_id: str, vote_year: int) -> list[dict]:

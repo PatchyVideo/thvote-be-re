@@ -1,6 +1,6 @@
 """Submit data access objects."""
 
-from sqlalchemy import delete, desc, func, select, union
+from sqlalchemy import desc, func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.submit.models import (
@@ -19,12 +19,12 @@ class SubmitDAO:
         self.session = session
 
     async def _upsert(self, model, data: dict) -> int:
-        """Replace any rows for this vote_id with one new row (B-045).
+        """Append-only: every submit inserts a new row, never deletes (B-050-后补2).
 
-        Two server-authoritative anti-abuse fields survive the overwrite, so a
-        bot can't launder them by re-submitting:
+        Two server-authoritative anti-abuse fields are preserved across attempts:
 
         - ``attempt`` = previous count + 1 (first submit = 1, each edit = 2, 3…).
+          Increments on every submission, immutable once set.
         - ``fill_duration_ms`` = the **first** submit's reported fill time,
           **preserved** on every re-submit. The client sends this session's
           duration, but on an edit we keep the original: the "filled too fast"
@@ -32,10 +32,14 @@ class SubmitDAO:
           overwrite it. A human's first fill is genuinely slow → never flagged;
           a bot's first fill is ~0 → stays flagged no matter how many times it
           re-submits. Judge on this value directly (no per-attempt exemption).
+
+        Readers (e.g. ComputeDAO._latest_per_vote) take the newest row per vote_id
+        by (created_at, attempt) order. History rows remain in the table to serve
+        real net-delta trend analysis and anti-abuse forensics.
         """
         vote_id = data["vote_id"]
-        # The surviving row for this vote_id (real-time path keeps exactly one;
-        # legacy-synced rows carry attempt=NULL). Highest attempt = newest.
+        # Find the newest row for this vote_id to compute next attempt number.
+        # Highest attempt = newest (legacy-synced rows carry attempt=NULL).
         prev = (
             await self.session.execute(
                 select(model.attempt, model.fill_duration_ms)
@@ -54,7 +58,6 @@ class SubmitDAO:
             fill_duration_ms = prev.fill_duration_ms  # preserve first (even NULL)
 
         row_data = {**data, "attempt": attempt, "fill_duration_ms": fill_duration_ms}
-        await self.session.execute(delete(model).where(model.vote_id == vote_id))
         row = model(**row_data)
         self.session.add(row)
         await self.session.commit()
@@ -70,7 +73,8 @@ class SubmitDAO:
         stmt = (
             select(RawCharacterSubmit)
             .where(RawCharacterSubmit.vote_id == vote_id)
-            .order_by(desc(RawCharacterSubmit.created_at))
+            .order_by(desc(RawCharacterSubmit.created_at),
+                      desc(func.coalesce(RawCharacterSubmit.attempt, 0)))
             .limit(1)
         )
         row = (await self.session.execute(stmt)).scalars().first()
@@ -94,7 +98,8 @@ class SubmitDAO:
         stmt = (
             select(RawMusicSubmit)
             .where(RawMusicSubmit.vote_id == vote_id)
-            .order_by(desc(RawMusicSubmit.created_at))
+            .order_by(desc(RawMusicSubmit.created_at),
+                      desc(func.coalesce(RawMusicSubmit.attempt, 0)))
             .limit(1)
         )
         row = (await self.session.execute(stmt)).scalars().first()
@@ -118,7 +123,8 @@ class SubmitDAO:
         stmt = (
             select(RawCPSubmit)
             .where(RawCPSubmit.vote_id == vote_id)
-            .order_by(desc(RawCPSubmit.created_at))
+            .order_by(desc(RawCPSubmit.created_at),
+                      desc(func.coalesce(RawCPSubmit.attempt, 0)))
             .limit(1)
         )
         row = (await self.session.execute(stmt)).scalars().first()
@@ -142,7 +148,8 @@ class SubmitDAO:
         stmt = (
             select(RawPaperSubmit)
             .where(RawPaperSubmit.vote_id == vote_id)
-            .order_by(desc(RawPaperSubmit.created_at))
+            .order_by(desc(RawPaperSubmit.created_at),
+                      desc(func.coalesce(RawPaperSubmit.attempt, 0)))
             .limit(1)
         )
         row = (await self.session.execute(stmt)).scalars().first()
@@ -166,7 +173,8 @@ class SubmitDAO:
         stmt = (
             select(RawDojinSubmit)
             .where(RawDojinSubmit.vote_id == vote_id)
-            .order_by(desc(RawDojinSubmit.created_at))
+            .order_by(desc(RawDojinSubmit.created_at),
+                      desc(func.coalesce(RawDojinSubmit.attempt, 0)))
             .limit(1)
         )
         row = (await self.session.execute(stmt)).scalars().first()
