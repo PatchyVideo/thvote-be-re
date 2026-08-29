@@ -60,17 +60,30 @@ async def _seed(session) -> None:
 
 @pytest.mark.asyncio
 async def test_load_questionnaire_votes_from_paper_answer(session):
+    from datetime import datetime
     await _seed(session)
     dao = ComputeDAO(session)
     votes = await dao.load_questionnaire_votes(2026)
     by_vote = {vid: items for vid, items in votes}
 
     assert set(by_vote) == {"vote-1", "vote-2"}  # 空 active/别年被排除
-    gender_answer = {"id": "11011", "answer": ["1101101"], "answer_str": None}
-    input_answer = {"id": "11021", "answer": [], "answer_str": "喜欢"}
-    assert gender_answer in by_vote["vote-1"]
-    assert input_answer in by_vote["vote-1"]
+    # 验证 vote-1 的两个回答包含预期字段和时间戳
+    vote1_items = by_vote["vote-1"]
+    assert len(vote1_items) == 2
+    # 找到性别回答和输入回答(顺序不固定)
+    gender_item = next((i for i in vote1_items if i["id"] == "11011"), None)
+    input_item = next((i for i in vote1_items if i["id"] == "11021"), None)
+    assert gender_item is not None
+    assert gender_item["answer"] == ["1101101"]
+    assert gender_item["answer_str"] is None
+    assert isinstance(gender_item["ts"], datetime)
+    assert input_item is not None
+    assert input_item["answer"] == []
+    assert input_item["answer_str"] == "喜欢"
+    assert isinstance(input_item["ts"], datetime)
+    # 验证 vote-2
     assert by_vote["vote-2"][0]["answer"] == ["1101102"]
+    assert isinstance(by_vote["vote-2"][0]["ts"], datetime)
 
 
 @pytest.mark.asyncio

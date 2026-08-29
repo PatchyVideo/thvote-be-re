@@ -102,9 +102,12 @@ class ComputeDAO:
                     answers.append(ocode)
                 else:
                     skipped_options += 1
-            grouped.setdefault(r.vote_id, []).append(
-                {"id": qcode, "answer": answers, "answer_str": r.input_text}
-            )
+            grouped.setdefault(r.vote_id, []).append({
+                "id": qcode,
+                "answer": answers,
+                "answer_str": r.input_text,
+                "ts": r.created_at
+            })
         if skipped_questions or skipped_options:
             logger.debug(
                 "questionnaire feed: skipped %d rows (question without code), "
