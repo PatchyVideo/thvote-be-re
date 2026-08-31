@@ -1,5 +1,8 @@
 # 用户表与认证模块设计 (thvote-be-re)
 
+> **状态**：部分实施 —— 核心用户/认证模块已随 `feat/user-and-verify` 分支合入主干（见 [CHANGELOG 2026-04-27](../../CHANGELOG.md)）；但设计稿 §九 的部分 follow-up 仍在 [BACKLOG.md](../../BACKLOG.md) 开放：B-010（覆盖率门禁）、B-011（移除 `at_least_one_identifier` CHECK 约束）、B-013（发送幂等性）。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期：2026-04-27
 > 最后更新：2026-04-27（self-review 后补 §7.4 限流策略 + §11 刻意差异表）
 > 作者：Claude（brainstorming 流程产物）

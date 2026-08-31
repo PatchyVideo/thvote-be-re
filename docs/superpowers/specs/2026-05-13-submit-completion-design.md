@@ -1,5 +1,8 @@
 # Submit 模块补完设计规格
 
+> **状态**：已实施 —— B-003（vote_token JWT 鉴权）已完成（[BACKLOG-archive.md](../../BACKLOG-archive.md)，2026-05-13 `8724e39`）；`validate_paper` 已按更贴近前端载荷的规则重写（[CHANGELOG 2026-06-07](../../CHANGELOG.md) Submit 桥接条目）；`num_finished_paper` 现由 `src/apps/submit/dao.py` 实际计算返回，不再硬编码 0。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期：2026-05-13
 > 最后更新：2026-05-13
 >

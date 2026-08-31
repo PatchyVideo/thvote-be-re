@@ -1,7 +1,9 @@
 # 问卷趋势 + append-only 提交历史 设计稿(B-050-后补2)
 
+> **状态**：已实施 —— B-050-后补2 两步交付已于 2026-08-29 完成并合入分支 `feat/questionnaire-trend-append-only`（见 [BACKLOG-archive](../../BACKLOG-archive.md)、[CHANGELOG 2026-08-29](../../CHANGELOG.md) 两条目）；衍生小尾巴 B-061（admin 监控列表展示 attempt 列）仍在 [BACKLOG](../../BACKLOG.md) 开放，不影响本设计已落地的结论。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 日期:2026-08-29
-> 状态:已实施(2026-08-29,`feat/questionnaire-trend-append-only`)
 > 前置调研:三方并行审计(legacy Rust `thvote-be` / 前端 `Touhou-Vote/packages/result`@renko_dev / Python 现状),结论见 §一
 
 ## 一、调研结论(设计前提)

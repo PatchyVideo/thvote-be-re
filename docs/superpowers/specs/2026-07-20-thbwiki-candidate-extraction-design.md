@@ -1,7 +1,9 @@
 # THBWiki 角色候选数据抽取工具 —— 设计文档
 
+> **状态**：待实施 —— 仅完成一次性人工抓取/解析样本（`docs/scraper/candidate-extraction/samples/`，commit `981862f`，2026-07-23），设计所述的抓取/抽取/落盘流水线（第 4 节）尚未落地为可复跑工具；BACKLOG/CHANGELOG 均无对应实现条目。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 - 日期：2026-07-20
-- 状态：待实现（第一轮：纯抽取，不接 diff/写库）
 - 关联：`docs/superpowers/specs/2026-06-08-candidate-management-design.md`（candidate 管理后台设计，定义了 `candidate_character` 的字段与导入契约）
 
 ## 1. 背景与问题

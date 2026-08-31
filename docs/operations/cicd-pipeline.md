@@ -4,7 +4,7 @@
 > 最后更新：2026-05-31（手动触发 workflow_dispatch 现在会完整部署 + `--force-recreate`，用于改完 Nacos 配置后免 SSH 重启）
 >
 > 用途：说清当前 GitHub Actions workflow 的职责、触发条件、关键步骤，并记录最近的改动与遗留问题。
-> 关联：[`operations/aliyun-onboarding.md`](./aliyun-onboarding.md)、[`operations/nacos-config-center.md`](./nacos-config-center.md)、[`superpowers/specs/2026-04-27-user-auth-implementation-report.md`](../superpowers/specs/2026-04-27-user-auth-implementation-report.md)
+> 关联：[`operations/aliyun-onboarding.md`](./aliyun-onboarding.md)、[`operations/nacos-config-center.md`](./nacos-config-center.md)、[`superpowers/specs/2026-04-27-user-auth-implementation-report.md`](../archive/superpowers/specs/2026-04-27-user-auth-implementation-report.md)
 
 ---
 

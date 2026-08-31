@@ -1,8 +1,10 @@
 # GraphQL 登录桥接设计稿
 
+> **状态**：已实施 —— [CHANGELOG 2026-05-30](../../CHANGELOG.md)「GraphQL 登录 mutation 桥接」已落地；`src/api/graphql/resolvers/user.py` 现有 `login_phone`/`login_email` 等 mutation，与本设计一致（此前状态"设计已定稿，待进入 writing-plans"已过时）。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期：2026-05-30
 > 最后更新：2026-05-30
-> 状态：设计已定稿，待进入 writing-plans
 
 ## 一、目标与背景
 

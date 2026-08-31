@@ -1,5 +1,8 @@
 # Autocomplete 模块设计规格
 
+> **状态**：已实施 —— `search_characters`/`search_music` 已按本设计实现（`src/apps/autocomplete/dao.py`）；`search_cps()` 按设计明确不实现，现状仍 `return []`，与设计范围一致（[BACKLOG.md](../../BACKLOG.md)「模块功能缺口」把 CP 补全列为本设计之外的独立后续项）。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期：2026-05-13
 > 最后更新：2026-05-13
 >
