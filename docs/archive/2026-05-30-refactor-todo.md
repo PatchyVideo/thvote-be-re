@@ -8,9 +8,9 @@
 >
 > **与其他文档的分工：**
 > - 本文件：模块级别的"移植完成了多少"——宏观进度看板
-> - [`docs/BACKLOG.md`](docs/BACKLOG.md)：具体 bug / 改进 / 技术债逐条跟踪（B-001…B-027+）
-> - [`docs/CHANGELOG.md`](docs/CHANGELOG.md)：每次发布的变更记录
-> - [`docs/superpowers/specs/`](docs/superpowers/specs/)：各模块设计规格与已知问题原文
+> - [`docs/BACKLOG.md`](../BACKLOG.md)：具体 bug / 改进 / 技术债逐条跟踪（B-001…B-027+）
+> - [`docs/CHANGELOG.md`](../CHANGELOG.md)：每次发布的变更记录
+> - [`docs/superpowers/specs/`](../superpowers/specs/)：各模块设计规格与已知问题原文
 
 ---
 
@@ -76,7 +76,7 @@
 
 **对应 Rust：** `user-manager/src/`（handlers.rs / jwt.rs / new_login.rs / email_service.rs / sms_service.rs 等）
 
-**设计规格：** [`docs/superpowers/specs/2026-04-27-user-auth-design.md`](docs/superpowers/specs/2026-04-27-user-auth-design.md)
+**设计规格：** [`docs/superpowers/specs/2026-04-27-user-auth-design.md`](../superpowers/specs/2026-04-27-user-auth-design.md)
 
 所有 12 个端点已实现并有基础测试：
 
@@ -174,7 +174,7 @@
 
 **测试：** 13 个单元测试 + 3 个集成测试 + 9 个契约测试
 
-**设计规格：** [`docs/superpowers/specs/2026-05-13-result-query-design.md`](docs/superpowers/specs/2026-05-13-result-query-design.md)
+**设计规格：** [`docs/superpowers/specs/2026-05-13-result-query-design.md`](../superpowers/specs/2026-05-13-result-query-design.md)
 
 ---
 
@@ -306,7 +306,7 @@
 
 ## 十一、核心遗留问题速查
 
-> 详细描述见 [`docs/BACKLOG.md`](docs/BACKLOG.md)。下表仅列出影响功能完整性的高优项。
+> 详细描述见 [`docs/BACKLOG.md`](../BACKLOG.md)。下表仅列出影响功能完整性的高优项。
 
 | 编号 | 问题 | 严重度 |
 |---|---|---|

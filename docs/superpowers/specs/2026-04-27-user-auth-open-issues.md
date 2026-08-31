@@ -6,7 +6,7 @@
 > 创建日期：2026-04-27
 > 最后更新：2026-04-27（review 后增补 §四祖传问题 L-1..L-3 + §一新增 U-V1/U-16/U-17/U-19 已修）
 > 主体范围：`feat/user-and-verify` 分支上线前的代码级问题
-> 关联：[设计文档](./2026-04-27-user-auth-design.md) / [实施报告](./2026-04-27-user-auth-implementation-report.md) / [运维文档](../../operations/cicd-pipeline.md)
+> 关联：[设计文档](./2026-04-27-user-auth-design.md) / [实施报告](../../archive/superpowers/specs/2026-04-27-user-auth-implementation-report.md) / [运维文档](../../operations/cicd-pipeline.md)
 >
 > 🎯 **找下一步做什么？** 看 [`docs/BACKLOG.md`](../../BACKLOG.md)（本文 U-* / L-* 都收拢到那里 B-001..B-N，按可并行 / 等 merge 分组）
 

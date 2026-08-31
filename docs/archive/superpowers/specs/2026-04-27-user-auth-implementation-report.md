@@ -7,7 +7,7 @@
 > 最后更新：2026-04-27（增补 F-impl-7..10 跨文档引用）
 > 实施日期：2026-04-27
 > 分支：`feat/user-and-verify`
-> 设计文档：[`2026-04-27-user-auth-design.md`](./2026-04-27-user-auth-design.md)
+> 设计文档：[`2026-04-27-user-auth-design.md`](../../../superpowers/specs/2026-04-27-user-auth-design.md)
 
 本文记录设计文档落地过程中的实际改动、实施期间发现的具体问题，以及交付时仍未做完的 Follow-up。所有改动均按 CLAUDE.md §10 的小提交粒度落在 `feat/user-and-verify` 分支。
 
@@ -134,7 +134,7 @@ f62a533 feat(db): introduce Alembic with baseline migration for user and activit
 
 ## 四、未做的事 / Follow-up
 
-> 🎯 F-impl-* 在 [`docs/BACKLOG.md`](../../BACKLOG.md) 里被收拢与去重（与 spec §九 / open-issues / cicd-pipeline 的重复项已合并）。本表保留实施期视角的发现记录。
+> 🎯 F-impl-* 在 [`docs/BACKLOG.md`](../../../BACKLOG.md) 里被收拢与去重（与 spec §九 / open-issues / cicd-pipeline 的重复项已合并）。本表保留实施期视角的发现记录。
 
 完整 Follow-up 见设计文档 §九 F1-F9。本期**新发现**值得记一笔的：
 
