@@ -1,5 +1,8 @@
 # GraphQL Schema 对齐设计（前后端 GQL 查漏补缺）
 
+> **状态**：已实施（部分被取代） —— `DateTimeUtc` scalar 按本设计注册并沿用至今（`src/api/graphql/types.py`/`schema.py`）；但 result/submit/user 字段对齐并未采用本设计"原地重命名现有 resolver"的方案，而是被后续设计的**新增桥接层**模式取代：用户登录 mutation 见 [2026-05-30-graphql-login-bridge-design.md](./2026-05-30-graphql-login-bridge-design.md)（新增 `resolvers/user.py`），submit 见 [2026-06-07-graphql-submit-bridge-design.md](./2026-06-07-graphql-submit-bridge-design.md)（新增 `submit_bridge.py`，旧字段保留），result 字段对齐进一步被 [2026-07-19-result-graphql-compat-design.md](./2026-07-19-result-graphql-compat-design.md)（新增 `result_compat.py`）取代。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期：2026-05-20
 > 最后更新：2026-05-20
 > 作者：Claude（brainstorming 流程产物）

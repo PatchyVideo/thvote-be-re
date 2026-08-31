@@ -1,5 +1,8 @@
 # 问卷契约变更 — 投票前端设计稿(thvote-fe)
 
+> **状态**：部分实施 —— 配套后端 B-041 已于 2026-07-14 合并 `main`（见 [BACKLOG](../../BACKLOG.md) B-041、[CHANGELOG](../../CHANGELOG.md) 2026-07-14 条目），但本文件描述的投票前端（thvote-fe）改造仍未开始，见 [BACKLOG](../../BACKLOG.md)「前端队列」第 4 项「B-041 问卷前端消费数组契约」。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期：2026-06-08
 > 最后更新：2026-06-08
 > 配套后端设计稿：[`2026-06-08-questionnaire-admin-backend-design.md`](./2026-06-08-questionnaire-admin-backend-design.md)

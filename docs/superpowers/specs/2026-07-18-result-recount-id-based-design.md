@@ -1,8 +1,10 @@
 # 记票 / 结果统计模块重写 —— 纯 id 投票对象体系(B-050)
 
+> **状态**：已实施（部分被取代） —— v1 已于 2026-07-18 合入 main（见 [BACKLOG B-050](../../BACKLOG.md)、[CHANGELOG 2026-07-18](../../CHANGELOG.md)）；本文档所定的前端 8-hex JSON 快照白名单机制，其后被 [2026-07-23-tally-db-truth-source-design.md](./2026-07-23-tally-db-truth-source-design.md)（B-050-后补6）取代为 DB voteable candidateId 双键归票。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期：2026-07-18
 > 最后更新：2026-07-18（§八 对齐两份 VoileLabs 官方需求文档:票位数/白名单口径/CP 相同组合/问卷ID/完整指标;CP key 修正为 multiset)
-> 状态：**决策已锁定,可进入实现计划(writing-plans)**。§三是方向,§六是全部决策 + 依据。剩余为实现层细节。
 > 关联：B-050(计票重写)、B-040(投票对象迁后端)、`src/apps/result/`、`src/db_model/candidate.py`、`src/db_model/raw_submit.py`;旧系统研究见本会话两轮 explore 结论。
 
 ## 一、背景:candidate 为什么长这样(两段身世)

@@ -1,5 +1,8 @@
 # Block 3A 问卷结构化系统 — 前端设计稿(thvote-fe)
 
+> **状态**：部分实施 —— 配套后端 B-039 已于 2026-07-14 合并 `main`，但本文件针对的「固定 8 槽 + questionnaireV2 静态结构」前端契约已被 [`2026-06-08-questionnaire-admin-frontend-design.md`](./2026-06-08-questionnaire-admin-frontend-design.md)（B-041 数组契约）取代，且无论哪版方案，投票前端的实际切换均仍开放，见 [BACKLOG](../../BACKLOG.md)「前端队列」第 2/4 项。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期：2026-06-08
 > 最后更新：2026-06-08
 > 配套后端设计稿：[`2026-06-08-questionnaire-backend-design.md`](./2026-06-08-questionnaire-backend-design.md)

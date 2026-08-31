@@ -1,5 +1,8 @@
 # MongoDB 全量历史数据同步 — 设计稿
 
+> **状态**：已实施 —— B-034 已完成（[BACKLOG-archive.md](../../BACKLOG-archive.md)，2026-06-07：11 collections、batch runner、checkpoint/resume、CLI + API 双入口）；`scripts/sync_from_mongodb.py` 存在。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期：2026-06-07
 > 最后更新：2026-06-07
 

@@ -1,5 +1,8 @@
 # 候选项管理增强（导入/编辑/详情 + 白色主题）— 设计稿
 
+> **状态**：已实施（部分被取代） —— B-036 已完成（[BACKLOG-archive.md](../../BACKLOG-archive.md)，2026-06-08：导入/编辑端点 + 白色主题落地于旧单文件管理面板）；该面板已被 B-049 的 Vue 管理台取代，候选项管理是 2026-07-18 迁移的旧工具之一（`admin-ui/src/views` 的 `CandidatesView`，见 [2026-07-18-admin-console-vue-frontend-design.md](./2026-07-18-admin-console-vue-frontend-design.md)），旧面板仅作 `/admin-ui-legacy` 兜底保留。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期：2026-06-08
 > 最后更新：2026-06-08
 

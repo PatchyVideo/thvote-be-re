@@ -1,5 +1,8 @@
 # GraphQL Submit 桥接设计(投票提交路径适配前端契约)
 
+> **状态**：已实施 —— [CHANGELOG 2026-06-07](../../CHANGELOG.md)「GraphQL Submit 桥接」条目记录本设计已落地；`src/api/graphql/resolvers/submit_bridge.py` 存在，5 个 mutation + 5 个回读 query 均按设计实现，旧自创字段按决策原样保留。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 定稿:2026-06-07(brainstorming 全流程逐项确认)。分支 `feat/graphql-submit-bridge`。
 > 迁移主题文档:`docs/migration/graphql-submit-bridge.md`(背景与契约勘探);本文件是实现依据。
 > 模式同已上线的 user 模块桥接(登录 PR #3 / 账号管理 PR #4):**业务逻辑不动,只加 GraphQL 桥**。
