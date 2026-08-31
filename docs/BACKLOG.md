@@ -1,7 +1,7 @@
 # 后续开发 BACKLOG（单一仪表盘）
 
 > 创建日期：2026-04-27
-> 最后更新：2026-08-13 第二轮（大扫除：31 条已完成/废弃项迁至 [BACKLOG-archive.md](./BACKLOG-archive.md)；B-028/B-054/B-042②/B-043尾项标 ⏸ 等外部——用户确认只能等；前端队列确认我方负责。此前同日：#26 合入盘点、B-050-后补6 完成、事故修复）
+> 最后更新：2026-08-31（文档大扫除：新增 B-062/B-063——从已归档的 `REFACTOR_TODO.md` 迁入两条经代码复核仍成立的缺口；docs 树归档重整，详见 CHANGELOG 2026-08-31）。此前：2026-08-13 第二轮（大扫除：31 条已完成/废弃项迁至 [BACKLOG-archive.md](./BACKLOG-archive.md)；B-028/B-054/B-042②/B-043尾项标 ⏸ 等外部——用户确认只能等；前端队列确认我方负责）
 
 把散落在 5 份文档里的 follow-up 收拢到这里。**这是仪表盘，不是真理来源**——每项的上下文还在原文档里，本表只给一行摘要 + 跳转。
 
@@ -48,6 +48,8 @@
 | **B-045** | 反机器人时序特征：提交耗时 `fill_duration_ms`（客户端挂载→提交,新列 migration 0012）+ 服务端 `attempt` 改票计数（复用死列,首次=1/改票≥2）。只取证不拦截;"耗时短=可疑"只对首次生效,改票豁免（根治改票假阳性） | 🟡 **后端已合并已部署** (0012 已在测试库,2026-08-13 盘点确认在 main,07-24 tally 系列还补了首填耗时防洗白);前端(Touhou-Vote `f59585a`)状态需在前端仓核对。待:①前端侧确认已推+真人验证 ②Phase 2 管理端多信号聚类 | — | [design](./superpowers/specs/2026-07-17-submit-timing-signal-design.md) |
 | **B-044** | 反刷票证据采集：设备 UUID 指纹（注册 + 每票）+ 可信客户端 IP（读 X-Real-IP、CIDR 信任、REST 覆盖）。只取证不拦截,供事后按 IP/设备聚类多账号 | 🟡 **Phase 0 已联调验证** (2026-07-17):后端(0011+deviceId落库+IP修复,355 passed,已部署)+前端(Touhou-Vote `4b9f4c5`,已部署:8082)+Nacos `TRUSTED_PROXY_IPS` 已配;真人投票实测:新票记真实公网 IP(对照旧票 nginx 内网 172.18.0.7)+设备指纹已落 raw_*。待:①Phase 1 FingerprintJS(+ HTTP 兜底改 crypto.getRandomValues) ②Phase 2 管理端聚类视图 ③~~投票记录 append-only 评估~~✅**已完成**(2026-08-29,B-050-后补2 Step 2:迁移 0017 落地 `raw_*`/`paper_answer` append-only 存储,见 CHANGELOG 同日条目) ④admin 端点暴露 register_device_id/投票指纹(现仅 CSV 出 user_ip) | — | [design](./superpowers/specs/2026-07-17-anti-vote-farming-design.md) |
 | **B-042** | 测试环境配置硬化（2026-07-14 联调准备中实测发现）：①✅ **已解决**(2026-07-17)——Nacos `thvote_be` 已配 `ADMIN_SECRET`(测试弱值 `abc123`,公开前换强值),`require_admin` fail-closed(secret+IP 白名单)已覆盖 `/api/v1/admin/*` 两路由 **+ `main.py` 三个 ops 端点**(`reload-config`/`discover*`),admin 不再裸奔;② scraper **Pixiv 凭据仍未配**(`Pixiv authentication failed`),二创提名刮削 Pixiv 源不可用,**上线前必须配**(配完需重启容器,B-017) | 低（仅剩 Pixiv 配置项，且 2026-08-13 用户示意**可能不再需要 Pixiv**） | ⏸ 等上游/待定（若确认不用 Pixiv 即可关闭本项） | Nacos 控制台见 `docs/operations/nacos-config-center.md` |
+| **B-062** | `AutocompleteDAO.search_cps()` 恒返回 `[]`（`src/apps/autocomplete/dao.py:78`）——CP 自动补全端点 `POST /autocomplete/search` 的 CP 分类**永远为空**。角色/音乐走 `candidate_character`/`candidate_music` 表 ILIKE 已实现，CP 无现成候选表，需从已提交的 `cp.cp_list` JSON 抽唯一 CP 名做模糊匹配（**2026-08-31 文档整理时从 `REFACTOR_TODO.md` 迁入，代码侧已复核仍成立**） | 低（功能缺口，非阻塞） | 🟢 可立即做 | `src/apps/autocomplete/dao.py:77-78`；原始记录见 [archive/2026-05-30-refactor-todo](./archive/2026-05-30-refactor-todo.md) §六 |
+| **B-063** | `apps/scraper` 模块**无任何测试**（`tests/` 下无 scraper 相关用例）——外部 HTTP 依赖需 mock。与 B-010（覆盖率门禁切 `fail_under=80`）同域：scraper 是当前最大的未覆盖面（**2026-08-31 文档整理时从 `REFACTOR_TODO.md` 迁入，已复核仍成立**） | 低 | 🟢 可立即做 | `src/apps/scraper/`；原始记录见 [archive/2026-05-30-refactor-todo](./archive/2026-05-30-refactor-todo.md) §十 |
 
 ---
 
