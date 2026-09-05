@@ -12,7 +12,12 @@ from __future__ import annotations
 
 import os
 from typing import AsyncGenerator
+# ``import fakeredis.aioredis as X`` 只绑定别名 ``X``，不会绑定裸名
+# ``fakeredis`` —— 而下方 patch_redis 的运行时 fallback 要引用裸名。
+# 因此这里先裸 import fakeredis，保证两条 import 分支下 patch_redis 的
+# 「fakeredis.aioredis.FakeRedis → fakeredis.FakeRedis」fallback 都可用。
 try:
+    import fakeredis
     import fakeredis.aioredis as fakeredis_aioredis
     FakeRedis = fakeredis_aioredis.FakeRedis
 except ImportError:

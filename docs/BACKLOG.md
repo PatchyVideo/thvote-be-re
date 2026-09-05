@@ -20,7 +20,6 @@
 | **B-019** | 错误响应 `{"detail":"..."}` 与 Rust 的 `{"error":"...","service":"..."}` 不一致 | 低 | 🟡 等前端反馈是否需要 | [open-issues §三 U-11](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-020** | mypy 在 CI 不是硬门禁；先清现存告警，再去掉 `\|\| true` | 低 | 🟢 可立即做 | [open-issues §三 U-12](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-022** | 给 CI 加 PG-only 契约测试：插两行同 email 的 user，断言 partial unique index 抛 IntegrityError | 低 | 🟢 可立即做 | [open-issues §三 U-14](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
-| **B-024** | `UserDAO.save()` 加 `session.merge()` 防 detached instance 静默 no-op | 低 | 🟢 可立即做（防御性加固） | [open-issues §三 U-18](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-026** | DB 治理纪律：PR 模板 model 改动提示 / CI `alembic check` / `db_model 改动必须有 migration` 检查 | 低 | 🟢 可立即做（**阻塞已解除**：B-025 已完成） | [schema-mgmt §三阶段 4](./architecture/database-schema-management.md) |
 | **B-028** ⚡ | `.github/workflows/deploy-test.yml` 当前唯一的部署 workflow 没有 prod 路径——main 分支推送也只触发部署到 test 环境（镜像 tag 区分为 `prod` vs `test`，但部署目标都是 TEST_SERVER_HOST）。需要确认是否真的没有 prod 发布通道，或补一个 `deploy-prod.yml`。**注：2026-05-19 的 3 个 `fix(ci)` 提交只是修 deploy-test.yml 的 YAML/包发现 bug，未补 prod 通道，此项仍开放** | 高 | ⏸ **等上游拍板**（2026-08-13 用户确认：只能等） | [cicd-pipeline §二](./operations/cicd-pipeline.md) |
 | **B-031** | `src/common/nacos.py` 的 `_parse_config_content` 自带 JS 风格 JSON 容错解析（正则提取），属于隐式技术债——上游 Nacos 配置应该写标准 JSON，让解析器走 `json.loads`。如果是为了兼容某个老 dataId，需文档化该 dataId 的写法约束 | 低 | 🟢 可立即做 | `src/common/nacos.py:29-97` |
@@ -90,7 +89,6 @@
 - **B-010** 覆盖率门禁切 `fail_under=80`（依赖模块运行 1-2 sprint 稳定后再切）
 - **B-013** 邮件/短信发送幂等性（低优先级，发送链路已稳定后做）
 - **B-019** 错误响应 `{"detail"}` → 与 Rust `{"error","service"}` 统一（等前端反馈是否需要）
-- **B-024** `UserDAO.save()` 加 `session.merge()`（防御性加固）
 - **B-033** 删除 legacy-compat 路由层（移除条件：Rust gateway 下线 + 前端迁 `/api/v1` 新 shape；与 B-019 同属契约收敛，详见 `docs/migration/legacy-rest-compat.md`）
 - **B-050-后补2/3 + B-053** 记票深水区（trend 需 append-only 存储改造；上届对比依赖 B-057③ 数据；交叉分析共用"子集重算"原语）——适合打包出一份设计稿再动手。**2026-08-14 结果统计三方审计确认**：这几项正是结果站前端已具备入口、后端仍是桩的缺口——`characterCompare` 有往届对比页、`QuestionnaireDetail` 拿问卷趋势，后端一实现即点亮；`/res-be` 通路已通、result 站可联调。详见 [result-stats-audit-2026-08-14](./migration/result-stats-audit-2026-08-14.md)。（后补5 高级搜索已于 2026-08-14 完成,见 [BACKLOG-archive.md](./BACKLOG-archive.md),不再属于此"仍是桩"分组。）
 - **前端 result 可维护性债（Touhou-Vote 仓，B-055 归口）** 审计新发现：`voteYear:11`+`voteStart` 硬编码散落 20+ 处未走 `lib/voteYear.ts`；characterEvolution.vue 过期日期文案；`/test` 调试路由在生产路由表；Doujin 页总票数等全硬编码（每届手改代码）。见审计文档 §三E/§C

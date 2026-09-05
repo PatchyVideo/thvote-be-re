@@ -53,7 +53,17 @@ class UserDAO:
         return user
 
     async def save(self, user: User) -> User:
-        """Flush in-place modifications on a managed user instance."""
+        """Persist in-place modifications; accepts a managed or detached instance.
+
+        ``merge()`` re-attaches a detached instance (issuing one extra SELECT
+        only when the object is not already in this session) and returns the
+        instance bound to the session — callers should use the return value,
+        since for a detached input it is a *different* object than the one
+        passed in.  Guards against the historical silent no-op where committing
+        a session that was not tracking the mutated instance flushed nothing
+        (B-024 / U-18).
+        """
+        user = await self.session.merge(user)
         await self.session.commit()
         await self.session.refresh(user)
         return user

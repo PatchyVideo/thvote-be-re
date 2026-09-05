@@ -4,6 +4,13 @@
 >
 > 创建日期：2026-04-27
 
+## [2026-09-05] UserDAO.save() detached 加固（B-024 / U-18）
+
+### Changed
+- `UserDAO.save()` 改走 `session.merge()`（`src/apps/user/dao.py`）：attached 实例传入仍是透传、返回原实例（现网所有调用方行为不变）；detached 实例传入不再静默 no-op——merge 重新 attach 并落库，返回**新的托管实例**，调用方应改用返回值。
+- 新增回归测试 `tests/integration/test_user_dao_save.py`：① detached 改动真实落库；② attached 路径身份保持不变。
+- BACKLOG B-024 / open-issues U-18 结清并归档，见 [BACKLOG-archive.md](./BACKLOG-archive.md)。
+
 ## [2026-08-14] 高级搜索/筛选 DSL 实现落地（B-050-后补5，Task 1-6 全部完成）
 
 ### Added
