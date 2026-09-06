@@ -23,7 +23,6 @@ dependencies = [
     "pytest-asyncio>=0.23.0",
     "strawberry-graphql[fastapi]>=0.219.0",
     "dependency-injector>=4.41.0",
-    "bcrypt>=4.0.0",
     "argon2-cffi>=23.1.0",
     "starlette>=0.40.0",
     "nacos-sdk-python>=2.0.0",

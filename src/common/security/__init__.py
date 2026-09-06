@@ -13,8 +13,6 @@ from .jwt import (
 from .password import (
     PasswordVerificationResult,
     hash_password,
-    verify_any_password,
-    verify_legacy_password,
     verify_password,
 )
 
@@ -29,7 +27,5 @@ __all__ = [
     "decode_session_token",
     "decode_vote_token",
     "hash_password",
-    "verify_any_password",
-    "verify_legacy_password",
     "verify_password",
 ]

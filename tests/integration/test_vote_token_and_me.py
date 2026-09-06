@@ -1,6 +1,7 @@
-"""vote_token signing scenarios + GET /me + bcrypt upgrade integration tests.
+"""vote_token signing scenarios + GET /me integration tests.
 
-Covers B-014, B-015, B-016.
+Covers B-014, B-015.  (The B-016 bcrypt→argon2 upgrade test was removed with
+the legacy password path on 2026-09-06.)
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from src.apps.user.schemas import LoginEmailRequest, Meta
 from src.apps.user.utils.security import AuthProvider
 from src.common.security.jwt import decode_vote_token
 from src.db_model.base import Base
+from tests.helpers.users import build_user
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -71,39 +73,22 @@ async def test_vote_token_empty_outside_vote_window(user_service, monkeypatch):
     so the current wall-clock time is guaranteed to be after vote_end.
     """
     from unittest.mock import MagicMock
-    from src.db_model.user import User
 
     mock_settings = MagicMock()
     mock_settings.vote_start_iso = "2020-01-01T00:00:00+00:00"
     mock_settings.vote_end_iso = "2020-12-31T23:59:59+00:00"
     monkeypatch.setattr("src.apps.user.service.get_settings", lambda: mock_settings)
 
-    verified_user = User(
-        id="outside-uid",
-        email="outside@test.com",
-        email_verified=True,
-        phone_verified=False,
-        removed=False,
-        register_date=datetime.now(UTC),
-        register_ip_address="1.2.3.4",
-    )
+    verified_user = build_user(user_id="outside-uid", email="outside@test.com")
     result = user_service._maybe_sign_vote_token(verified_user)
     assert result == "", "vote_token must be empty when now > vote_end"
 
 
 @pytest.mark.asyncio
 async def test_vote_token_empty_for_unverified_user(user_service, patch_redis):
-    """Unverified user (neither email nor phone verified) → empty vote_token."""
-    from src.db_model.user import User
-
-    unverified = User(
-        id="unverified-uid",
-        email="unverified@test.com",
-        email_verified=False,
-        phone_verified=False,
-        removed=False,
-        register_date=datetime.now(UTC),
-        register_ip_address="1.2.3.4",
+    """Unverified user (email identity with verified=False) → empty vote_token."""
+    unverified = build_user(
+        user_id="unverified-uid", email="unverified@test.com", verified=False
     )
     result = user_service._maybe_sign_vote_token(unverified)
     assert result == "", "Unverified user must not receive a vote_token"
@@ -205,49 +190,3 @@ async def test_get_me_rejects_invalid_token(http_client):
     client, _ = http_client
     resp = await client.get("/api/v1/user/me", headers={"Authorization": "Bearer garbage.token"})
     assert resp.status_code == 401
-
-
-# ── B-016: bcrypt → argon2 upgrade ───────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_bcrypt_login_upgrades_to_argon2(user_service, session):
-    """User with legacy bcrypt hash can log in; hash is upgraded to argon2."""
-    import bcrypt
-    from src.db_model.user import User
-
-    # Create a user with a bcrypt-hashed password (legacy format)
-    legacy_salt = bcrypt.gensalt().decode()
-    legacy_hash = bcrypt.hashpw(
-        ("testpass" + legacy_salt).encode(), bcrypt.gensalt()
-    ).decode()
-
-    user = User(
-        id="bcrypt-user-001",
-        email="bcrypt@test.com",
-        email_verified=True,
-        password_hash=legacy_hash,
-        legacy_salt=legacy_salt,
-        removed=False,
-        register_date=datetime.now(UTC),
-        register_ip_address="127.0.0.1",
-    )
-    session.add(user)
-    await session.commit()
-
-    from src.apps.user.schemas import LoginEmailPasswordRequest
-    resp = await user_service.login_with_email_password(
-        LoginEmailPasswordRequest(
-            email="bcrypt@test.com",
-            password="testpass",
-            meta=Meta(),
-        )
-    )
-    assert resp.session_token, "Login with bcrypt hash must succeed"
-
-    # Reload and verify the hash has been upgraded to argon2
-    await session.refresh(user)
-    assert user.legacy_salt is None, "legacy_salt must be cleared after upgrade"
-    assert user.password_hash is not None
-    assert user.password_hash != legacy_hash, "password_hash must be updated"
-    # argon2 hashes start with $argon2
-    assert user.password_hash.startswith("$argon2"), "New hash must be argon2"

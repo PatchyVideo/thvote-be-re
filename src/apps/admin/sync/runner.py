@@ -28,25 +28,6 @@ def _coerce_datetime(val: Any) -> datetime | None:
 
 # ── field mappers ──────────────────────────────────────────────────────────────
 
-def map_voter(doc: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": str(doc["_id"]),
-        "phone_number": doc.get("phone"),
-        "phone_verified": bool(doc.get("phone_verified", False)),
-        "email": doc.get("email"),
-        "email_verified": bool(doc.get("email_verified", False)),
-        "password_hash": doc.get("password_hashed"),
-        "legacy_salt": doc.get("salt"),
-        "register_date": _coerce_datetime(doc.get("created_at")),
-        "nickname": doc.get("nickname"),
-        "register_ip_address": doc.get("signup_ip") or "",
-        "qq_openid": doc.get("qq_openid"),
-        "pfp": doc.get("pfp"),
-        "thbwiki_uid": doc.get("thbwiki_uid"),
-        "removed": bool(doc.get("removed") or False),
-    }
-
-
 def map_raw_submit(doc: dict[str, Any], payload_key: str) -> dict[str, Any]:
     meta = doc.get("meta") or {}
     return {
@@ -119,8 +100,6 @@ def map_candidate_music(doc: dict[str, Any]) -> dict[str, Any]:
 
 # Each tuple: (settings_db_attr, mongo_collection, pg_table, mapper_fn, _unused)
 COLLECTION_CONFIG = [
-    # A: users
-    ("mongodb_db_users", "voters", "user", map_voter, "id"),
     # B: raw submissions
     ("mongodb_db_submits", "raw_character", "raw_character",
      lambda d: map_raw_submit(d, "characters"), "legacy_mongo_id"),
@@ -148,7 +127,6 @@ COLLECTION_CONFIG = [
 
 # Conflict column per PG table — used to build ON CONFLICT clause
 _CONFLICT_COLS: dict[str, str] = {
-    "user": "id",
     "final_ranking": "(vote_year, category, rank)",
     "candidate_character": "(vote_year, name)",
     "candidate_music": "(vote_year, name)",

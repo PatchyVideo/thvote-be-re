@@ -1,35 +1,29 @@
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, String, func
-from sqlalchemy.orm import Mapped, mapped_column
+"""User account model.
+
+An account holds what is *about the person*: nickname, avatar, password,
+soft-delete flag and registration evidence.  How the person authenticates
+lives in ``user_identity`` (one row per e-mail / phone / QQ / THBWiki) —
+see ``user_identity.py`` and the 2026-09-06 identity-model spec.
+"""
+
+from __future__ import annotations
+
+from sqlalchemy import Boolean, DateTime, Index, String, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
+from .user_identity import UserIdentity
 
 
 class User(Base):
-    """User database model.
-
-    Stores user account information including authentication credentials
-    and registration metadata.  Field set aligned with Rust user-manager
-    Voter struct (MongoDB thvote_users.voters).
-    """
-
     __tablename__ = "user"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
 
-    phone_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    phone_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-
-    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    email_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-
     password_hash: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    legacy_salt: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     nickname: Mapped[str | None] = mapped_column(String(64), nullable=True)
     pfp: Mapped[str | None] = mapped_column(String(512), nullable=True)
-
-    thbwiki_uid: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    qq_openid: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     removed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
@@ -40,20 +34,24 @@ class User(Base):
         String(64), nullable=False, default=""
     )
     # 注册时的客户端设备指纹(localStorage UUID),反刷票取证用(B-044)。
-    # server_default 与 migration 0011 的 DEFAULT '' 一致(避免模型/迁移漂移)。
     register_device_id: Mapped[str] = mapped_column(
         String(128), nullable=False, default="", server_default=""
     )
 
-    __table_args__ = (
-        # Soft-deleted rows are allowed to have both identifiers cleared
-        # (mirrors Rust remove_voter behavior).  Active rows must keep at
-        # least one identifier so we can locate them via login.
-        CheckConstraint(
-            "removed = TRUE OR phone_number IS NOT NULL OR email IS NOT NULL",
-            name="at_least_one_identifier",
-        ),
+    # selectin: every account load brings its (<=4) identities in one extra
+    # query, so async code never trips a lazy load.
+    identities: Mapped[list[UserIdentity]] = relationship(
+        back_populates="user",
+        lazy="selectin",
+        cascade="all, delete-orphan",
     )
+
+    def identity(self, provider: str) -> UserIdentity | None:
+        """Return this account's identity for *provider*, if any."""
+        for identity in self.identities:
+            if identity.provider == provider:
+                return identity
+        return None
 
 
 Index("idx_user_register_date", User.register_date)

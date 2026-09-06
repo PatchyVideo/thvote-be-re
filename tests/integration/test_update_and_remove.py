@@ -14,6 +14,7 @@ from src.apps.user.schemas import (
     UpdatePhoneRequest,
     LoginEmailRequest,
 )
+from src.apps.user.identity import IdentityProvider
 from src.apps.user.utils.security import AuthProvider
 from src.common.exceptions import (
     NotFoundError,
@@ -52,7 +53,7 @@ async def test_update_nickname_writes_change(user_service, patch_redis):
             user_token=login.session_token, nickname="newname", meta=Meta()
         )
     )
-    refreshed = await user_service.user_dao.get_by_email("u@example.com")
+    refreshed = await user_service.identities.resolve(IdentityProvider.EMAIL, "u@example.com")
     assert refreshed.nickname == "newname"
 
 
@@ -67,7 +68,7 @@ async def test_update_password_first_time_no_old_password(user_service, patch_re
             meta=Meta(),
         )
     )
-    user = await user_service.user_dao.get_by_email("p@example.com")
+    user = await user_service.identities.resolve(IdentityProvider.EMAIL, "p@example.com")
     assert user.password_hash is not None
 
 
@@ -154,12 +155,12 @@ async def test_remove_voter_clears_identifiers_and_blocks_lookup(user_service, p
 
 
 @pytest.mark.asyncio
-async def test_remove_voter_wipes_password_hash_and_legacy_salt(
+async def test_remove_voter_wipes_password_hash_and_identities(
     user_service, patch_redis, session_maker
 ):
     """Soft delete must purge every credential artefact.
 
-    Keeping ``password_hash`` (or ``legacy_salt``) around after a user
+    Keeping ``password_hash`` around after a user
     exercises their right to delete leaves a hash that can be
     cross-referenced against leaked password databases — the DB row's
     only remaining role is as a tombstone.
@@ -180,7 +181,7 @@ async def test_remove_voter_wipes_password_hash_and_legacy_salt(
 
     # Confirm hash exists pre-removal (VoterFE doesn't carry user_id, so
     # look the row up by email)
-    pre = await user_service.user_dao.get_by_email("wipe@example.com")
+    pre = await user_service.identities.resolve(IdentityProvider.EMAIL, "wipe@example.com")
     assert pre is not None
     assert pre.password_hash is not None
     user_id = pre.id
@@ -198,8 +199,4 @@ async def test_remove_voter_wipes_password_hash_and_legacy_salt(
 
     assert row.removed is True
     assert row.password_hash is None, "password_hash must be wiped on remove"
-    assert row.legacy_salt is None, "legacy_salt must be wiped on remove"
-    assert row.email is None
-    assert row.phone_number is None
-    assert row.email_verified is False
-    assert row.phone_verified is False
+    assert row.identities == [], "every identity row must be deleted on remove"

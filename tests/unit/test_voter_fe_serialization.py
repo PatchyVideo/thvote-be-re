@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from src.apps.user.schemas import VoterFE, voter_fe_from_user
+from tests.helpers.users import build_user
 
 
 def test_voter_fe_has_exact_rust_field_set() -> None:
@@ -28,30 +29,11 @@ def test_voter_fe_thbwiki_and_patchyvideo_default_false() -> None:
     assert fe.patchyvideo is False
 
 
-class _UserStub:
-    def __init__(self, **kw):
-        self.__dict__.update(kw)
-
-
-def test_voter_fe_from_user_password_flag_reflects_hash_presence() -> None:
-    user_with_password = _UserStub(
-        nickname="alice",
-        pfp=None,
-        password_hash="$argon2id$abc",
-        phone_number=None,
-        email="a@example.com",
-        thbwiki_uid=None,
-        register_date=datetime(2026, 1, 1, tzinfo=UTC),
+def test_voter_fe_from_user_maps_identities_and_password_flag() -> None:
+    user_with_password = build_user(
+        nickname="alice", email="a@example.com", password="pw", thbwiki="42"
     )
-    user_no_password = _UserStub(
-        nickname="bob",
-        pfp=None,
-        password_hash=None,
-        phone_number="13800000000",
-        email=None,
-        thbwiki_uid=None,
-        register_date=datetime(2026, 1, 2, tzinfo=UTC),
-    )
+    user_no_password = build_user(nickname="bob", phone="13800000000")
 
     fe_a = voter_fe_from_user(user_with_password)
     fe_b = voter_fe_from_user(user_no_password)
@@ -59,9 +41,14 @@ def test_voter_fe_from_user_password_flag_reflects_hash_presence() -> None:
     assert fe_a.password is True
     assert fe_a.username == "alice"
     assert fe_a.email == "a@example.com"
+    assert fe_a.phone is None
+    assert fe_a.thbwiki is True
+    assert fe_a.patchyvideo is False
     assert fe_b.password is False
     assert fe_b.username == "bob"
     assert fe_b.phone == "13800000000"
+    assert fe_b.email is None
+    assert fe_b.thbwiki is False
 
 
 def test_meta_keeps_rust_typo() -> None:

@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from src.db_model.base import Base
+from tests.helpers.users import make_user
 
 
 @pytest_asyncio.fixture
@@ -64,13 +65,7 @@ def admin_secret():
 
 @pytest.mark.asyncio
 async def test_search_users_by_email(app, db_session, admin_secret):
-    await db_session.execute(
-        text(
-            "INSERT INTO \"user\" (id, email, email_verified, phone_verified, removed, register_ip_address) "
-            "VALUES ('aaa', 'find@example.com', 1, 0, 0, '')"
-        )
-    )
-    await db_session.commit()
+    await make_user(db_session, user_id="aaa", email="find@example.com", register_ip="")
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.get(
@@ -86,13 +81,7 @@ async def test_search_users_by_email(app, db_session, admin_secret):
 
 @pytest.mark.asyncio
 async def test_ban_and_unban_user(app, db_session, admin_secret):
-    await db_session.execute(
-        text(
-            "INSERT INTO \"user\" (id, email, email_verified, phone_verified, removed, register_ip_address) "
-            "VALUES ('bbb', 'ban@example.com', 1, 0, 0, '')"
-        )
-    )
-    await db_session.commit()
+    await make_user(db_session, user_id="bbb", email="ban@example.com", register_ip="")
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.patch(
@@ -112,13 +101,7 @@ async def test_ban_and_unban_user(app, db_session, admin_secret):
 
 @pytest.mark.asyncio
 async def test_get_user_detail(app, db_session, admin_secret):
-    await db_session.execute(
-        text(
-            "INSERT INTO \"user\" (id, email, email_verified, phone_verified, removed, register_ip_address) "
-            "VALUES ('ccc', 'detail@example.com', 1, 0, 0, '')"
-        )
-    )
-    await db_session.commit()
+    await make_user(db_session, user_id="ccc", email="detail@example.com", register_ip="")
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.get(
