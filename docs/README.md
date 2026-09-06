@@ -93,6 +93,7 @@
 | [`2026-04-27-user-auth-design.md`](./superpowers/specs/2026-04-27-user-auth-design.md) | 用户表与认证模块设计（路由、数据模型、流程、错误处理、测试策略；§九 是 follow-up F1–F9） |
 | [`2026-04-27-user-auth-open-issues.md`](./superpowers/specs/2026-04-27-user-auth-open-issues.md) | 已知问题清单（U-1..U-19 + 祖传 L-1..L-3）。**review 认证模块 PR 前先看这份**——表内问题都在册，注意力放到表外 |
 | [`2026-05-16-medium-priority-backlog-design.md`](./superpowers/specs/2026-05-16-medium-priority-backlog-design.md) | 中优先级 backlog 批量设计；**B-008（Mongo→PG 用户回填脚本）的源文档，该项仍开放** |
+| [`2026-09-06-user-identity-model-design.md`](./superpowers/specs/2026-09-06-user-identity-model-design.md) | 用户身份模型归一化：`user` 只留账号，`user_identity` 一行一个认证来源（email/phone/qq/thbwiki），每身份带绑定 IP/设备；迁移 0018，无兼容期；删 legacy 密码路径与 voters 同步 |
 
 ### 提交与 GraphQL 契约
 
