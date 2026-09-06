@@ -1,7 +1,7 @@
 # `docs/` 索引
 
 > 创建日期：2026-04-27
-> 最后更新：2026-08-31（**文档大扫除**：30 份已实施/已废弃的过程产物迁入 [`archive/`](./archive/)；补齐 07–08 月此前从未进索引的约 25 份文档；现役设计稿统一补状态头；CHANGELOG 去重排序并切分归档）
+> 最后更新：2026-09-06（用户身份模型归一化：新设计稿 + 计划入索引，B-008 计划归档）；2026-08-31（**文档大扫除**：30 份已实施/已废弃的过程产物迁入 [`archive/`](./archive/)；补齐 07–08 月此前从未进索引的约 25 份文档；现役设计稿统一补状态头；CHANGELOG 去重排序并切分归档）
 
 本表只列**现役文档**的入口与职责。历史过程记录在 [`archive/`](./archive/)，那里的内容**不代表当前实现**。
 
@@ -92,7 +92,7 @@
 |---|---|
 | [`2026-04-27-user-auth-design.md`](./superpowers/specs/2026-04-27-user-auth-design.md) | 用户表与认证模块设计（路由、数据模型、流程、错误处理、测试策略；§九 是 follow-up F1–F9） |
 | [`2026-04-27-user-auth-open-issues.md`](./superpowers/specs/2026-04-27-user-auth-open-issues.md) | 已知问题清单（U-1..U-19 + 祖传 L-1..L-3）。**review 认证模块 PR 前先看这份**——表内问题都在册，注意力放到表外 |
-| [`2026-05-16-medium-priority-backlog-design.md`](./superpowers/specs/2026-05-16-medium-priority-backlog-design.md) | 中优先级 backlog 批量设计；**B-008（Mongo→PG 用户回填脚本）的源文档，该项仍开放** |
+| [`2026-05-16-medium-priority-backlog-design.md`](./superpowers/specs/2026-05-16-medium-priority-backlog-design.md) | 中优先级 backlog 批量设计；B-008（Mongo→PG 用户回填脚本）的源文档，**该项已于 2026-09-06 废弃**（上线即空库） |
 | [`2026-09-06-user-identity-model-design.md`](./superpowers/specs/2026-09-06-user-identity-model-design.md) | 用户身份模型归一化：`user` 只留账号，`user_identity` 一行一个认证来源（email/phone/qq/thbwiki），每身份带绑定 IP/设备；迁移 0018，无兼容期；删 legacy 密码路径与 voters 同步 |
 
 ### 提交与 GraphQL 契约
@@ -174,12 +174,12 @@
 
 ## 实施计划（`superpowers/plans/`）
 
-> **只剩未实施完的 6 份**。已执行完毕的 25 份在 [`archive/superpowers/plans/`](./archive/superpowers/plans/)。
+> **只剩未实施完的 5 份 + 本轮 1 份**。已执行完毕/废弃的 26 份在 [`archive/superpowers/plans/`](./archive/superpowers/plans/)。
 > ⚠️ plans 里的 `- [ ]` checkbox **从未被维护过**（BACKLOG **B-057⑤**），不要拿它判断完成度。
 
 | 文档 | 状态 |
 |---|---|
-| [`2026-05-16-mongodb-migration.md`](./superpowers/plans/2026-05-16-mongodb-migration.md) | **待实施**（B-008）：目标脚本 `scripts/migrate_users_from_mongodb.py` 尚不存在 |
+| [`2026-09-06-user-identity-model.md`](./superpowers/plans/2026-09-06-user-identity-model.md) | **已实施**（2026-09-06）：`user` + `user_identity` 归一化，migration 0018 |
 | [`2026-06-08-security-frontend.md`](./superpowers/plans/2026-06-08-security-frontend.md) | 待实施（B-037 前端） |
 | [`2026-06-08-questionnaire-frontend.md`](./superpowers/plans/2026-06-08-questionnaire-frontend.md) | 待实施（B-039 前端） |
 | [`2026-06-08-vote-objects-frontend.md`](./superpowers/plans/2026-06-08-vote-objects-frontend.md) | 待实施（B-040 前端） |

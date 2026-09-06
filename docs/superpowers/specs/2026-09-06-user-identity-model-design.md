@@ -1,6 +1,6 @@
 # 用户身份模型归一化(user + user_identity)设计
 
-> **状态**:设计已确认,待实施。
+> **状态**:已实施(2026-09-06,migration 0018;见 CHANGELOG 同日条目)。本文件是设计稿,记录设计意图与取舍。
 > 日期:2026-09-06
 > 范围:`thvote-be-re` 的 `user` 表、`src/apps/user/*`、管理端用户列表、旧 Mongo 同步、迁移 `0018`。
 > 前提:系统尚未公开上线,用户库允许破坏性重建,**无兼容期**。
@@ -109,7 +109,7 @@
 | `src/apps/admin/sync/runner.py` | 删 `map_voter` 与 `("mongodb_db_users","voters","user",...)` 同步项;其余集合不动 |
 | `src/api/graphql/types.py` | 无形状变化;`LoginResult.user` 仍由 `VoterFE` 转换 |
 
-`VOTE_ELIGIBLE_PROVIDERS` 默认 `{email, phone}`,通过配置项 `VOTE_ELIGIBLE_PROVIDERS`(逗号分隔,Nacos 可改)覆盖。是否改为仅手机号,上线前另行决定(见第十一节)。
+`VOTE_ELIGIBLE_PROVIDERS` 默认 `{email, phone}`,通过配置项 `VOTE_ELIGIBLE_PROVIDERS`(JSON 数组字符串,与 `ADMIN_ALLOWED_IPS` 同形,Nacos 可改;未知值忽略)覆盖。是否改为仅手机号,上线前另行决定(见第十一节)。
 
 ## 五、行为与流程
 
@@ -117,7 +117,7 @@
 
 **`_login_by_identity(provider, subject, nickname, meta, sid) -> LoginResponse`**
 
-1. `find_user(provider, subject)`;
+1. `find_user(provider, subject)`;命中但账号 `removed=TRUE`(管理端封禁,身份行保留)→ `USER_REMOVED` 403;
 2. 无 → `_register(provider, subject, nickname, meta)`:建 `User`(`register_*` 取 meta)+ 一条身份(`created_*` 取同一份 meta,`verified=true`);写 `voter_creation` 日志;
 3. 有 → `touch_last_login`;写 `voter_login` 日志;
 4. `_merge_sso_session(user, sid, meta)`(5.3);
@@ -179,6 +179,7 @@
 | 管理端搜索 email/phone 改为 join 身份表 | 列已迁移;结果集不变 |
 | admin `UserAdminItem.email_verified/phone_verified` 来自身份行的 `verified` | 形状不变 |
 | 旧 Mongo `voters` 集合同步删除 | 上线即空库 |
+| 被管理端封禁(`removed=TRUE` 但身份行保留)的邮箱/手机再登录:旧实现撞 partial unique index → 500,新实现返回 `USER_REMOVED`(403),且该标识不能被新账号注册 | 封禁要可解封,身份行必须保留;实施时发现 |
 
 ## 七、迁移 `0018`(down = `0017`)
 
