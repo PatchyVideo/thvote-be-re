@@ -9,10 +9,7 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 
-from src.apps.user.dao import UserDAO
-from src.apps.user.schemas import generate_user_id
-from src.apps.user.utils.security import AuthProvider
-from src.db_model.user import User
+from tests.helpers.users import make_user
 
 
 class _FakeClient:
@@ -72,13 +69,7 @@ mutation($email: String!, $verifyCode: String!, $nickname: String) {
 
 @pytest.mark.asyncio
 async def test_login_email_password_success(gql_schema, session):
-    user = User(
-        id=generate_user_id(),
-        email="alice@example.com",
-        email_verified=True,
-        password_hash=AuthProvider().hash_password("s3cret"),
-    )
-    await UserDAO(session).create(user)
+    await make_user(session, email="alice@example.com", password="s3cret")
 
     result = await gql_schema.execute(
         LOGIN_EMAIL_PASSWORD,
@@ -94,13 +85,7 @@ async def test_login_email_password_success(gql_schema, session):
 
 @pytest.mark.asyncio
 async def test_login_email_password_wrong_password_error_kind(gql_schema, session):
-    user = User(
-        id=generate_user_id(),
-        email="bob@example.com",
-        email_verified=True,
-        password_hash=AuthProvider().hash_password("right"),
-    )
-    await UserDAO(session).create(user)
+    await make_user(session, email="bob@example.com", password="right")
 
     result = await gql_schema.execute(
         LOGIN_EMAIL_PASSWORD,

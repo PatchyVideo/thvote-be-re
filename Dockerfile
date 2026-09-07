@@ -47,6 +47,8 @@ RUN pip install --no-cache-dir uvicorn[standard] httpx
 COPY src/ ./src/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./alembic.ini
+# 运维脚本(mock 数据生成、数据回填等)需在容器内可执行,见 docs/operations/
+COPY scripts/ ./scripts/
 COPY .env.example .env
 
 # Expose port
@@ -78,6 +80,8 @@ RUN groupadd --gid 1000 appgroup && \
 COPY --chown=appuser:appgroup src/ ./src/
 COPY --chown=appuser:appgroup alembic/ ./alembic/
 COPY --chown=appuser:appgroup alembic.ini ./alembic.ini
+# 运维脚本(mock 数据生成、数据回填等)需在容器内可执行,见 docs/operations/
+COPY --chown=appuser:appgroup scripts/ ./scripts/
 
 # Switch to non-root user
 USER appuser

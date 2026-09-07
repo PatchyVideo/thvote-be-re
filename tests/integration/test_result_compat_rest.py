@@ -121,8 +121,8 @@ query($ids: [String!]!, $voteYear: Int) {
 """
 
 QUERY_QUESTIONNAIRE_TREND = """
-query($ids: [String!]!, $voteYear: Int) {
-  queryQuestionnaireTrend(questionIds: $ids, voteYear: $voteYear) {
+query($ids: [String!]!, $voteYear: Int, $query: String) {
+  queryQuestionnaireTrend(questionIds: $ids, voteYear: $voteYear, query: $query) {
     trend { hrs cnt }
     trendFirst { hrs cnt }
   }
@@ -231,19 +231,25 @@ async def _seed_and_compute(session: AsyncSession, fake_redis, settings) -> None
     await session.flush()
     session.add_all([
         # user-1=male, user-3=female -> 性别题总答 2、总男 1、总女 1
+        # created_at 刻意错开(day2/day4),换算成 hour_bucket 分别是 24/72
+        # (相对 vote_start=2026-01-01T00:00:00Z),用于验证 queryQuestionnaireTrend
+        # 的分桶(compute_paper_results 的近似口径:按提交行 created_at 分桶)。
         PaperAnswer(
             vote_id="user-1", vote_year=2026, questionnaire_id=1, group_id=1,
             active_question_id=gender_q.id, selected_option_ids=[opt_male.id],
+            created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
         ),
         PaperAnswer(
             vote_id="user-3", vote_year=2026, questionnaire_id=1, group_id=1,
             active_question_id=gender_q.id, selected_option_ids=[opt_female.id],
+            created_at=datetime(2026, 1, 4, tzinfo=timezone.utc),
         ),
-        # 填空题只有 user-1(male)答了
+        # 填空题只有 user-1(male)答了,created_at 与其性别题回答同一天
         PaperAnswer(
             vote_id="user-1", vote_year=2026, questionnaire_id=1, group_id=2,
             active_question_id=input_q.id, selected_option_ids=[],
             input_text="喜欢",
+            created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
         ),
     ])
     await session.commit()
@@ -490,13 +496,14 @@ async def test_query_questionnaire_not_computed_is_stable_error_not_empty_succes
 
 
 @pytest.mark.asyncio
-async def test_query_questionnaire_trend_returns_empty_series_in_input_order(
+async def test_query_questionnaire_trend_returns_approximate_hourly_buckets(
     gql_schema,
 ) -> None:
-    """后端没有问卷时间维度(compute_paper_results 不产出按小时数据),但真实
-    前端按 [Trends!]! 消费这个字段(entries[0].trend);返回形状必须正确、
-    数量与入参 questionIds 一致、顺序保留,内容退化成空(而不是报错或者
-    返回 QueryQuestionnaireResponse 那种不匹配的形状)。"""
+    """问卷 trend 是"最新提交行 created_at 分桶"的近似口径(与 legacy 一致,
+    不是真实净增量,见 Step 2)。q11011 两条回答分别落在 vote_start 之后
+    24h/72h,必须精确复现这两个桶;trendFirst 恒为空(问卷没有"本命"概念);
+    q99999 从未算过 -> 退化成空 Trends(不报错,形状与 questionIds 一一对应、
+    顺序保留,不跳过任何一个)。"""
     result = await gql_schema.execute(
         QUERY_QUESTIONNAIRE_TREND,
         variable_values={"ids": ["q11011", "11021", "q99999"], "voteYear": None},
@@ -504,6 +511,39 @@ async def test_query_questionnaire_trend_returns_empty_series_in_input_order(
     assert result.errors is None
     trends = result.data["queryQuestionnaireTrend"]
     assert len(trends) == 3  # 3 个入参 id -> 3 个出参条目(不跳过任何一个)
-    for entry in trends:
-        assert entry["trend"] == []
-        assert entry["trendFirst"] == []
+
+    gender_trend, input_trend, missing_trend = trends
+    assert gender_trend["trend"] == [
+        {"hrs": 24, "cnt": 1}, {"hrs": 72, "cnt": 1},
+    ]
+    assert gender_trend["trendFirst"] == []
+    assert input_trend["trend"] == [{"hrs": 24, "cnt": 1}]
+    assert input_trend["trendFirst"] == []
+    assert missing_trend["trend"] == []
+    assert missing_trend["trendFirst"] == []
+
+
+@pytest.mark.asyncio
+async def test_query_questionnaire_trend_dsl_subset_returns_filtered_counts(
+    monkeypatch, gql_schema, session, session_maker,
+) -> None:
+    """DSL query 走高级搜索子集重算路径(advanced_search/service.py
+    `_compute_filtered`,Task 3 的第二个调用点)时,trend 同样接通:筛出
+    "只投了 1101101(男)"的子集后,q11011 的 trend 应只剩 user-1(男,24h)
+    那一桶,counts 不超过全集(全集是 24h+72h 两桶)。"""
+    import src.apps.result.advanced_search.service as adv_service_module
+
+    monkeypatch.setattr(adv_service_module, "get_session_maker", lambda: session_maker)
+
+    result = await gql_schema.execute(
+        QUERY_QUESTIONNAIRE_TREND,
+        variable_values={
+            "ids": ["q11011"],
+            "voteYear": 2026,
+            "query": "q11011 = 1101101",
+        },
+    )
+    assert result.errors is None
+    trend = result.data["queryQuestionnaireTrend"][0]["trend"]
+    assert trend == [{"hrs": 24, "cnt": 1}]
+    assert len(trend) <= 2  # 不超过全集的两个桶

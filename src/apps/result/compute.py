@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from itertools import combinations
 from typing import TYPE_CHECKING, Any
 
+from src.apps.result.trend import net_delta_trends, trends_for
+
 if TYPE_CHECKING:
     from src.apps.result.whitelist import Whitelist
 
@@ -135,6 +137,7 @@ def compute_ranking(
     historical: dict[str, dict],
     vote_start: datetime,
     total_hours: int,
+    history: list[tuple[str, datetime, int, list[dict]]] | None = None,
 ) -> tuple[list[dict], dict]:
     """按 id 归票的角色/音乐排名（B-050）。
 
@@ -143,6 +146,10 @@ def compute_ranking(
     segment_map: vote_id → 分段标签（如 "male"/"female"，或其它问卷题的选项
     label）；由 build_segment_map 构造，性别只是其中一种特例。
     历史键仍按 name（final_ranking 是 name-keyed）；v1 传空 dict。
+    history: 全提交历史(ComputeDAO.load_*_history);给出时 trend/trend_first
+    用真实净增量(net_delta_trends,改票产生负桶)替换"最新提交分桶"近似值,
+    白名单丢弃口径与本函数一致故净增量和==终榜票数;None 时保留近似口径
+    (B-050-后补2 Step 2)。
     返回 (ranking_list, global_stats_dict)
     """
     vote_count: dict[str, int] = defaultdict(int)      # 按 oid(canonical)
@@ -186,6 +193,17 @@ def compute_ranking(
             trend[oid][hour_bucket] += 1
             if is_first:
                 trend_first[oid][hour_bucket] += 1
+
+    hist_trends = None
+    if history is not None:
+        def _item_oids(item: dict) -> list[str]:
+            oid = whitelist.canonical(_as_token(item.get("id", "")))
+            return [] if oid is None else [oid]
+
+        hist_trends = net_delta_trends(
+            history, _item_oids, lambda it: bool(it.get("first", False)),
+            vote_start, total_hours,
+        )
 
     all_ids = set(vote_count.keys())
     total_votes = sum(vote_count.values())
@@ -259,10 +277,22 @@ def compute_ranking(
             "female_vote_count": female_proj,
             "reasons": reasons[oid],
             "reasons_count": len(reasons[oid]),
-            "trend": [{"hrs": h, "cnt": c} for h, c in enumerate(trend[oid]) if c > 0],
-            "trend_first": [
-                {"hrs": h, "cnt": c} for h, c in enumerate(trend_first[oid]) if c > 0
-            ],
+            "trend": (
+                trends_for(hist_trends, oid)["trend"]
+                if hist_trends is not None
+                else [
+                    {"hrs": h, "cnt": c}
+                    for h, c in enumerate(trend[oid]) if c > 0
+                ]
+            ),
+            "trend_first": (
+                trends_for(hist_trends, oid)["trend_first"]
+                if hist_trends is not None
+                else [
+                    {"hrs": h, "cnt": c}
+                    for h, c in enumerate(trend_first[oid]) if c > 0
+                ]
+            ),
         })
 
     global_stats = {
@@ -295,8 +325,13 @@ def compute_cp_ranking(
     historical: dict[str, dict],
     vote_start: datetime,
     total_hours: int,
+    history: list[tuple[str, datetime, int, list[dict]]] | None = None,
 ) -> tuple[list[dict], dict]:
     """按无序 multiset 归票的 CP 排名（B-050）。
+
+    history 语义同 compute_ranking:给出时 trend/trend_first 用真实净增量
+    替换近似值,key 口径与本函数一致(成员 canonical 后的 sorted tuple,
+    任一成员未命中白名单整条丢弃)。
 
     item: {"id_a","id_b","id_c","active","first","reason"}
     key = tuple(sorted([id_a,id_b,id_c?去None]))；顺序/主动方/first 不进 key；
@@ -363,6 +398,24 @@ def compute_cp_ranking(
             if is_first:
                 trend_first[key][hour_bucket] += 1
             members_of.setdefault(key, list(key))
+
+    hist_trends = None
+    if history is not None:
+        def _item_cp_keys(item: dict) -> list[tuple]:
+            raw = [
+                _as_token(item.get("id_a", "")), _as_token(item.get("id_b", "")),
+            ]
+            if item.get("id_c"):
+                raw.append(_as_token(item["id_c"]))
+            canon = [whitelist.canonical(m) for m in raw]
+            if any(c is None for c in canon):
+                return []
+            return [tuple(sorted(canon))]
+
+        hist_trends = net_delta_trends(
+            history, _item_cp_keys, lambda it: bool(it.get("first", False)),
+            vote_start, total_hours,
+        )
 
     # 组合票数==1 不计入
     all_keys = [k for k in vote_count if vote_count[k] >= 2]
@@ -435,12 +488,22 @@ def compute_cp_ranking(
             "active_none": _rate("none"),
             "reasons": reasons[key],
             "reasons_count": len(reasons[key]),
-            "trend": [
-                {"hrs": h, "cnt": cc} for h, cc in enumerate(trend[key]) if cc > 0
-            ],
-            "trend_first": [
-                {"hrs": h, "cnt": cc} for h, cc in enumerate(trend_first[key]) if cc > 0
-            ],
+            "trend": (
+                trends_for(hist_trends, key)["trend"]
+                if hist_trends is not None
+                else [
+                    {"hrs": h, "cnt": cc}
+                    for h, cc in enumerate(trend[key]) if cc > 0
+                ]
+            ),
+            "trend_first": (
+                trends_for(hist_trends, key)["trend_first"]
+                if hist_trends is not None
+                else [
+                    {"hrs": h, "cnt": cc}
+                    for h, cc in enumerate(trend_first[key]) if cc > 0
+                ]
+            ),
         })
 
     global_stats = {
@@ -525,12 +588,30 @@ def compute_completion_rates(
 def compute_paper_results(
     questionnaire_votes: list[tuple[str, list[dict]]],
     segment_map: dict[str, str],
+    vote_start: datetime | None = None,
+    total_hours: int = 0,
+    history: list[tuple[str, datetime, int, list[dict]]] | None = None,
 ) -> dict[str, dict]:
-    """Compute per-question statistics (incl. gender crosstab) from questionnaire votes.
+    """Compute per-question statistics (incl. crosstab and trend).
 
-    Returns {question_id: {"answers_cat": [...], "answers_str": [...], "total": int,
-    "total_male": int, "total_female": int}}，其中 answers_cat 项另带
-    male_votes/female_votes。
+    Args:
+        questionnaire_votes: List of (user_id, q_list) tuples where q_list
+            contains items with "id", "answer", "answer_str", "ts" (datetime).
+        segment_map: Mapping of user_id → segment label (e.g. male/female).
+        vote_start: Start datetime for trend bucketing; None → trend is empty.
+        total_hours: Window duration (hours) for trend bucketing and clamping.
+
+    Returns:
+        {question_id: {"answers_cat": [...], "answers_str": [...], "total": int,
+        "total_male": int, "total_female": int, "trend": [...]}}，其中 answers_cat 项另带
+        male_votes/female_votes。
+
+    Trend bucketing (近似口径):
+        - "trend" 是稀疏数组 [{"hrs": h, "cnt": c}, ...], h 为从 vote_start 开始的小时偏移，
+          仅包含 cnt > 0 的桶。
+        - 当 vote_start 为 None 或 item 无 "ts" 时，trend 为 []。
+        - 时间戳缺失 tzinfo 时按 UTC 处理（与 compute_ranking 平价）。
+        - 时间戳在 vote_start 之前的项被钳到 hrs=0；超过窗口的项被钳到 hrs=total_hours-1。
 
     简化说明（与设计稿的偏差，见 CHANGELOG）：聚合按**答案形状**分派——`answer`
     是非空 list → 按选项计数；`answer_str` 非空 → 收字符串——不引入
@@ -546,6 +627,9 @@ def compute_paper_results(
     question_gender_total: dict[str, dict[str, int]] = defaultdict(
         lambda: {"male": 0, "female": 0}
     )
+    question_trend: dict[str, list[int]] = defaultdict(
+        lambda: [0] * max(total_hours, 1)
+    )
 
     for user_id, q_list in questionnaire_votes:
         segment = segment_map.get(user_id, "unknown")
@@ -558,6 +642,14 @@ def compute_paper_results(
                 question_gender_total[qid]["male"] += 1
             elif segment == "female":
                 question_gender_total[qid]["female"] += 1
+            # Trend bucketing: mirror compute_ranking's clamp + tz handling (L164-167)
+            ts = item.get("ts")
+            if vote_start is not None and ts is not None:
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                bucket = max(0, min(int((ts - vote_start).total_seconds() / 3600),
+                                    total_hours - 1))
+                question_trend[qid][bucket] += 1
             ans = item.get("answer")
             ans_str = item.get("answer_str")
             if isinstance(ans, list):
@@ -588,7 +680,23 @@ def compute_paper_results(
             "total": question_total[qid],
             "total_male": question_gender_total[qid]["male"],
             "total_female": question_gender_total[qid]["female"],
+            "trend": [{"hrs": h, "cnt": c}
+                      for h, c in enumerate(question_trend[qid]) if c > 0],
         }
+
+    # history 给出时(append-only 批次历史,ComputeDAO.load_questionnaire_history)
+    # 用真实净增量覆盖近似 trend:diff "回答了题 qid" 的状态变化,撤答产生
+    # 负桶;key=qid,与上面 question_total 的计数口径一致(净和==total)。
+    if history is not None and vote_start is not None:
+        hist_trends = net_delta_trends(
+            history,
+            lambda it: [str(it["id"])] if it.get("id") else [],
+            lambda it: False,  # 问卷无本命概念,trend_first 恒空
+            vote_start,
+            total_hours,
+        )
+        for qid, data in result.items():
+            data["trend"] = trends_for(hist_trends, qid)["trend"]
     return result
 
 

@@ -7,7 +7,7 @@ arbitrary labels (not just male/female), while still projecting the legacy
 male_vote_count / female_vote_count fields for existing consumers.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from src.apps.result.compute import (
     build_segment_map,
@@ -100,3 +100,50 @@ def test_paper_results_gender_crosstab():
     assert q["total_male"] == 1 and q["total_female"] == 1
     cat = {c["aid"]: c for c in q["answers_cat"]}
     assert cat["1101101"]["male_votes"] == 1 and cat["1101101"]["female_votes"] == 0
+
+
+# ── Questionnaire Trend (Task 2) ──────────────────────────────────────────
+
+
+def _item(qid, ts_hours):
+    """Create a questionnaire item with a timestamp offset from VS."""
+    return {
+        "id": qid,
+        "answer": ["1101101"],
+        "answer_str": None,
+        "ts": VS.replace(hour=0) + timedelta(hours=ts_hours),
+    }
+
+
+def test_paper_trend_buckets_by_row_hour():
+    """Trend should bucket votes by hour offset from vote_start."""
+    votes = [
+        ("v1", [_item("11011", 0)]),
+        ("v2", [_item("11011", 2)]),
+        ("v3", [_item("11011", 2)]),
+    ]
+    res = compute_paper_results(votes, {}, vote_start=VS, total_hours=720)
+    assert res["11011"]["trend"] == [{"hrs": 0, "cnt": 1}, {"hrs": 2, "cnt": 2}]
+
+
+def test_paper_trend_clamps_out_of_window():
+    """Timestamps before vote_start clamp to 0; after window clamp to total_hours-1."""
+    votes = [
+        ("v1", [_item("11011", -5)]),
+        ("v2", [_item("11011", 9999)]),
+    ]
+    res = compute_paper_results(votes, {}, vote_start=VS, total_hours=10)
+    assert res["11011"]["trend"] == [{"hrs": 0, "cnt": 1}, {"hrs": 9, "cnt": 1}]
+
+
+def test_paper_trend_sum_equals_total():
+    """Sum of trend counts must equal question total."""
+    votes = [("v%d" % i, [_item("11011", i % 7)]) for i in range(20)]
+    res = compute_paper_results(votes, {}, vote_start=VS, total_hours=720)
+    assert sum(t["cnt"] for t in res["11011"]["trend"]) == res["11011"]["total"]
+
+
+def test_paper_trend_empty_without_vote_start():
+    """Trend should be empty when vote_start is None."""
+    votes = [("v1", [_item("11011", 0)])]
+    assert compute_paper_results(votes, {})["11011"]["trend"] == []

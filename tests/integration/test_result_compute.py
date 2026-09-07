@@ -155,3 +155,55 @@ async def test_compute_global_stats(session, fake_redis, settings):
     # user-1 在 paper_answer 里选了 opt_male("1101101"),gender_question_code
     # 配置("11011")与 QuestionDef.code 对应,build_segment_map 判出 male。
     assert stats["num_male"] == 1
+
+
+@pytest.mark.asyncio
+async def test_trend_is_net_delta_with_edit_history(session, fake_redis, settings):
+    """B-050-后补2 Step 2:trend 来自 append-only 全历史的净增量。
+
+    v-edit 在 1/2 投 id1+id2,1/5 改票只留 id1(撤掉 id2);v-keep 在 1/8
+    投 id2。id2 应出现 +1(1/2)、-1(1/5)、+1(1/8) 三个桶,负桶实证改票
+    可见;且每个实体全桶净和 == 终榜 vote_count(核心不变量)。
+    """
+    await seed_voteables_from_snapshot(session, "character", 2026)
+    wl = await load_whitelist_db(session, "character", 2026)
+    id1, id2 = sorted(wl.ids)[0], sorted(wl.ids)[1]
+    session.add_all([
+        RawCharacterSubmit(vote_id="v-edit", attempt=1,
+                           created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+                           user_ip="",
+                           payload=[{"id": id1, "first": True, "reason": None},
+                                    {"id": id2, "first": False, "reason": None}]),
+        RawCharacterSubmit(vote_id="v-edit", attempt=2,
+                           created_at=datetime(2026, 1, 5, tzinfo=timezone.utc),
+                           user_ip="",
+                           payload=[{"id": id1, "first": True, "reason": None}]),
+        RawCharacterSubmit(vote_id="v-keep", attempt=1,
+                           created_at=datetime(2026, 1, 8, tzinfo=timezone.utc),
+                           user_ip="",
+                           payload=[{"id": id2, "first": True, "reason": None}]),
+    ])
+    await session.commit()
+
+    dao = ComputeDAO(session)
+    svc = ComputeService(dao, fake_redis, settings)
+    assert (await svc.compute_all(2026))["ok"] is True
+
+    result_dao = ResultDAO(fake_redis, settings)
+    ranking, _ = await result_dao.get_ranking("character", [], 2026)
+    by_name = {e["name"]: e for e in ranking}
+    e1 = by_name[wl.name_of(id1)]
+    e2 = by_name[wl.name_of(id2)]
+
+    # 1/2、1/5、1/8 相对 vote_start=1/1 的小时偏移。
+    h = lambda day: (day - 1) * 24  # noqa: E731
+    assert e2["trend"] == [
+        {"hrs": h(2), "cnt": 1}, {"hrs": h(5), "cnt": -1}, {"hrs": h(8), "cnt": 1},
+    ]
+    assert e1["trend"] == [{"hrs": h(2), "cnt": 1}]
+    # trend_first:id2 的本命只来自 v-keep(1/8);v-edit 的本命一直是 id1。
+    assert e2["trend_first"] == [{"hrs": h(8), "cnt": 1}]
+    assert e1["trend_first"] == [{"hrs": h(2), "cnt": 1}]
+    # 核心不变量:净增量和 == 终榜票数。
+    for e in (e1, e2):
+        assert sum(t["cnt"] for t in e["trend"]) == e["rank"][0]["vote_count"]

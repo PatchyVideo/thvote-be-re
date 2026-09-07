@@ -1,8 +1,10 @@
 # Work 表 + 前后端统一设计
 
+> **状态**：部分实施 —— 后端主体（work 表+种子/voteable 重构/新 vote-objects 契约/admin works CRUD+WorksView/前端 Task 6-7）已于 2026-07-23 合入 main；原文所记 `GET /admin/voteables`(404) 缺口已由 [B-057①](../../BACKLOG.md) 于 2026-08-22 补齐，提交侧切 candidateId 已于 2026-08-14 完成端到端验证；仍开放：B-057②(import 按 name 匹配自动建 work)、B-057③(上届 final_ranking(year=11) 导入)、前端 Task 8/9(B-057④，见 [BACKLOG](../../BACKLOG.md))。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期：2026-07-21
 > 最后更新：2026-07-21
-> 状态：**后端主体已实现并合入 main，前端部分完成**（zfq_dev/zfq_dev_fe 2026-07-20~21 实现，2026-07-23 合入 main）。已落地：work 表+种子/voteable 重构/新 vote-objects 契约(groups+filterMeta)/admin works CRUD+WorksView/前端 Task 6-7；未完：§4.6 `GET /admin/voteables`(404)、Task 5 import work 匹配、前端 Task 8/9、提交侧切 candidateId（前置=B-050-后补6）。盘点见 `docs/CHANGELOG.md` 2026-07-23 条目与 `docs/BACKLOG.md` B-057
 > 前置 spec：2026-07-20-voteable-cross-year-stable-id-design.md
 
 ## 一、背景

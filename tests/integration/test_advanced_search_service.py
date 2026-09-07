@@ -216,3 +216,121 @@ async def test_concurrent_same_query_single_flight(
     assert infix1 == infix2
     assert 1 <= calls["n"] <= 2
     assert await fake_redis.exists(f"result:2026:{infix1}:global_stats")
+
+
+# ── B-060:扣费后置 / 等锁跟随锁存活 / per-IP 预算 ─────────────────────
+
+
+def _foreign_lock_key(infix: str) -> str:
+    return f"adv_lock:2026:{infix.rsplit(':', 1)[-1]}"
+
+
+def _install_counters(monkeypatch) -> dict:
+    """给 _check_miss_budget/_compute_filtered 包计数器(仍调用真实现)。"""
+    calls = {"budget": 0, "compute": 0}
+    real_budget = adv_service_module._check_miss_budget
+    real_compute = adv_service_module._compute_filtered
+
+    async def counting_budget(*args, **kwargs):
+        calls["budget"] += 1
+        return await real_budget(*args, **kwargs)
+
+    async def counting_compute(*args, **kwargs):
+        calls["compute"] += 1
+        return await real_compute(*args, **kwargs)
+
+    monkeypatch.setattr(adv_service_module, "_check_miss_budget", counting_budget)
+    monkeypatch.setattr(adv_service_module, "_compute_filtered", counting_compute)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_waiter_served_by_cache_consumes_no_budget(
+    seeded, fake_redis, settings, monkeypatch
+):
+    """等锁者最终从缓存拿到结果 → 不扣任何预算、不重算(B-060 扣费后置)。"""
+    name1, _ = seeded
+    q = f'chars: ["{name1}"]'
+    infix = await ensure_filtered_results(fake_redis, settings, 2026, q)
+    marker_key = f"result:2026:{infix}:global_stats"
+    marker_val = await fake_redis.get(marker_key)
+    await fake_redis.delete(marker_key)  # 重演"别人正在算、缓存尚未就绪"
+    await fake_redis.set(_foreign_lock_key(infix), "foreign-token", px=30_000)
+
+    calls = _install_counters(monkeypatch)
+
+    async def write_marker_later() -> None:
+        await asyncio.sleep(0.05)  # 在等锁者第一次轮询(0.2s)前写入
+        await fake_redis.set(marker_key, marker_val)
+
+    result_infix, _ = await asyncio.gather(
+        ensure_filtered_results(fake_redis, settings, 2026, q),
+        write_marker_later(),
+    )
+    assert result_infix == infix
+    assert calls == {"budget": 0, "compute": 0}
+
+
+@pytest.mark.asyncio
+async def test_waiter_computes_after_lock_vanishes(
+    seeded, fake_redis, settings, monkeypatch
+):
+    """持锁者消失且没写 marker → 等锁者提前退出等待,自己扣费计算
+    (不必等满等待上限;B-060 等锁跟随锁存活)。"""
+    name1, name2 = seeded
+    q = f'chars: ["{name2}"]'  # 未缓存过的查询
+    from src.apps.result.advanced_search.dsl import fingerprint, parse_query
+
+    fp = fingerprint(parse_query(q))
+    lock_key = f"adv_lock:2026:{fp}"
+    await fake_redis.set(lock_key, "foreign-token", px=30_000)
+
+    calls = _install_counters(monkeypatch)
+
+    async def release_lock_later() -> None:
+        await asyncio.sleep(0.05)
+        await fake_redis.delete(lock_key)  # 持锁者"死亡",没留下 marker
+
+    import time
+
+    t0 = time.monotonic()
+    infix, _ = await asyncio.gather(
+        ensure_filtered_results(fake_redis, settings, 2026, q),
+        release_lock_later(),
+    )
+    elapsed = time.monotonic() - t0
+    assert calls == {"budget": 1, "compute": 1}
+    assert await fake_redis.exists(f"result:2026:{infix}:global_stats")
+    # 提前退出:远小于旧实现"等满 5s 再兜底"的耗时(锁 0.05s 就没了,
+    # 首次轮询 0.2s 即应发现并转入计算;给计算本身留 ~2s 余量)
+    assert elapsed < 3.0, f"waiter did not exit early: {elapsed:.2f}s"
+
+
+@pytest.mark.asyncio
+async def test_per_ip_budget_isolated(seeded, fake_redis, settings, monkeypatch):
+    """per-IP 预算彼此隔离:A 打满不影响 B;未设 IP 时只受全局预算约束。"""
+    from src.common.middleware.client_ip import client_ip_var
+
+    monkeypatch.setattr(adv_service_module, "ADV_MISS_LIMIT_PER_IP_PER_MINUTE", 1)
+    name1, name2 = seeded
+
+    token = client_ip_var.set("198.51.100.1")
+    try:
+        await ensure_filtered_results(
+            fake_redis, settings, 2026, f'chars: ["{name1}"]'
+        )  # A 的第 1 次 miss:成功
+        with pytest.raises(ValidationError) as exc_info:
+            await ensure_filtered_results(
+                fake_redis, settings, 2026, f'chars: ["{name2}"]'
+            )  # A 的第 2 次 miss:per-IP 超限
+        assert exc_info.value.message == "ADVANCED_SEARCH_BUSY"
+    finally:
+        client_ip_var.reset(token)
+
+    token = client_ip_var.set("198.51.100.2")
+    try:
+        await ensure_filtered_results(
+            fake_redis, settings, 2026, f'chars_first="{name1}"'
+        )  # B 不受 A 影响:成功
+    finally:
+        client_ip_var.reset(token)

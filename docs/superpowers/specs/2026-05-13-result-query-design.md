@@ -1,5 +1,8 @@
 # Result 查询模块设计规格
 
+> **状态**：已实施（部分被取代） —— 本设计于 2026-05-13（commit `0c85658`）落地，是当时把旧 Rust `result-query` 搬到 Python 的 name-based 实现（见 [2026-07-18-result-recount-id-based-design.md](./2026-07-18-result-recount-id-based-design.md) §一背景引用）；但计票核心已被 B-050 id-based 重写取代（v1 已于 2026-07-18 落地，见 [CHANGELOG](../../CHANGELOG.md)），name-based 架构改为纯 id 架构。继任设计：[2026-07-18-result-recount-id-based-design.md](./2026-07-18-result-recount-id-based-design.md)。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期：2026-05-13
 > 最后更新：2026-05-13
 >

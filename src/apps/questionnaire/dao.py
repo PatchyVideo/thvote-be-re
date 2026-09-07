@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db_model.questionnaire_def import (
@@ -24,6 +24,15 @@ def _row_to_dict(obj) -> dict:
             v = v.isoformat()
         out[c.key] = v
     return out
+
+
+def latest_batch(rows: list) -> list:
+    """append-only 批次选择:取最大 attempt 批;全 NULL(0017 前存量)整组返回。"""
+    attempts = [r.attempt for r in rows if r.attempt is not None]
+    if not attempts:
+        return list(rows)
+    top = max(attempts)
+    return [r for r in rows if r.attempt == top]
 
 
 class QuestionnaireDAO:
@@ -70,15 +79,26 @@ class QuestionnaireDAO:
     async def replace_answers(
         self, vote_id: str, vote_year: int, rows: list[dict]
     ) -> int:
-        """Upsert structured answers by replacing this user's rows for the year."""
-        await self.session.execute(
-            delete(PaperAnswer).where(
+        """整卷替换(调用方语义):底层为 append-only 批次存储(B-050-后补2)。
+
+        不再删除旧行——新提交的所有行归入一个新批次
+        (attempt = 该 vote_id/vote_year 已有的最大 attempt + 1;首批为 1),
+        历史批次保留供审计/趋势分析,读方(get_answers/load_questionnaire_votes)
+        经 latest_batch 只取最新批。
+        """
+        prev = (await self.session.execute(
+            select(func.max(PaperAnswer.attempt)).where(
                 PaperAnswer.vote_id == vote_id,
                 PaperAnswer.vote_year == vote_year,
             )
-        )
+        )).scalar_one_or_none() or 0
+        attempt = prev + 1
         for r in rows:
-            self.session.add(PaperAnswer(vote_id=vote_id, vote_year=vote_year, **r))
+            self.session.add(
+                PaperAnswer(
+                    vote_id=vote_id, vote_year=vote_year, attempt=attempt, **r
+                )
+            )
         await self.session.commit()
         return len(rows)
 
@@ -89,7 +109,7 @@ class QuestionnaireDAO:
                 PaperAnswer.vote_year == vote_year,
             )
         )).scalars().all()
-        return [_row_to_dict(r) for r in rows]
+        return [_row_to_dict(r) for r in latest_batch(rows)]
 
     async def _delete_all_structure(self) -> None:
         """Delete all questionnaires and their descendants (year-less structure)."""

@@ -1,7 +1,9 @@
 # 高级搜索/筛选 DSL 设计稿(B-050-后补5,兼 B-053 前置)
 
+> **状态**：已实施 —— B-050-后补5 已于 2026-08-14 完成并合入分支 `feat/advanced-search-dsl`（见 [BACKLOG-archive](../../BACKLOG-archive.md)、[CHANGELOG 2026-08-14](../../CHANGELOG.md)）；B-060 于 2026-08-22 补充限频/单飞加固（见 [BACKLOG](../../BACKLOG.md)）。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 日期:2026-08-14
-> 状态:设计定稿,待实施
 > 需求来源:`docs/VoileLabs-人气投票项目-需求文档-投票结果页面.md` §846-923(搜索与筛选组件)、§938(约束贯穿演进/问卷统计)
 > 前置勘察:[result-stats-audit-2026-08-14](../../migration/result-stats-audit-2026-08-14.md)(三方审计,P0 定级)、[result-recount-id-based-design](./2026-07-18-result-recount-id-based-design.md) §8.2(子集重算原语的关键发现)
 > 对应 legacy:`thvote-be/result-query` 的 pest DSL(贯穿全部查询接口)
@@ -171,7 +173,7 @@ miss 时一次性算好全部 section 写入(票已在内存,多算几个 sectio
 
 ### 7.4 防击穿(单飞)
 
-per `(year, 指纹)` 的 Redis 锁(SET NX,TTL 30s,复用 `compute_lock` 模式):拿到锁者计算;拿不到者短轮询等缓存出现(如 200ms × 25 次),超时兜底自己算(重复计算无害,仅浪费几百毫秒)。
+per `(year, 指纹)` 的 Redis 锁(SET NX,TTL 30s,token 化 compare-and-delete):拿到锁者计算;拿不到者**跟随锁存活轮询**(200ms 间隔,上限 60s;锁消失即提前接手,B-060 修订——原固定 5s 预算在真机实测重算 ~8s 面前会让等锁者集体转入重复计算),超时兜底自己算(重复计算幂等无害)。
 
 ### 7.5 护栏总表
 
@@ -179,7 +181,7 @@ per `(year, 指纹)` 的 Redis 锁(SET NX,TTL 30s,复用 `compute_lock` 模式):
 2. 缓存:版本翻转 + TTL 双重失效;归一化提升命中率;
 3. 单飞锁防击穿;
 4. 求值与重算全内存,DB 压力仅"载票"的几条现有全表 SELECT;
-5. **全局 miss 重算限频**(终审修复波已实现,见 `service.py::_check_miss_budget`):GraphQL 入口本身无限流,且 `q<code>=<opt>` 原子的 code 不经白名单校验(B-054 前刻意保留)、指纹空间无界,按指纹隔离的单飞锁对轮换指纹攻击无效——在 `ensure_filtered_results` 进入 miss 计算分支之后、拿单飞锁之前,用 Redis `INCR`+`EXPIRE` 固定窗口对 `adv_miss_budget:{year}` 计数,超过 `ADV_MISS_LIMIT_PER_MINUTE`(=30,依据:单次重算实测约 0.3s,30 次/分钟对应事件循环占用上限约 15%)抛 `ADVANCED_SEARCH_BUSY`;缓存命中路径不计数。**per-IP 细化为后续项**(依赖 GraphQL 层拿 client IP,见 BACKLOG)。
+5. **全局 miss 重算限频**(终审修复波已实现,见 `service.py::_check_miss_budget`):GraphQL 入口本身无限流,且 `q<code>=<opt>` 原子的 code 不经白名单校验(B-054 前刻意保留)、指纹空间无界,按指纹隔离的单飞锁对轮换指纹攻击无效——在 `ensure_filtered_results` 进入 miss 计算分支之后、拿单飞锁之前,用 Redis `INCR`+`EXPIRE` 固定窗口对 `adv_miss_budget:{year}` 计数,超过预算抛 `ADVANCED_SEARCH_BUSY`。**B-060(2026-08-22)升级为双层**:per-IP `ADV_MISS_LIMIT_PER_IP_PER_MINUTE`(=10,client IP 经 `ClientIPMiddleware` 以 ContextVar 注入,复用 B-044 可信代理解析)+ 全局 `ADV_MISS_LIMIT_PER_MINUTE`(=30)兜底;且扣费点后置——**只有真正执行重算的调用者扣预算**,缓存命中与等锁后从缓存拿到结果的路径不扣。
 
 ## 八、错误处理
 

@@ -123,9 +123,10 @@ async def parse_url(url: str) -> tuple[str | None, Any | None]:
         return tieba_match.group(1), tiebadata
 
     # ── THBWiki ───────────────────────────────────────────────────────
-    if thb_short := re.search(r"thwiki\.cc/(-/\w+)", url, re.IGNORECASE):
+    # 官方域名 thwiki.cc 与其镜像域名 thbwiki.cc 都接受(thb?wiki)
+    if thb_short := re.search(r"thb?wiki\.cc/(-/\w+)", url, re.IGNORECASE):
         return thb_short.group(1), thbdata
-    if thb_match := re.search(r"thwiki\.cc/([-%/.\w]+)", url, re.IGNORECASE):
+    if thb_match := re.search(r"thb?wiki\.cc/([-%/.\w]+)", url, re.IGNORECASE):
         return thb_match.group(1), thbdata
 
     # ── PatchyVideo ───────────────────────────────────────────────────

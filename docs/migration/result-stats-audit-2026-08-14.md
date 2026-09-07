@@ -12,6 +12,8 @@
 - legacy 独有的**高级查询 DSL**(交叉分析过滤)Python 未实现——而前端 `AdvancedSearch` 组件**正在生成**这个 DSL 参数,是当前最实质的功能缺口。
 - 其余桩点(covote 的相关性/互信息、往届对比、问卷趋势、同人本统计)多与前端"维护中占位页"或"数据未录入"配对,不是单方遗漏。
 
+**勘正(2026-08-29,B-050-后补2 Step 1+2 完成后回看)**:本表当初把 legacy Rust 的 `trend` 标记为 ✅"真实现",实为对 legacy `result-query` 源码的误读——legacy 读的是外部 ETL 物化的 `votes` 单快照集合,`trend` 实质是"按最新提交时间分桶"的近似值,**没有**净增量能力(改票/减票在 legacy 里从未真正体现为负增量分桶);前端"改票会在趋势图上体现为减票"的直觉文案,legacy 从未实现过,不是本仓库迁移期间引入的退化。本仓库两步交付:Step 1(2026-08-29)先对齐 legacy 的近似口径接通 `queryQuestionnaireTrend`;Step 2(同日)把 `raw_*`/`paper_answer` 改造为 append-only 存储后,用真实净增量重写全部 `trend`/`trend_first`(角色/音乐/CP/问卷四类),**在这一点上已超越 legacy**。详见 CHANGELOG 2026-08-29 两条目、`src/apps/result/trend.py::net_delta_trends`。
+
 ## 二、三方对照表
 
 能力 → 前端是否在用 / Python 后端状态 / legacy 有无。状态:✅真实现 · 🟡数据受阻(代码通缺数据) · 🔴桩(硬编码/恒空/未实现)。
@@ -27,7 +29,7 @@
 | **完成率**(逐题) | Questionnaire 组件(✅) | ✅ `compute_completion_rates` 真算 | ✅ 动态字段扫描 |
 | **问卷结果**(选项计数+性别交叉) | Questionnaire 组件 / QuestionnaireInputDetail(✅) | 🟡 管道真算,数据受阻(线上问卷占位、code 未回填,B-054) | ✅ |
 | **往届对比** *Last1/2 | characterCompare/MusicCompare(✅ 有专门对比页) | 🔴 `-1` 哨兵,`compute_service` 给 compute 的 `historical` 恒传 `{}`;且 `final_ranking` 历史未导入(B-057③) | ✅ 读 `final_ranking_char/music` |
-| **问卷趋势** questionnaireTrend | QuestionnaireDetail(✅ 拿 q11011 一条线) | 🔴 恒返回空 `Trends`(无问卷时间维度) | ✅ |
+| **问卷趋势** questionnaireTrend | QuestionnaireDetail(✅ 拿 q11011 一条线) | ✅ `net_delta_trends` 真实净增量(2026-08-29,B-050-后补2 Step 1+2) | 🟡 近似(见"一、结论"勘正) |
 | **同人本统计** numDoujin | QuestionnaireDetail 的 globalStats 取 numDoujin(✅ 读) | 🔴 恒 0 硬编码 | ✅ global_stats 含 |
 | **covote 关联**(cs 卡方/mi 互信息/cv 共投率) | characterConnect/MusicConnect(🔴 占位"维护中",入口已注释) | 🔴 `cs`/`mi` 恒 0,`cv` 真算;有 GraphQL `covote`+REST | ✅ 完整 |
 | **高级搜索 DSL**(交叉分析过滤) | AdvancedSearch 组件(✅ **生成 query 参数**传各 detail 页) | ✅ lark DSL 解析 + 子集重算真算(2026-08-14 实现,待部署;10 个 query* 端点接通,取代 `ADVANCED_SEARCH_NOT_IMPLEMENTED`) | ✅ pest DSL,贯穿所有接口 |
@@ -39,7 +41,7 @@
 
 1. **高级搜索 DSL**(最大):前端 `AdvancedSearch` 把用户选择(角色/音乐/问卷题答案 + AND 组合)编码成 `query` 参数,经 `decodeAdditionalConstraint.ts` 传给 characterDetail/MusicDetail/CoupleDetail/QuestionnaireDetail。~~后端收到非空 query **直接抛 `ADVANCED_SEARCH_NOT_IMPLEMENTED`**——即用户一旦用高级搜索,目标页报错。~~ **✅ 已解决(2026-08-14,分支 `feat/advanced-search-dsl`,待部署)**:后端已实现"按投票子集重算榜"(lark DSL 解析 + `subset.py` 圈子集 + 复用 compute 纯函数整包重算,非后置过滤),对应 BACKLOG **B-050-后补5**(已归档)/ **B-053**(共用同一子集原语,尚未做)。
 2. **往届对比**:characterCompare/MusicCompare 是专门的对比页,后端 `*Last1/2` 全是 `-1` 哨兵。前端用 `<0 ? '-'` 优雅降级(不报错,但对比列全空)。需 ① `compute_service` 传非空 `historical` ② 导入 `final_ranking` 历史(B-050-后补3 + B-057③)。
-3. **问卷趋势**:QuestionnaireDetail 拿 questionnaireTrend 画一条线,后端恒空 → 图表空。需问卷 append-only 时间维度(B-050-后补2 同源)。
+3. **问卷趋势**:QuestionnaireDetail 拿 questionnaireTrend 画一条线,后端恒空 → 图表空。需问卷 append-only 时间维度(B-050-后补2 同源)。**✅ 已解决(Step 1+2,2026-08-29)**:Step 1 先接通近似分桶,Step 2 落地 append-only 存储后改为真实净增量,详见"一、结论"勘正段与 CHANGELOG。
 4. **numDoujin**:QuestionnaireDetail 的 globalStats 读 numDoujin,后端恒 0。同人本统计未做。
 
 ### B. 双方都停在占位 —— 要做才需两头补
@@ -114,13 +116,13 @@
 | 详情页问卷回答 §307(旭日/雷达/地图/男女相对比例) | 🟡 管道真算,受 B-054 占位阻塞 | 数据前置 |
 | 组合主动率 §583 | ✅ 真算 | 已满足 |
 | 投票理由 §334 | ✅ 内嵌 reasons+REST | 已满足 |
-| 问卷结果页 §702(全局/完成率/演进线) | ✅ 全局·完成率真算;🔴 问卷演进线恒空 | P1(演进线) |
+| 问卷结果页 §702(全局/完成率/演进线) | ✅ 全局·完成率真算;✅ 问卷演进线已通(2026-08-29,净增量,B-050-后补2) | 已完成 |
 | 作品提名 §657 | 前端硬编码;需求 §700 自标 TODO"应改后端 API" | 低,组委会手动可接受 |
 
 ### 据需求订正后的优先级
 
 1. **P0 高级搜索/筛选 DSL** —— 需求硬核心、覆盖最广、~~后端全桩~~ **✅ 已实现(2026-08-14,分支 `feat/advanced-search-dsl`,待部署)**;"同投率"列也在其内。设计量最大(子集重算 + 与问卷分段共用 `vote_id→{题:[选项]}` 索引),已出设计稿并落地。
 2. **P1 上届对比** —— 导入历届 `final_ranking`(B-057③)+ 接通 `historical`(B-050-后补3)。
-3. **P1 问卷演进线** —— 后端恒空(B-050-后补2,需 raw_* append-only)。
+3. **P1 问卷演进线** —— ✅ **已完成(2026-08-29,B-050-后补2 两步交付)**:append-only 落地,净增量真实演进线。
 4. **数据前置 B-054** —— 问卷回答分布整块依赖真实问卷录入。
 5. **划掉/最低**:covote `cs`/`mi`(需求无此页);作品提名后端化(需求自标 TODO)。

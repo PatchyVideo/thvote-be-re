@@ -230,9 +230,11 @@ def generate_dataset(
             })
 
         if rng.random() < P_PAPER:
-            # paper_answer 有 UNIQUE(vote_id, vote_year, questionnaire_id,
-            # group_id):每票每题组一行,组内挑一道题作答(有性别题恒选它,
-            # 保证分段轴数据不被随机挑题稀释)。
+            # paper_answer 是 append-only 批次存储(0017):每票每题组一行,
+            # 组内挑一道题作答(有性别题恒选它,保证分段轴数据不被随机挑题
+            # 稀释)。mock 生成器只模拟"首次提交",故这里所有行归入同一
+            # 批次 attempt=1;真实改票场景由 questionnaire.replace_answers
+            # 追加 attempt=2、3…新批次,读方经 latest_batch 只取最新批。
             groups: dict[tuple[int, int], list[QuestionSpec]] = {}
             for q in questions:
                 if q.option_ids:
@@ -266,6 +268,7 @@ def generate_dataset(
                 ds.paper_rows.append({
                     "vote_id": vid,
                     "vote_year": vote_year,
+                    "attempt": 1,
                     "questionnaire_id": q.questionnaire_id,
                     "group_id": q.group_id,
                     "active_question_id": q.question_id,

@@ -1,6 +1,8 @@
 # Result 前端契约层 + 问卷语义 code + 分段统计 —— 设计稿
 
-> 状态：**设计已定稿,可进入 writing-plans**
+> **状态**：已实施 —— B-052 已于 2026-07-19 解决并合入 main（见 [BACKLOG-archive](../../BACKLOG-archive.md)、[CHANGELOG 2026-07-19](../../CHANGELOG.md)），12 个 `query*` 字段已落地于 `src/api/graphql/resolvers/result_compat.py`。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 日期：2026-07-19 · 分支 `feat/result-graphql-compat` · 承接 B-050 v1（记票重写已合入 main）
 
 ---

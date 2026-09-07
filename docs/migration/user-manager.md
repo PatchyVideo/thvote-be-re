@@ -1,7 +1,7 @@
 # 用户管理模块迁移文档
 
 > 创建日期：2026-04-15
-> 最后更新：2026-05-12（2026-05-12 核查：阶段 1-6 全部 checkbox 与实际代码一致，内容准确；仅更新日期）
+> 最后更新：2026-09-06（§一 数据模型按 `user` + `user_identity` 归一化重写;其余章节为 2026-05-12 核查状态）
 > 基准：thvote-be/user-manager (Rust/Actix-web + MongoDB)
 > 目标：thvote-be-re/src/apps/user (Python/FastAPI + PostgreSQL)
 
@@ -9,30 +9,45 @@
 
 ## 一、数据模型对比
 
-### 1.1 User 表字段对比
+> **2026-09-06 重写**:用户表已归一化为 `user`(账号)+ `user_identity`(认证来源),
+> 设计见 [user-identity-model-design](../superpowers/specs/2026-09-06-user-identity-model-design.md),
+> 迁移 `0018`。下面的映射以新结构为准;2026-04 至 2026-09 之间的扁平表(邮箱/手机/SSO 各占一列)已不存在。
 
-| 字段 | Rust (MongoDB Voter) | Python (SQLAlchemy User) | 状态 |
-|------|---------------------|--------------------------|------|
-| `_id` / `id` | ObjectId (自动) | String (UUID4) | 已有，类型不同 |
-| `phone` / `phone_number` | `Option<String>` | `String, nullable` | 已有 |
-| `phone_verified` | `bool` (默认 false) | -- | **缺失** |
-| `email` | `Option<String>` | `String, nullable` | 已有 |
-| `email_verified` | `bool` (默认 false) | -- | **缺失** |
-| `password_hashed` | `Option<String>` | `String, nullable` | 已有 |
-| `salt` / `legacy_salt` | `Option<String>` | `String, nullable` | 已有 |
-| `created_at` / `register_date` | `DateTime` | `DateTime` | 已有 |
-| `signup_ip` / `register_ip_address` | `Option<String>` | `String` | 已有 |
-| `nickname` | `Option<String>` | -- | **缺失** |
-| `pfp` | `Option<String>` | -- | **缺失** |
-| `qq_openid` | `Option<String>` | -- | 暂缓 (Rust 中也是 WIP) |
-| `thbwiki_uid` | `Option<String>` | -- | 暂缓 (Rust 中也是 WIP) |
-| `removed` | `Option<bool>` | -- | **缺失** |
+### 1.1 Rust Voter → Python 映射
 
-**需新增字段:** `nickname`, `phone_verified`, `email_verified`, `pfp`, `removed`
+| Rust (MongoDB Voter) | Python | 说明 |
+|------|------|------|
+| `_id` | `user.id`(UUID4 字符串) | 类型不同 |
+| `phone` / `phone_verified` | `user_identity(provider='phone').subject / .verified` | |
+| `email` / `email_verified` | `user_identity(provider='email').subject / .verified` | subject 统一小写 |
+| `qq_openid` | `user_identity(provider='qq').subject` | |
+| `thbwiki_uid` | `user_identity(provider='thbwiki').subject` | |
+| `password_hashed` | `user.password_hash` | 只存 Argon2 |
+| `salt` | **删除** | 无旧用户导入,bcrypt+salt 路径已移除 |
+| `created_at` | `user.register_date` | |
+| `signup_ip` | `user.register_ip_address` | 另有每身份 `created_ip` |
+| `nickname` / `pfp` | `user.nickname` / `user.pfp` | |
+| `removed` | `user.removed` | 用户自助注销同时删光身份行;管理端封禁保留身份行 |
+| — | `user.register_device_id` | 新增(B-044) |
+| — | `user_identity.created_at / created_ip / created_device_id / last_login_at` | 新增,反刷取证 |
 
-### 1.2 活动日志表 (缺失，需新建)
+约束:`user_identity` 上 `(provider, subject)` 与 `(user_id, provider)` 各一条完整唯一约束,`provider` 有 CHECK。
+Rust 时代"至少一个标识"的规则不再由数据库表达(现无解绑端点,不会出现零身份的活跃账号)。
 
-Rust 在 MongoDB `thvote_users.voter_logs` 中记录以下 9 类事件：
+### 1.2 行为一致性
+
+| 场景 | Rust | Python(现) |
+|---|---|---|
+| 验证码登录,标识不存在 | 建 Voter | 建 `user` + 一条 verified 身份 |
+| 改绑邮箱/手机 | 覆盖列 | 删旧身份行、插新行(带本次请求的 IP/设备) |
+| 注销 | 置 removed,清邮箱/手机 | 置 removed,删全部身份行,清密码 |
+| 投票 token 资格 | `phone_verified \|\| email_verified` | 任一 verified 身份且 provider ∈ `VOTE_ELIGIBLE_PROVIDERS`(默认 email+phone) |
+| 登录时合并 SSO 会话撞他人 | — | 记 warning 跳过,不阻断登录 |
+| 被封禁标识再登录 | — | `USER_REMOVED` 403 |
+
+### 1.3 活动日志表
+
+Rust 在 MongoDB `thvote_users.voter_logs` 中记录以下 9 类事件,Python 侧对应 `activity_log` 表(已实现):
 
 | 事件类型 | 说明 | 附带字段 |
 |---------|------|---------|

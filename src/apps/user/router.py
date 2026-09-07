@@ -499,7 +499,7 @@ async def _sso_bind(
     activity_dao = ActivityLogDAO(get_session_maker())
     svc = UserService(user_dao=user_dao, activity_dao=activity_dao)
     try:
-        voter_fe = await svc.bind_sso(req.user_token, sso_data)
+        voter_fe = await svc.bind_sso(req.user_token, sso_data, req.meta)
     except AppException as exc:
         _raise_http(exc)
     return voter_fe

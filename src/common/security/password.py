@@ -1,8 +1,12 @@
-"""Password hashing and legacy password verification helpers."""
+"""Password hashing (Argon2 only).
+
+The bcrypt+salt path for accounts imported from the legacy Mongo store was
+removed on 2026-09-06: the new deployment starts from an empty user table,
+so no such hash can exist (identity-model spec §6).
+"""
 
 from dataclasses import dataclass
 
-import bcrypt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 
@@ -24,50 +28,14 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, password_hashed: str) -> PasswordVerificationResult:
-    """Verify an Argon2 password hash."""
+    """Verify an Argon2 password hash; flags a rehash when parameters changed."""
     try:
         valid = _PASSWORD_HASHER.verify(password_hashed, password)
     except (InvalidHashError, VerifyMismatchError):
         return PasswordVerificationResult(valid=False)
+    needs_rehash = _PASSWORD_HASHER.check_needs_rehash(password_hashed)
     return PasswordVerificationResult(
         valid=bool(valid),
-        needs_rehash=_PASSWORD_HASHER.check_needs_rehash(password_hashed),
-        upgraded_hash=(
-            hash_password(password)
-            if _PASSWORD_HASHER.check_needs_rehash(password_hashed)
-            else None
-        ),
+        needs_rehash=needs_rehash,
+        upgraded_hash=hash_password(password) if needs_rehash else None,
     )
-
-
-def verify_legacy_password(
-    password: str,
-    password_hashed: str,
-    legacy_salt: str,
-) -> PasswordVerificationResult:
-    """Verify a legacy bcrypt(password + salt) hash and prepare Argon2 upgrade."""
-    legacy_plain = f"{password}{legacy_salt}".encode("utf-8")
-    legacy_hash = password_hashed.encode("utf-8")
-    valid = bcrypt.checkpw(legacy_plain, legacy_hash)
-    if not valid:
-        return PasswordVerificationResult(valid=False)
-    return PasswordVerificationResult(
-        valid=True,
-        needs_rehash=True,
-        upgraded_hash=hash_password(password),
-    )
-
-
-def verify_any_password(
-    password: str,
-    password_hashed: str,
-    legacy_salt: str | None = None,
-) -> PasswordVerificationResult:
-    """Verify either an Argon2 hash or a legacy bcrypt+salt hash."""
-    if legacy_salt:
-        return verify_legacy_password(
-            password=password,
-            password_hashed=password_hashed,
-            legacy_salt=legacy_salt,
-        )
-    return verify_password(password=password, password_hashed=password_hashed)

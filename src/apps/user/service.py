@@ -3,7 +3,8 @@
 Responsibilities:
 - Decode session tokens for mutation endpoints.
 - Drive verification-code services (email Redis-backed; SMS via PNVS).
-- Read/write the ``user`` table through ``UserDAO``.
+- Read/write accounts through ``UserDAO`` and identities through
+  ``IdentityService`` (the only place that touches ``user_identity``).
 - Audit every mutation through ``ActivityLogDAO`` on a best-effort
   basis (audit failures never abort the primary request).
 - Sign session and (when eligible) vote tokens at login time.
@@ -17,7 +18,9 @@ import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from src.apps.user.dao import ActivityLogDAO, UserDAO
+from src.apps.user.dao import ActivityLogDAO, UserDAO, UserIdentityDAO
+from src.apps.user.identity import IdentityProvider, vote_eligible_providers
+from src.apps.user.identity_service import IdentityService
 from src.apps.user.schemas import (
     LoginEmailPasswordRequest,
     LoginEmailRequest,
@@ -33,7 +36,6 @@ from src.apps.user.schemas import (
     UpdatePasswordRequest,
     UpdatePhoneRequest,
     VoterFE,
-    generate_user_id,
     voter_fe_from_user,
 )
 from src.apps.user.utils.security import AuthProvider
@@ -59,6 +61,13 @@ logger = logging.getLogger(__name__)
 
 _audit_log_failures: int = 0
 
+# Redis LoginSession keys (sso_session.py) → provider.  The key names are
+# the wire format the OAuth callbacks write; keep them stable.
+_SSO_SESSION_KEYS: dict[str, IdentityProvider] = {
+    "thbwiki_uid": IdentityProvider.THBWIKI,
+    "qq_openid": IdentityProvider.QQ,
+}
+
 
 def get_audit_log_failures() -> int:
     """Return the count of ActivityLog write failures since process start."""
@@ -81,6 +90,14 @@ class UserService:
     auth: AuthProvider = field(default_factory=AuthProvider)
     redis: object = field(default=None)
     settings: object = field(default=None)
+    identities: IdentityService | None = None
+
+    def __post_init__(self) -> None:
+        if self.identities is None:
+            self.identities = IdentityService(
+                user_dao=self.user_dao,
+                identity_dao=UserIdentityDAO(self.user_dao.session),
+            )
 
     # ─── verification-code endpoints ──────────────────────────────────
     #
@@ -141,81 +158,80 @@ class UserService:
     async def login_with_email_password(
         self, request: LoginEmailPasswordRequest
     ) -> LoginResponse:
-        user = await self.user_dao.get_by_email(request.email)
-        if user is None:
+        user = await self.identities.resolve(IdentityProvider.EMAIL, request.email)
+        if user is None or not user.password_hash:
             raise ValidationError("INCORRECT_PASSWORD", details=400)
 
-        result = self.auth.verify_any_password(
-            password=request.password,
-            password_hashed=user.password_hash or "",
-            legacy_salt=user.legacy_salt,
-        )
+        result = self.auth.verify_password(request.password, user.password_hash)
         if not result.valid:
             raise ValidationError("INCORRECT_PASSWORD", details=400)
-
         if result.needs_rehash and result.upgraded_hash:
             user.password_hash = result.upgraded_hash
-            user.legacy_salt = None
-            await self.user_dao.save(user)
 
+        await self.identities.touch_login(user, IdentityProvider.EMAIL)
         await self._safe_log(
             event_type="voter_login",
             user_id=user.id,
-            target_email=user.email,
+            target_email=request.email,
             requester_ip=request.meta.user_ip,
             additional_fingerprint=request.meta.additional_fingureprint,
         )
-        await self._merge_sso_session(user, request.sid)
+        await self._merge_sso_session(user, request.sid, request.meta)
         return self._build_login_response(user)
 
     async def login_with_email_code(self, request: LoginEmailRequest) -> LoginResponse:
         await self.email_code_service.consume(request.email, request.verify_code)
-
-        user = await self.user_dao.get_by_email(request.email)
-        if user is None:
-            user = await self._register_via_email(
-                email=request.email,
-                nickname=request.nickname,
-                meta=request.meta,
-            )
-        else:
-            if not user.email_verified:
-                user.email_verified = True
-                await self.user_dao.save(user)
-            await self._safe_log(
-                event_type="voter_login",
-                user_id=user.id,
-                target_email=user.email,
-                requester_ip=request.meta.user_ip,
-                additional_fingerprint=request.meta.additional_fingureprint,
-            )
-
-        await self._merge_sso_session(user, request.sid)
-        return self._build_login_response(user)
+        return await self._login_by_identity(
+            IdentityProvider.EMAIL,
+            request.email,
+            nickname=request.nickname,
+            meta=request.meta,
+            sid=request.sid,
+        )
 
     async def login_with_phone_code(self, request: LoginPhoneRequest) -> LoginResponse:
         await self.sms_code_service.consume(request.phone, request.verify_code)
+        return await self._login_by_identity(
+            IdentityProvider.PHONE,
+            request.phone,
+            nickname=request.nickname,
+            meta=request.meta,
+            sid=request.sid,
+        )
 
-        user = await self.user_dao.get_by_phone(request.phone)
+    async def _login_by_identity(
+        self,
+        provider: IdentityProvider,
+        subject: str,
+        *,
+        nickname: str | None,
+        meta: Meta,
+        sid: str | None,
+    ) -> LoginResponse:
+        """Shared tail of every verified-identity login: find-or-register,
+        audit, merge a pending SSO session, sign tokens."""
+        user = await self.identities.resolve(provider, subject)
         if user is None:
-            user = await self._register_via_phone(
-                phone=request.phone,
-                nickname=request.nickname,
-                meta=request.meta,
+            user = await self.identities.register(provider, subject, nickname, meta)
+            await self._safe_log(
+                event_type="voter_creation",
+                user_id=user.id,
+                new_value=nickname,
+                requester_ip=meta.user_ip,
+                additional_fingerprint=meta.additional_fingureprint,
+                **_target_fields(provider, subject),
             )
         else:
-            if not user.phone_verified:
-                user.phone_verified = True
-                await self.user_dao.save(user)
+            await self.identities.touch_login(user, provider)
             await self._safe_log(
                 event_type="voter_login",
                 user_id=user.id,
-                target_phone=user.phone_number,
-                requester_ip=request.meta.user_ip,
-                additional_fingerprint=request.meta.additional_fingureprint,
+                requester_ip=meta.user_ip,
+                additional_fingerprint=meta.additional_fingureprint,
+                **_target_fields(provider, subject),
             )
 
-        await self._merge_sso_session(user, request.sid)
+        await self._merge_sso_session(user, sid, meta)
         return self._build_login_response(user)
 
     # ─── update endpoints ────────────────────────────────────────────
@@ -223,43 +239,35 @@ class UserService:
     async def update_email(self, request: UpdateEmailRequest) -> None:
         user = await self._authenticate(request.user_token)
         await self.email_code_service.consume(request.email, request.verify_code)
-
-        existing = await self.user_dao.get_by_email(request.email)
-        if existing is not None and existing.id != user.id:
-            raise ValidationError("USER_ALREADY_EXIST", details=409)
-
-        old_value = user.email
-        user.email = request.email
-        user.email_verified = True
-        await self.user_dao.save(user)
-        await self._safe_log(
-            event_type="update_email",
-            user_id=user.id,
-            old_value=old_value,
-            new_value=request.email,
-            requester_ip=request.meta.user_ip,
-            additional_fingerprint=request.meta.additional_fingureprint,
+        await self._rebind_contact(
+            user, IdentityProvider.EMAIL, request.email, request.meta, "update_email"
         )
 
     async def update_phone(self, request: UpdatePhoneRequest) -> None:
         user = await self._authenticate(request.user_token)
         await self.sms_code_service.consume(request.phone, request.verify_code)
+        await self._rebind_contact(
+            user, IdentityProvider.PHONE, request.phone, request.meta, "update_phone"
+        )
 
-        existing = await self.user_dao.get_by_phone(request.phone)
-        if existing is not None and existing.id != user.id:
-            raise ValidationError("USER_ALREADY_EXIST", details=409)
-
-        old_value = user.phone_number
-        user.phone_number = request.phone
-        user.phone_verified = True
-        await self.user_dao.save(user)
+    async def _rebind_contact(
+        self,
+        user: User,
+        provider: IdentityProvider,
+        subject: str,
+        meta: Meta,
+        event_type: str,
+    ) -> None:
+        bound = await self.identities.bind(
+            user, provider, subject, meta, conflict_code="USER_ALREADY_EXIST"
+        )
         await self._safe_log(
-            event_type="update_phone",
+            event_type=event_type,
             user_id=user.id,
-            old_value=old_value,
-            new_value=request.phone,
-            requester_ip=request.meta.user_ip,
-            additional_fingerprint=request.meta.additional_fingureprint,
+            old_value=bound.replaced_subject,
+            new_value=bound.identity.subject,
+            requester_ip=meta.user_ip,
+            additional_fingerprint=meta.additional_fingureprint,
         )
 
     async def update_nickname(self, request: UpdateNicknameRequest) -> None:
@@ -282,16 +290,13 @@ class UserService:
         if user.password_hash:
             if not request.old_password:
                 raise ValidationError("OLD_PASSWORD_REQUIRED", details=400)
-            verification = self.auth.verify_any_password(
-                password=request.old_password,
-                password_hashed=user.password_hash,
-                legacy_salt=user.legacy_salt,
+            verification = self.auth.verify_password(
+                request.old_password, user.password_hash
             )
             if not verification.valid:
                 raise ValidationError("INCORRECT_PASSWORD", details=400)
 
         user.password_hash = self.auth.hash_password(request.new_password)
-        user.legacy_salt = None
         await self.user_dao.save(user)
         await self._safe_log(
             event_type="update_password",
@@ -312,28 +317,19 @@ class UserService:
     async def remove_voter(self, request: RemoveVoterRequest) -> None:
         user = await self._authenticate(request.user_token)
 
-        if user.password_hash:
-            if request.old_password:
-                verification = self.auth.verify_any_password(
-                    password=request.old_password,
-                    password_hashed=user.password_hash,
-                    legacy_salt=user.legacy_salt,
-                )
-                if not verification.valid:
-                    raise ValidationError("INCORRECT_PASSWORD", details=400)
+        if user.password_hash and request.old_password:
+            verification = self.auth.verify_password(
+                request.old_password, user.password_hash
+            )
+            if not verification.valid:
+                raise ValidationError("INCORRECT_PASSWORD", details=400)
 
-        # Soft delete: clear every field that could ever re-identify or
-        # re-authenticate this account.  Keeping the hash around would
-        # leave a credential artefact in the DB long after the user
-        # exercised their right to delete (GDPR / 个保法 §47).
+        # Soft delete: drop every identity row and the credential so nothing
+        # can re-identify or re-authenticate this account (GDPR / 个保法 §47).
+        # The account row stays as a tombstone for vote-record linkage.
         user.removed = True
-        user.email = None
-        user.phone_number = None
-        user.email_verified = False
-        user.phone_verified = False
         user.password_hash = None
-        user.legacy_salt = None
-        await self.user_dao.save(user)
+        await self.identities.unbind_all(user)
         await self._safe_log(
             event_type="remove_voter",
             user_id=user.id,
@@ -341,51 +337,58 @@ class UserService:
             additional_fingerprint=request.meta.additional_fingureprint,
         )
 
-    # ─── registration helpers ────────────────────────────────────────
+    # ─── SSO binding ─────────────────────────────────────────────────
 
-    async def _register_via_email(
-        self, email: str, nickname: str | None, meta: Meta
-    ) -> User:
-        user = User(
-            id=generate_user_id(),
-            email=email,
-            email_verified=True,
-            nickname=nickname,
-            register_ip_address=meta.user_ip or "",
-            register_device_id=meta.additional_fingureprint or "",
-        )
-        created = await self.user_dao.create(user)
-        await self._safe_log(
-            event_type="voter_creation",
-            user_id=created.id,
-            target_email=email,
-            new_value=nickname,
-            requester_ip=meta.user_ip,
-            additional_fingerprint=meta.additional_fingureprint,
-        )
-        return created
+    async def _merge_sso_session(self, user: User, sid, meta: Meta) -> None:
+        """Attach identities from a pending Redis LoginSession (if any).
 
-    async def _register_via_phone(
-        self, phone: str, nickname: str | None, meta: Meta
-    ) -> User:
-        user = User(
-            id=generate_user_id(),
-            phone_number=phone,
-            phone_verified=True,
-            nickname=nickname,
-            register_ip_address=meta.user_ip or "",
-            register_device_id=meta.additional_fingureprint or "",
-        )
-        created = await self.user_dao.create(user)
-        await self._safe_log(
-            event_type="voter_creation",
-            user_id=created.id,
-            target_phone=phone,
-            new_value=nickname,
-            requester_ip=meta.user_ip,
-            additional_fingerprint=meta.additional_fingureprint,
-        )
-        return created
+        A conflict (openid already owned by someone else) is logged and
+        skipped rather than raised: the user has already passed
+        verification, the SSO attach is a courtesy (spec §5.3).
+        """
+        if not sid or not self.redis:
+            return
+        from .sso_session import consume_sso_session
+
+        data = await consume_sso_session(self.redis, sid)
+        if not data:
+            return
+        for key, provider in _SSO_SESSION_KEYS.items():
+            subject = data.get(key)
+            if not subject:
+                continue
+            try:
+                await self.identities.bind(
+                    user, provider, subject, meta, conflict_code="SSO_ID_ALREADY_BOUND"
+                )
+            except ValidationError as exc:
+                logger.warning(
+                    "SSO merge skipped for user_id=%s provider=%s: %s",
+                    user.id,
+                    provider.value,
+                    exc.message,
+                )
+
+    async def bind_sso(
+        self, user_token: str, sso_data: dict, meta: Meta | None = None
+    ) -> VoterFE:
+        """Bind an SSO identifier to an already-authenticated user.
+
+        Raises:
+            UnauthorizedError: if user_token is invalid
+            ValidationError(SSO_ID_ALREADY_BOUND, 409): if the SSO ID
+                belongs to another account
+        """
+        user = await self._require_session_token(user_token)
+        meta = meta or Meta()
+        for key, provider in _SSO_SESSION_KEYS.items():
+            subject = sso_data.get(key)
+            if not subject:
+                continue
+            await self.identities.bind(
+                user, provider, subject, meta, conflict_code="SSO_ID_ALREADY_BOUND"
+            )
+        return voter_fe_from_user(user)
 
     # ─── shared helpers ──────────────────────────────────────────────
 
@@ -410,7 +413,11 @@ class UserService:
         )
 
     def _maybe_sign_vote_token(self, user: User) -> str:
-        if not (user.email_verified or user.phone_verified):
+        eligible = vote_eligible_providers()
+        if not any(
+            identity.verified and identity.provider in eligible
+            for identity in user.identities
+        ):
             return ""
 
         settings = get_settings()
@@ -468,58 +475,11 @@ class UserService:
             raise UnauthorizedError("INVALID_SESSION_TOKEN", "User not found")
         return user
 
-    async def _merge_sso_session(self, user: User, sid) -> None:
-        """Read the Redis LoginSession and write SSO IDs to user if columns are NULL."""
-        if not sid or not self.redis:
-            return
-        from .sso_session import consume_sso_session
 
-        data = await consume_sso_session(self.redis, sid)
-        if not data:
-            return
-        changed = False
-        if data.get("thbwiki_uid") and user.thbwiki_uid is None:
-            user.thbwiki_uid = data["thbwiki_uid"]
-            changed = True
-        if data.get("qq_openid") and user.qq_openid is None:
-            user.qq_openid = data["qq_openid"]
-            changed = True
-        if changed:
-            await self.user_dao.save(user)
-
-    async def bind_sso(self, user_token: str, sso_data: dict) -> VoterFE:
-        """Bind an SSO identifier to an already-authenticated user.
-
-        Raises:
-            UnauthorizedError: if user_token is invalid
-            AppException(SSO_ID_ALREADY_BOUND, 409): if the SSO ID belongs
-                to another user
-        """
-        user = await self._require_session_token(user_token)
-
-        thbwiki_uid = sso_data.get("thbwiki_uid")
-        qq_openid = sso_data.get("qq_openid")
-
-        if thbwiki_uid:
-            existing = await self.user_dao.find_by_thbwiki_uid(thbwiki_uid)
-            if existing and existing.id != user.id:
-                raise AppException(
-                    "SSO_ID_ALREADY_BOUND",
-                    details=409,
-                )
-            if user.thbwiki_uid != thbwiki_uid:
-                user.thbwiki_uid = thbwiki_uid
-                await self.user_dao.save(user)
-
-        if qq_openid:
-            existing = await self.user_dao.find_by_qq_openid(qq_openid)
-            if existing and existing.id != user.id:
-                raise AppException(
-                    "SSO_ID_ALREADY_BOUND",
-                    details=409,
-                )
-            if user.qq_openid != qq_openid:
-                user.qq_openid = qq_openid
-                await self.user_dao.save(user)
-
-        return voter_fe_from_user(user)
+def _target_fields(provider: IdentityProvider, subject: str) -> dict[str, str]:
+    """ActivityLog target column for a contact identity (none for SSO)."""
+    if provider is IdentityProvider.EMAIL:
+        return {"target_email": subject}
+    if provider is IdentityProvider.PHONE:
+        return {"target_phone": subject}
+    return {}

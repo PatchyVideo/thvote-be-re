@@ -1,6 +1,7 @@
 # 管理后台 Vue 重写 + 安全监控 设计（B-049）
 
-> 状态：**设计稿，待评审**（2026-07-17）。
+> **状态**：部分实施 —— 原为待评审设计稿（2026-07-17），现已大部分落地：后端 Plan 1（监控 API + 处置端点）与前端 Plan 2 Phase 1/2（Vue3 全部 6 个旧工具迁移）均已实现（见 [BACKLOG](../../BACKLOG.md) B-049、[CHANGELOG](../../CHANGELOG.md) 2026-07-17/2026-07-18 条目），但旧面板 `/admin-ui-legacy` 待视觉验收后删除、部分无 UI 端点仍未补齐。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
 > 目标：把现有单文件 HTML 后台（`src/admin_ui/index.html`，1115 行，StaticFiles 挂 `/admin-ui`）重写为 Vue 3 后台，并加入投票期用的**安全监控**：流量概览、IP/设备聚类、可疑账号名单、可过滤投票浏览器、单账号钻取与处置。
 > 基调（用户明确）：**面向少数管理员自己看，尽量轻量、便于快速迭代**。
 > 数据基础：反刷票采集层已就绪（`raw_*.{user_ip, additional_fingreprint(设备), fill_duration_ms, attempt, client_env{ua,tz,screen,lang}}`、`user.{register_ip_address, register_device_id, register_date, SSO}`，见 B-044/045/046）。

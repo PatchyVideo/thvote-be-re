@@ -9,49 +9,6 @@ def _oid(hex_str: str = "507f1f77bcf86cd799439011") -> MagicMock:
     return m
 
 
-# ── voters ────────────────────────────────────────────────────────────────────
-
-def test_map_voter_full():
-    from src.apps.admin.sync.runner import map_voter
-
-    oid = _oid("507f1f77bcf86cd799439011")
-    doc = {
-        "_id": oid, "phone": "13800138000", "phone_verified": True,
-        "email": "v@example.com", "email_verified": True,
-        "password_hashed": "$2b$12$hash", "salt": None,
-        "created_at": datetime(2023, 6, 15, 12, 0, 0, tzinfo=timezone.utc),
-        "nickname": "Alice", "signup_ip": "1.2.3.4",
-        "qq_openid": "QQ1", "pfp": "https://img/1.jpg",
-        "thbwiki_uid": "42", "removed": None,
-    }
-    row = map_voter(doc)
-
-    assert row["id"] == "507f1f77bcf86cd799439011"
-    assert row["phone_number"] == "13800138000"
-    assert row["phone_verified"] is True
-    assert row["email"] == "v@example.com"
-    assert row["password_hash"] == "$2b$12$hash"
-    assert row["legacy_salt"] is None
-    assert row["register_ip_address"] == "1.2.3.4"
-    assert row["removed"] is False
-
-
-def test_map_voter_none_ip_and_removed():
-    from src.apps.admin.sync.runner import map_voter
-
-    doc = {
-        "_id": _oid(), "phone": None, "phone_verified": False,
-        "email": "x@x.com", "email_verified": False,
-        "password_hashed": None, "salt": None,
-        "created_at": datetime(2020, 1, 1, tzinfo=timezone.utc),
-        "nickname": None, "signup_ip": None, "removed": True,
-    }
-    row = map_voter(doc)
-
-    assert row["register_ip_address"] == ""
-    assert row["removed"] is True
-
-
 # ── raw_submit (generic) ──────────────────────────────────────────────────────
 
 def test_map_raw_submit():
