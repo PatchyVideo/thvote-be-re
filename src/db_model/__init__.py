@@ -31,6 +31,7 @@ from .raw_submit import (
 )
 from .sync_run_log import SyncRunLog
 from .user import User
+from .user_identity import UserIdentity
 from .voter_review import VoterReview  # noqa: F401  (registers table for create_all)
 
 __version__ = "1.0.0"
@@ -59,6 +60,7 @@ __all__ = [
     "RawWorkSubmit",
     "SyncRunLog",
     "User",
+    "UserIdentity",
     "VoteableCharacter",
     "VoteableMusic",
     "VoterReview",

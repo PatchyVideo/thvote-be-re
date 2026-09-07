@@ -33,7 +33,6 @@ from src.apps.admin.sync.runner import (
     map_final_ranking,
     map_raw_paper,
     map_raw_submit,
-    map_voter,
 )
 from src.common.config import get_settings
 from src.common.database import normalize_async_database_url
@@ -44,7 +43,6 @@ logger = logging.getLogger("import_mongo_dump")
 
 _COLLECTION_CONFIG: dict[str, tuple] = {
     # db_dir: collection_name → (mapper_fn, pg_table)
-    "thvote_users/voters": (map_voter, "user"),
     "submits_v1/raw_character": (
         lambda d: map_raw_submit(d, "characters"), "raw_character"),
     "submits_v1/raw_music": (

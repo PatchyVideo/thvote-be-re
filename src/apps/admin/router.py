@@ -127,13 +127,20 @@ async def finalize_ranking(
 
 
 def _user_to_item(u) -> dict:
+    """Flatten an account + its identity rows into the admin list shape.
+
+    The wire shape predates the user_identity table; email/phone and the
+    two verified flags are derived so admin-ui needs no change.
+    """
+    email = u.identity("email")
+    phone = u.identity("phone")
     return {
         "id": u.id,
         "nickname": u.nickname,
-        "email": u.email,
-        "phone": u.phone_number,
-        "email_verified": u.email_verified,
-        "phone_verified": u.phone_verified,
+        "email": email.subject if email is not None else None,
+        "phone": phone.subject if phone is not None else None,
+        "email_verified": bool(email is not None and email.verified),
+        "phone_verified": bool(phone is not None and phone.verified),
         "register_date": u.register_date.isoformat() if u.register_date else None,
         "removed": u.removed,
     }

@@ -5,6 +5,37 @@
 > 创建日期：2026-04-27
 > **2026-08-31 整理**：合并 9 组重复条目、按日期倒序重排；**2026-07-01 之前**的条目已迁至 [CHANGELOG-archive-2026H1.md](./CHANGELOG-archive-2026H1.md)。
 
+## [2026-09-06] 用户身份模型归一化：`user` + `user_identity`（migration 0018，破坏性，无兼容期）
+
+> 设计：[user-identity-model-design](./superpowers/specs/2026-09-06-user-identity-model-design.md)。系统尚未公开上线，用户库允许重建。
+
+### Changed
+- **`user` 表只留账号属性**（id / nickname / pfp / password_hash / removed / register_*）；邮箱、手机、QQ openid、THBWiki uid 各成一行进入新表 **`user_identity`**（`provider` / `subject` / `verified` / `verified_at` / `created_at` / `created_ip` / `created_device_id` / `last_login_at`）。唯一约束 `(provider, subject)` 与 `(user_id, provider)`，`provider` 有 CHECK。每条身份自带绑定时间、绑定 IP 与设备指纹，供反刷聚类使用。
+- **登录 / 改绑 / SSO 绑定 / 注销收敛为一条路径**：`src/apps/user/identity_service.py`（`resolve` / `register` / `bind` / `unbind_all`），provider 规则集中在 `src/apps/user/identity.py`。加一个认证来源只需加枚举值 + 放宽 CHECK。
+- **投票 token 资格可配置**：新配置项 `VOTE_ELIGIBLE_PROVIDERS`（JSON 数组，默认 `["email","phone"]`，与旧 Rust 规则一致）。是否收紧为仅手机号，上线前另行决定。
+- `remove_voter` 改为删除全部身份行 + 清密码；账号行留作 tombstone。
+- 管理端 `/admin/users` 的 `email` / `phone` / `email_verified` / `phone_verified` 改由身份行推导，**响应形状不变**；搜索改为 join 身份表。
+- `VoterFE` / GraphQL `LoginResult` **形状不变**：`thbwiki` = 是否绑定 THBWiki 身份。
+
+### Fixed
+- 注销后 QQ / THBWiki 身份不再被永久占用（此前 `remove_voter` 不清 SSO 列，且查找不过滤 `removed`，他人再绑报 `SSO_ID_ALREADY_BOUND`）。
+- 登录时合并 Redis SSO 会话撞到他人的 openid：此前 `IntegrityError` → 500 且 sid 已被消费；现记 warning 跳过，不阻断登录。
+- 被管理端封禁的邮箱/手机再登录：此前撞 partial unique index → 500；现返回 `USER_REMOVED`（403），且该标识不能被新账号注册。
+
+### Removed
+- legacy bcrypt+salt 密码路径（`legacy_salt` 列、`verify_legacy_password` / `verify_any_password`、`bcrypt` 依赖）。
+- 旧 Mongo `voters` 集合同步（`map_voter`、`COLLECTION_CONFIG` 项、`scripts/bson_to_sql.py` / `scripts/import_mongo_dump.py` 的 voters 注册）。其余集合同步不变。
+- `UserDAO.get_by_email` / `get_by_phone` / `find_by_thbwiki_uid` / `find_by_qq_openid`；`User.at_least_one_identifier` CHECK 与四个 partial unique index。
+
+### 测试
+- 新增 `tests/helpers/users.py::make_user/build_user`；`tests/integration/test_identity_binding.py`（注册元数据、改绑替换、409、注销重注册、封禁、大小写归一、资格配置）；`test_identity_pg_constraints.py`（PG-only，非 PG 自动 skip）；`test_sso_flows.py` 重写。全量 614 passed（sqlite）。
+
+### 兼容性 / 迁移
+- **需要数据迁移**：`alembic upgrade head`（0018：建表 → 从旧列回填 → 删旧列）。回填近似：每身份 `created_*` 取账号 `register_*`；`removed=TRUE` 账号不回填身份。**无兼容期**；`downgrade` 反向回填可回滚。
+- **配置**：可选新增 Nacos key `VOTE_ELIGIBLE_PROVIDERS`；不配即默认。
+- **对外接口形状无变化**（REST `VoterFE`、GraphQL、admin 用户列表）。新增错误码 `USER_REMOVED`（403）。
+- 关闭 BACKLOG B-008（废弃）、B-011、B-022、B-024。
+
 ## [2026-08-31] 文档树大扫除：归档过程产物、重建索引、整理 CHANGELOG（docs，无代码变更）
 
 > 文档累积到 131 份约 1.75 MB，过程产物占七成；索引停更在 2026-06-08，07–08 月新增的约 25 份文档从未进索引；

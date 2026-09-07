@@ -187,6 +187,12 @@ class Settings(BaseSettings):
     vote_year: int = Field(2026)
     vote_start_iso: str = Field("2026-01-01T00:00:00Z")
     vote_end_iso: str = Field("2026-12-31T23:59:59Z")
+    # 哪些认证来源的已验证身份能拿投票 token(spec 2026-09-06 §4/§11)。
+    # Nacos 里写 JSON 数组字符串,如 "VOTE_ELIGIBLE_PROVIDERS": "[\"phone\"]";
+    # 默认沿用旧 Rust 规则:手机或邮箱任一已验证即可。
+    vote_eligible_providers: list[str] = Field(
+        default_factory=lambda: ["email", "phone"]
+    )
 
     # 提名(二创)配置
     nomination_start_iso: Optional[str] = Field(

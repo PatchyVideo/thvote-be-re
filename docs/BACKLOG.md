@@ -13,15 +13,11 @@
 
 | 编号 | 主题 | 严重度 | 可并行做？ | 源文档 |
 |---|---|---|---|---|
-| **B-008** | MongoDB → PostgreSQL 历史用户数据回填脚本 | 中（**设计稿已写，实现未做**；`scripts/` 仍空） | 🟢 可立即做（独立 scripts/ 目录） | [medium-priority-backlog-design](./superpowers/specs/2026-05-16-medium-priority-backlog-design.md) |
 | **B-010** | 测试覆盖率门禁切到 `fail_under=80` | 低 | 🟡 待模块稳定 1-2 sprint | [design §九 F6](./superpowers/specs/2026-04-27-user-auth-design.md) / spec §九 |
-| **B-011** | SSO 落地后移除 `User.at_least_one_identifier` CHECK 约束（约束仍在 `src/db_model/user.py:49` + migration 0001） | 低 | 🟢 可立即做（**阻塞已解除**：B-007 已完成） | [design §九 F7](./superpowers/specs/2026-04-27-user-auth-design.md) |
 | **B-013** | 邮件/短信发送的"已发送"幂等性（避免阿里云调用成功但写日志失败造成的双发） | 低 | 🟡 低优先级，待发送链路稳定 | [design §九 F9](./superpowers/specs/2026-04-27-user-auth-design.md) |
 | **B-019** | 错误响应 `{"detail":"..."}` 与 Rust 的 `{"error":"...","service":"..."}` 不一致 | 低 | 🟡 等前端反馈是否需要 | [open-issues §三 U-11](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-020** | mypy 在 CI 不是硬门禁；先清现存告警，再去掉 `\|\| true` | 低 | 🟢 可立即做 | [open-issues §三 U-12](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
-| **B-022** | 给 CI 加 PG-only 契约测试：插两行同 email 的 user，断言 partial unique index 抛 IntegrityError | 低 | 🟢 可立即做 | [open-issues §三 U-14](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-023** | `tests/integration/conftest.py` 的 `pytest.importorskip("fakeredis")` 改为硬 `import` | 低 | 🟢 可立即做 | [open-issues §三 U-15](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
-| **B-024** | `UserDAO.save()` 加 `session.merge()` 防 detached instance 静默 no-op | 低 | 🟢 可立即做（防御性加固） | [open-issues §三 U-18](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-026** | DB 治理纪律：PR 模板 model 改动提示 / CI `alembic check` / `db_model 改动必须有 migration` 检查 | 低 | 🟢 可立即做（**阻塞已解除**：B-025 已完成） | [schema-mgmt §三阶段 4](./architecture/database-schema-management.md) |
 | **B-028** ⚡ | `.github/workflows/deploy-test.yml` 当前唯一的部署 workflow 没有 prod 路径——main 分支推送也只触发部署到 test 环境（镜像 tag 区分为 `prod` vs `test`，但部署目标都是 TEST_SERVER_HOST）。需要确认是否真的没有 prod 发布通道，或补一个 `deploy-prod.yml`。**注：2026-05-19 的 3 个 `fix(ci)` 提交只是修 deploy-test.yml 的 YAML/包发现 bug，未补 prod 通道，此项仍开放** | 高 | ⏸ **等上游拍板**（2026-08-13 用户确认：只能等） | [cicd-pipeline §二](./operations/cicd-pipeline.md) |
 | **B-031** | `src/common/nacos.py` 的 `_parse_config_content` 自带 JS 风格 JSON 容错解析（正则提取），属于隐式技术债——上游 Nacos 配置应该写标准 JSON，让解析器走 `json.loads`。如果是为了兼容某个老 dataId，需文档化该 dataId 的写法约束 | 低 | 🟢 可立即做 | `src/common/nacos.py:29-97` |
@@ -72,7 +68,7 @@
 6. 核对 **B-045**(`f59585a`)/**B-046**(`4b89a23`) 两个前端 commit 是否已推已部署
 7. **B-055** 已知缺口（connect 占位页、Doujin 硬编码 1272、`/test` 调试路由）
 
-## 🟢 后端可立即做（10 项）
+## 🟢 后端可立即做（7 项）
 
 按建议优先级排序：
 
@@ -81,20 +77,16 @@
 | **B-059** | Nacos 不可达时 fail-fast（08-13 事故教训，取代静默回退 localhost DB） | 半天 |
 | **B-026** | DB 治理纪律：PR 模板 + CI `alembic check`（防 B-051 类漂移复发） | 半天 |
 | **B-057①③** | `GET /admin/voteables` 补实现；上届 final_ranking(year=11) 导入 | 各半天 |
-| **B-008** | MongoDB → PG 数据回填脚本**实现**（设计稿已写，`scripts/` 仍空，不动主代码） | 1-3 天 |
 | **B-020** | mypy 接入 CI（现状:lint job 只 pip install 了 mypy 但从未运行），先清告警再当门禁 | 半天-1 天 |
 | **B-058** | admin-ui 构建链 9 个 npm 告警：`pnpm update` + 重建 dist | 1 小时 |
-| **B-022** | CI PG-only 契约测试：partial unique index 行为验证 | 1 小时 |
 | **B-023** | `importorskip` → 硬 import | 5 分钟 |
 | **B-031** | Nacos 配置约束为标准 JSON 后删除 `_parse_config_content` 容错分支 | 1 小时（视上游配置是否能改） |
-| **B-011** | 移除 `at_least_one_identifier` CHECK 约束；需新 migration（编号从 **0018** 起,0017 已被 B-050-后补2 消费） | 1 小时 |
 
 ## 🟡 需要判断 / 等条件成熟
 
 - **B-010** 覆盖率门禁切 `fail_under=80`（依赖模块运行 1-2 sprint 稳定后再切）
 - **B-013** 邮件/短信发送幂等性（低优先级，发送链路已稳定后做）
 - **B-019** 错误响应 `{"detail"}` → 与 Rust `{"error","service"}` 统一（等前端反馈是否需要）
-- **B-024** `UserDAO.save()` 加 `session.merge()`（防御性加固）
 - **B-033** 删除 legacy-compat 路由层（移除条件：Rust gateway 下线 + 前端迁 `/api/v1` 新 shape；与 B-019 同属契约收敛，详见 `docs/migration/legacy-rest-compat.md`）
 - **B-050-后补2/3 + B-053** 记票深水区（trend 需 append-only 存储改造；上届对比依赖 B-057③ 数据；交叉分析共用"子集重算"原语）——适合打包出一份设计稿再动手。**2026-08-14 结果统计三方审计确认**：这几项正是结果站前端已具备入口、后端仍是桩的缺口——`characterCompare` 有往届对比页、`QuestionnaireDetail` 拿问卷趋势，后端一实现即点亮；`/res-be` 通路已通、result 站可联调。详见 [result-stats-audit-2026-08-14](./migration/result-stats-audit-2026-08-14.md)。（后补5 高级搜索已于 2026-08-14 完成,见 [BACKLOG-archive.md](./BACKLOG-archive.md),不再属于此"仍是桩"分组。）
 - **前端 result 可维护性债（Touhou-Vote 仓，B-055 归口）** 审计新发现：`voteYear:11`+`voteStart` 硬编码散落 20+ 处未走 `lib/voteYear.ts`；characterEvolution.vue 过期日期文案；`/test` 调试路由在生产路由表；Doujin 页总票数等全硬编码（每届手改代码）。见审计文档 §三E/§C

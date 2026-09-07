@@ -23,12 +23,10 @@ from src.apps.admin.sync.runner import (
     map_final_ranking,
     map_raw_paper,
     map_raw_submit,
-    map_voter,
 )
 
 # mapper name → function
 _MAPPERS = {
-    "map_voter": map_voter,
     "map_raw_submit": map_raw_submit,
     "map_raw_paper": map_raw_paper,
     "map_candidate_character": map_candidate_character,
@@ -43,7 +41,6 @@ _COLLECTION_BY_TABLE: dict[str, tuple[str, str, callable]] = {}
 # Manual registration matching COLLECTION_CONFIG order:
 _REGISTRY: list[tuple[str, str, str, callable]] = [
     # relative_path, mapper_name, pg_table
-    ("thvote_users/voters.bson", "map_voter", "user"),
     ("submits_v1/raw_character.bson", "map_raw_submit:characters", "raw_character"),
     ("submits_v1/raw_music.bson", "map_raw_submit:music", "raw_music"),
     ("submits_v1/raw_cp.bson", "map_raw_submit:cps", "raw_cp"),

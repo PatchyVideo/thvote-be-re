@@ -159,14 +159,17 @@ class SsoBindRequest(BaseModel):
 
 def voter_fe_from_user(user) -> VoterFE:
     """Build a VoterFE from a User ORM row (kept here so the wire shape
-    has a single owner)."""
+    has a single owner).  Contact fields come from the account's identity
+    rows; ``thbwiki`` means "has a THBWiki identity bound"."""
+    email = user.identity("email")
+    phone = user.identity("phone")
     return VoterFE(
         username=user.nickname,
         pfp=user.pfp,
         password=bool(user.password_hash),
-        phone=user.phone_number,
-        email=user.email,
-        thbwiki=bool(user.thbwiki_uid),
+        phone=phone.subject if phone is not None else None,
+        email=email.subject if email is not None else None,
+        thbwiki=user.identity("thbwiki") is not None,
         patchyvideo=False,
         created_at=user.register_date,
     )

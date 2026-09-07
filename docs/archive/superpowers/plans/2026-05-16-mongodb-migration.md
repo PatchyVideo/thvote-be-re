@@ -1,5 +1,9 @@
 # MongoDB → PostgreSQL Migration Script Plan (B-008)
 
+> **归档状态**：已废弃 —— 2026-09-06 决定上线即空库，不再从旧 Mongo 导入用户（B-008 废弃）；用户表已归一化为 `user` + `user_identity`（migration 0018），本计划的目标 schema 已不存在。
+> 本文件是**历史过程记录，不代表当前实现**。现状请查 [BACKLOG.md](../../../BACKLOG.md) 与 [CHANGELOG.md](../../../CHANGELOG.md)。
+> 归档于 2026-09-06。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Write an idempotent, batch-capable script that reads all voter documents from the legacy MongoDB `thvote_users.voters` collection and upserts them into the PostgreSQL `user` table, mapping every field from the old schema to the new one.
