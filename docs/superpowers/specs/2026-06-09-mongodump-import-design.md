@@ -1,5 +1,8 @@
 # Mongodump BSON 离线导入 Design
 
+> **状态**：已实施 —— `scripts/import_mongo_dump.py` 已按本设计实现（复用 sync mappers、`ON CONFLICT DO NOTHING`），于 2026-07-14 随 `zfq_dev` 分支合并 `main`，见 [CHANGELOG](../../CHANGELOG.md) 2026-07-14 条目。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期: 2026-06-09  
 > 最后更新: 2026-06-09  
 > 前置: MongoDB dump 文件已提供 (`dump260311_2`)

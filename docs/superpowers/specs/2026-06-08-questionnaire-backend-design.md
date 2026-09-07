@@ -1,5 +1,8 @@
 # Block 3A 问卷结构化系统 — 后端(含管理端)设计稿
 
+> **状态**：已实施（部分被取代） —— B-039 结构化问卷后端已于 2026-07-14 合并 `main`（见 [CHANGELOG](../../CHANGELOG.md) 2026-07-14 条目），但其「仅整树导入」的管理端方案已被 [`2026-06-08-questionnaire-admin-backend-design.md`](./2026-06-08-questionnaire-admin-backend-design.md)（B-041，自由问卷列表 + 全层级 CRUD）取代。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期：2026-06-08
 > 最后更新：2026-06-08
 > 配套前端设计稿：[`2026-06-08-questionnaire-frontend-design.md`](./2026-06-08-questionnaire-frontend-design.md)

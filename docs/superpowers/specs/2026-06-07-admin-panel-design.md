@@ -1,5 +1,8 @@
 # 管理端（Admin Panel）— 设计稿
 
+> **状态**：已实施（部分被取代） —— B-035 已完成（[BACKLOG-archive.md](../../BACKLOG-archive.md)，2026-06-07 `afdc091`：12 个新端点 + 单文件 Web UI）；但该单文件面板已被 B-049 的 Vue 管理台取代（[2026-07-17-admin-console-vue-security-monitoring-design.md](./2026-07-17-admin-console-vue-security-monitoring-design.md)、[2026-07-18-admin-console-vue-frontend-design.md](./2026-07-18-admin-console-vue-frontend-design.md)），旧工具已于 2026-07-18 全部迁移到 Vue，旧面板仅作 `/admin-ui-legacy` 兜底保留（`src/main.py`），视觉验收后将删除（见 [BACKLOG.md](../../BACKLOG.md) B-049 尾项）。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期：2026-06-07
 > 最后更新：2026-06-07
 

@@ -1,7 +1,9 @@
 # 计票真相源迁 DB（candidateId 双键）+ voteable 导入/管理通道 — 设计稿
 
+> **状态**：部分实施 —— Phase 1（计票核心+导入通道，即 B-050-后补6）已于 2026-08-13 经 #26 合入 main（见 [BACKLOG-archive](../../BACKLOG-archive.md)）；B-057①（`GET /admin/voteables` 及编辑 work 归属）已于 2026-08-22 完成；B-057②（import work 按 name 自动匹配/建 work）仍在 [BACKLOG](../../BACKLOG.md) 开放。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 日期：2026-07-23
-> 状态：设计定稿，待实施（Phase 1 = 计票核心 + 导入通道；Phase 2 = admin-ui 管理页）
 > 对应 BACKLOG：**B-050-后补6 ⚡**（主体）、**B-057 ①②**（顺带收口）
 > 前置事实盘点见 `docs/CHANGELOG.md` 2026-07-23 条目
 

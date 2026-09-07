@@ -1,5 +1,8 @@
 # 问卷管理增强（自由问卷列表 + 全层级 CRUD）— 后端(含管理端)设计稿
 
+> **状态**：已实施 —— B-041 后端与管理端（13 个 admin CRUD 端点 + 整树导入 + 自研嵌套编辑器 UI）已于 2026-06-09 完成并在 2026-07-14 随 `zfq_dev` 分支合并 `main`，见 [BACKLOG](../../BACKLOG.md) B-041 与 [CHANGELOG](../../CHANGELOG.md) 2026-07-14 条目。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 创建日期：2026-06-08
 > 最后更新：2026-06-08
 > 配套投票前端设计稿：[`2026-06-08-questionnaire-admin-frontend-design.md`](./2026-06-08-questionnaire-admin-frontend-design.md)

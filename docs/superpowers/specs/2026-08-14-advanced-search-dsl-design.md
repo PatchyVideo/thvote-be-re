@@ -1,7 +1,9 @@
 # 高级搜索/筛选 DSL 设计稿(B-050-后补5,兼 B-053 前置)
 
+> **状态**：已实施 —— B-050-后补5 已于 2026-08-14 完成并合入分支 `feat/advanced-search-dsl`（见 [BACKLOG-archive](../../BACKLOG-archive.md)、[CHANGELOG 2026-08-14](../../CHANGELOG.md)）；B-060 于 2026-08-22 补充限频/单飞加固（见 [BACKLOG](../../BACKLOG.md)）。
+> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+
 > 日期:2026-08-14
-> 状态:设计定稿,待实施
 > 需求来源:`docs/VoileLabs-人气投票项目-需求文档-投票结果页面.md` §846-923(搜索与筛选组件)、§938(约束贯穿演进/问卷统计)
 > 前置勘察:[result-stats-audit-2026-08-14](../../migration/result-stats-audit-2026-08-14.md)(三方审计,P0 定级)、[result-recount-id-based-design](./2026-07-18-result-recount-id-based-design.md) §8.2(子集重算原语的关键发现)
 > 对应 legacy:`thvote-be/result-query` 的 pest DSL(贯穿全部查询接口)
