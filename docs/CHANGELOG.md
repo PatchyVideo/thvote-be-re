@@ -5,9 +5,9 @@
 > 创建日期：2026-04-27
 > **2026-08-31 整理**：合并 9 组重复条目、按日期倒序重排；**2026-07-01 之前**的条目已迁至 [CHANGELOG-archive-2026H1.md](./CHANGELOG-archive-2026H1.md)。
 
-## [2026-09-12] #29 归一化的登录链路复核：五处修复 + 迁移前置检查（B-064 待拍板）
+## [2026-09-12] #29 归一化的登录链路复核：六处修复 + 迁移回填前置检查
 
-> 对 #29（`user` + `user_identity` 归一化）做的独立复核。七条候选问题逐条在真环境验证：五条确认并修复，一条确认为潜伏（加护栏），一条需先拍板口径（B-064）。
+> 对 #29（`user` + `user_identity` 归一化）做的独立复核。七条候选问题逐条在真环境验证：六条确认并修复，一条确认为潜伏（加护栏）。
 
 ### Fixed
 - **验证码登录不再漏掉「提升为已验证」**（`identity_service.touch_login(proven=True)` / `bind()` 已绑分支）。`_new_identity` 只在创建时写 `verified=True`，`src/` 里**没有任何地方**事后赋值 `verified`；而迁移 0018 是从 legacy `email_verified`/`phone_verified` 回填的，可能为 `false`。这类账号能正常登录，但 `_maybe_sign_vote_token` 里的 `identity.verified` 永远为假 → **静默拿不到 vote_token、投不了票，且任何地方都不报错**。#29 之前的实现有 `if not user.email_verified: user.email_verified = True`，归一化时丢了。
@@ -21,12 +21,16 @@
 - 回归测试 `tests/integration/test_identity_login_regressions.py`（6 例）与 `tests/unit/test_vote_eligible_providers_config.py`（7 例）。前者含两个对照用例（口令正确时正常报封禁、空位时正常补绑），确保修复不是「把功能关掉」。
 
 ### 兼容性
-- **无破坏性**：无 schema / migration 版本变化（0018 仍是 0018，只加了一道不改变成功路径结果的前置检查）、无 GraphQL 契约变化、无需数据迁移或配置变更。
+- **无破坏性**：无 schema / migration 版本变化（0018 仍是 0018）、无 GraphQL 契约变化、无需数据迁移或配置变更。
+- ⚠️ 0018 的**回填范围**有变（B-064）。现有环境不受影响：测试机的 0018 已在近乎空库上跑完，新环境是空 `user` 表上跑 0018（回填为空操作），且设计稿 §9 已定「上线即空库」、`COLLECTION_CONFIG` 里没有 user 映射 —— 不存在 legacy 用户导入通道。改动只在「拿 0018 之前的存量库重放迁移」时生效，那正是它要修的场景。
 - 行为变化仅三处，都是修正：① 回填出的未验证身份在验证码登录后变为已验证（此前永久投不了票）；② 封禁账号 + 错误口令改报 `INCORRECT_PASSWORD`（此前报 `USER_REMOVED`）；③ 登录路径不再改绑已有 SSO 身份。
 - `VOTE_ELIGIBLE_PROVIDERS` 现在多接受两种写法，原 JSON 数组写法不受影响。
 
-### 未修（需先拍板）
-- **B-064**：0018 回填的 `WHERE removed = FALSE` 把 `ban_user` 封禁的账号当成自助注销一并排除，其邮箱/手机被释放、解封后无身份可登录（真 PG 已复现，封禁账号回填得 0 条 identity）。旧 schema 里自助注销与封禁不可区分，取舍是「GDPR 抹除优先」还是「封禁可执行优先」，属产品口径。**现有环境不受影响**：测试机 0018 已在近乎空库上跑完，新环境是空 `user` 表跑 0018（回填为空操作），且设计稿 §9 已定「上线即空库」、`COLLECTION_CONFIG` 里没有 user 映射，不存在 legacy 用户导入通道。
+### Fixed（续）— B-064：0018 回填不再把「管理员封禁」当成「自助注销」
+- 原回填用 `WHERE removed = FALSE` 一刀切，把 `ban_user` 封禁的账号也排除了。而 `IdentityService.resolve` 正是靠身份行对封禁 subject 抛 `USER_REMOVED` 来阻止对方拿同一邮箱/手机改头换面重新注册 —— 没有身份行，**封禁形同虚设，解封出来的账号又没有任何登录方式**。真 PG 已复现：封禁账号回填得 0 条 identity。
+- **这不是「GDPR 抹除」与「封禁可执行」的二选一**——复核时查实两者可区分（此前误判为不可区分）：旧 `remove_voter` 在同一次提交里把 `email` / `phone_number` / `password_hash` **全部置空**，而 `ban_user`（`UserDAO.set_removed`）一个都不动；旧 CHECK `at_least_one_identifier` 又保证活跃账号必有 email 或 phone，封禁前是活跃的，故必有其一。
+- 回填范围改用 `_BACKFILL_SCOPE = (removed = FALSE OR email IS NOT NULL OR phone_number IS NOT NULL)`，前置检查复用同一条件（否则查不到新纳入的封禁账号之间的冲突）。两个目标同时成立：封禁账号身份行完整回填；自助注销账号一条都不回填 —— **包括旧 `remove_voter` 漏清的 `qq_openid` / `thbwiki_uid`**（设计稿 §一.2 记的缺陷），不借回填把用户要求抹除的标识搬进新表。
+- 真 PG 16 上四种形态逐一验证：活跃账号 3 条身份；封禁账号 3 条（封禁可执行、解封可登录）；只有手机号的封禁账号 1 条（判别式靠 phone 兜住）；自助注销账号 0 条（含其残留的 qq_openid）。并复验前置检查在新范围下能拦住「活跃账号 vs 封禁账号」的大小写冲突。
 
 ## [2026-09-11] 回退 `UserDAO.save()` 的 `session.merge()`，改为显式拒绝 detached 实例（B-024 / U-18）
 
