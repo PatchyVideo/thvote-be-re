@@ -3,6 +3,10 @@
 save() 现走 ``session.merge()``：
 - detached 实例传入 → 更新必须落库，不再静默 no-op，并返回新的托管实例；
 - attached 实例（现网所有调用方的形态）→ 行为不变、返回原实例。
+
+账号一律经 ``tests.helpers.users.make_user`` 构造——2026-09-06 起联系标识
+（email/phone/qq/thbwiki）已归一化到 ``user_identity``，``User(email=...)``
+不再是合法构造方式。
 """
 from __future__ import annotations
 
@@ -10,17 +14,8 @@ import pytest
 from sqlalchemy import select
 
 from src.apps.user.dao import UserDAO
-from src.apps.user.schemas import generate_user_id
 from src.db_model.user import User
-
-
-def _make_user(email: str) -> User:
-    return User(
-        id=generate_user_id(),
-        email=email,
-        email_verified=True,
-        nickname="before",
-    )
+from tests.helpers.users import make_user
 
 
 async def _db_value(session, user_id: str) -> User:
@@ -36,8 +31,7 @@ async def _db_value(session, user_id: str) -> User:
 @pytest.mark.asyncio
 async def test_save_persists_detached_instance_changes(session):
     dao = UserDAO(session)
-    user = _make_user("detached@example.com")
-    await dao.create(user)
+    user = await make_user(session, email="detached@example.com", nickname="before")
 
     # 把实例 detach 后再改字段——历史上 save() 会对一个没跟踪任何实例的
     # session commit（静默 no-op），随后才在 refresh(detached) 处抛错。
@@ -59,8 +53,7 @@ async def test_save_persists_detached_instance_changes(session):
 async def test_save_attached_instance_keeps_identity(session):
     """常见路径（现网所有 caller）：attached 实例传入 → 身份保持不变。"""
     dao = UserDAO(session)
-    user = _make_user("attached@example.com")
-    await dao.create(user)
+    user = await make_user(session, email="attached@example.com", nickname="before")
 
     loaded = await dao.get_by_id(user.id)
     assert loaded is user                    # 同一身份映射实例
