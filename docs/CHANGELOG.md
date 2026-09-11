@@ -5,6 +5,24 @@
 > 创建日期：2026-04-27
 > **2026-08-31 整理**：合并 9 组重复条目、按日期倒序重排；**2026-07-01 之前**的条目已迁至 [CHANGELOG-archive-2026H1.md](./CHANGELOG-archive-2026H1.md)。
 
+## [2026-09-11] 回退 `UserDAO.save()` 的 `session.merge()`，改为显式拒绝 detached 实例（B-024 / U-18）
+
+> 承接 #30。#30 把 `save()` 改走 `session.merge()` 以「防 detached 静默 no-op」，但该前提不成立、且引入三条静默数据损坏路径，故回退并改为硬约束。
+
+### Fixed
+- `UserDAO.save()` 不再 `session.merge()`（`src/apps/user/dao.py`）。`merge()` 会按传入的陈旧副本重建 `User.identities`，而该关系是 `delete-orphan` —— **DB 里有、副本里没有的绑定会被 DELETE**。同一次盲写还会把 `removed` 覆盖回 `False`（**解封已封禁账号**）、把已硬删的行重新 INSERT（**复活账号**）。三者均已用探针在 sqlite 上复现。
+- `save()` 改为显式 `_reject_detached()`：非本 session 托管的实例直接抛 `InvalidRequestError` 并给出补救指引。此前 `refresh()` 也会抛同名异常，但属偶然行为；现在是写明的契约。
+- 更正 #30 的立论：`save()` 对 detached 实例**从未**静默 no-op —— 合入前的实现在 `refresh()` 处就抛 `InvalidRequestError`，调用方立刻知情。
+
+### Changed
+- 回归测试 `tests/integration/test_user_dao_save.py` 重写为 4 例：托管实例正常落库、detached 实例被拒、**不得删掉别处新建的绑定**、**不得解封或复活**。后三例在 `merge()` 版下会红（已验证），不是永远绿的测试。
+- `tests/integration/conftest.py` 按 B-023 本意收口为单行 `import fakeredis.aioredis`（必须带子模块名），删除 #30 留下的注释掉的旧代码、裸 `except:`（会吞 `BaseException`，且兜底换成的是**同步** FakeRedis，交给 `await` 会在无关模块炸 `TypeError`）与未被引用的 `FakeRedis` 死变量。
+- BACKLOG 复位：#30 把已归档的 **B-022 / B-024** 重新加回开放表（陈旧 rebase 产物），**B-023** 一度同时列在开放表与归档中。现统一以归档为准，开放表不再残留这三项。
+
+### 兼容性
+- **无破坏性**：无 schema / migration / 配置 / GraphQL 契约变化，无需数据迁移。
+- 行为面：现网 5 个 `save()` 调用方（`identity_service.py:115,123,128`、`service.py:277,300`）全部持有同一 session 的托管实例，走的是正常路径，**行为不变**。只有传 detached 实例才会拿到报错，而这在合入前同样是报错。
+
 ## [2026-09-06] 用户身份模型归一化：`user` + `user_identity`（migration 0018，破坏性，无兼容期）
 
 > 设计：[user-identity-model-design](./superpowers/specs/2026-09-06-user-identity-model-design.md)。系统尚未公开上线，用户库允许重建。
@@ -108,13 +126,6 @@
 
 ### 兼容性
 - 无契约变化;`ADVANCED_SEARCH_BUSY` 语义不变,只是触发口径更精确(真重算才计数)。无 DB 迁移。
-
-## [2026-09-05] UserDAO.save() detached 加固（B-024 / U-18）
-
-### Changed
-- `UserDAO.save()` 改走 `session.merge()`（`src/apps/user/dao.py`）：attached 实例传入仍是透传、返回原实例（现网所有调用方行为不变）；detached 实例传入不再静默 no-op——merge 重新 attach 并落库，返回**新的托管实例**，调用方应改用返回值。
-- 新增回归测试 `tests/integration/test_user_dao_save.py`：① detached 改动真实落库；② attached 路径身份保持不变。
-- BACKLOG B-024 / open-issues U-18 结清并归档，见 [BACKLOG-archive.md](./BACKLOG-archive.md)。
 
 ## [2026-08-14] 高级搜索/筛选 DSL 实现落地（B-050-后补5，Task 1-6 全部完成）
 

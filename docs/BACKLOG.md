@@ -17,9 +17,6 @@
 | **B-013** | 邮件/短信发送的"已发送"幂等性（避免阿里云调用成功但写日志失败造成的双发） | 低 | 🟡 低优先级，待发送链路稳定 | [design §九 F9](./superpowers/specs/2026-04-27-user-auth-design.md) |
 | **B-019** | 错误响应 `{"detail":"..."}` 与 Rust 的 `{"error":"...","service":"..."}` 不一致 | 低 | 🟡 等前端反馈是否需要 | [open-issues §三 U-11](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-020** | mypy 在 CI 不是硬门禁；先清现存告警，再去掉 `\|\| true` | 低 | 🟢 可立即做 | [open-issues §三 U-12](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
-| **B-022** | 给 CI 加 PG-only 契约测试：插两行同 email 的 user，断言 partial unique index 抛 IntegrityError | 低 | 🟢 可立即做 | [open-issues §三 U-14](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
-| **B-023** | `tests/integration/conftest.py` 的 `pytest.importorskip("fakeredis")` 改为硬 `import` | 低 | 🟢 可立即做 | [open-issues §三 U-15](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
-| **B-024** | `UserDAO.save()` 加 `session.merge()` 防 detached instance 静默 no-op | 低 | 🟢 可立即做（防御性加固） | [open-issues §三 U-18](./superpowers/specs/2026-04-27-user-auth-open-issues.md) |
 | **B-026** | DB 治理纪律：PR 模板 model 改动提示 / CI `alembic check` / `db_model 改动必须有 migration` 检查 | 低 | 🟢 可立即做（**阻塞已解除**：B-025 已完成） | [schema-mgmt §三阶段 4](./architecture/database-schema-management.md) |
 | **B-028** ⚡ | `.github/workflows/deploy-test.yml` 当前唯一的部署 workflow 没有 prod 路径——main 分支推送也只触发部署到 test 环境（镜像 tag 区分为 `prod` vs `test`，但部署目标都是 TEST_SERVER_HOST）。需要确认是否真的没有 prod 发布通道，或补一个 `deploy-prod.yml`。**注：2026-05-19 的 3 个 `fix(ci)` 提交只是修 deploy-test.yml 的 YAML/包发现 bug，未补 prod 通道，此项仍开放** | 高 | ⏸ **等上游拍板**（2026-08-13 用户确认：只能等） | [cicd-pipeline §二](./operations/cicd-pipeline.md) |
 | **B-031** | `src/common/nacos.py` 的 `_parse_config_content` 自带 JS 风格 JSON 容错解析（正则提取），属于隐式技术债——上游 Nacos 配置应该写标准 JSON，让解析器走 `json.loads`。如果是为了兼容某个老 dataId，需文档化该 dataId 的写法约束 | 低 | 🟢 可立即做 | `src/common/nacos.py:29-97` |
@@ -81,7 +78,6 @@
 | **B-057①③** | `GET /admin/voteables` 补实现；上届 final_ranking(year=11) 导入 | 各半天 |
 | **B-020** | mypy 接入 CI（现状:lint job 只 pip install 了 mypy 但从未运行），先清告警再当门禁 | 半天-1 天 |
 | **B-058** | admin-ui 构建链 9 个 npm 告警：`pnpm update` + 重建 dist | 1 小时 |
-| **B-023** | `importorskip` → 硬 import | 5 分钟 |
 | **B-031** | Nacos 配置约束为标准 JSON 后删除 `_parse_config_content` 容错分支 | 1 小时（视上游配置是否能改） |
 
 ## 🟡 需要判断 / 等条件成熟
@@ -109,7 +105,7 @@
 ## 推荐的下一步
 
 - **前端（我方）**：candidateId 切换打头——同时解锁 B-057④ 与计票全链路真实数据，是当前唯一不受外部阻塞的高价值主线。
-- **后端穿插**：`B-059 + B-026` 打包一个"配置/DB 韧性"小 PR（都是 08-13 事故与 B-051 的直接教训）；暖手 `B-023`（5 分钟）、`B-058`（1 小时）。
+- **后端穿插**：`B-059 + B-026` 打包一个"配置/DB 韧性"小 PR（都是 08-13 事故与 B-051 的直接教训）；暖手 `B-058`（1 小时）。
 - **等外部的四项**不排期，条件一到再捡。
 
 ---

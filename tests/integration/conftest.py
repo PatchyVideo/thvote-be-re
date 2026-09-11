@@ -8,22 +8,17 @@ and run alembic upgrade head instead.
 
 Aliyun PNVS / DM SMTP clients are always mocked here.
 """
+
 from __future__ import annotations
 
 import os
 from typing import AsyncGenerator
-# ``import fakeredis.aioredis as X`` 只绑定别名 ``X``，不会绑定裸名
-# ``fakeredis`` —— 而下方 patch_redis 的运行时 fallback 要引用裸名。
-# 因此这里先裸 import fakeredis，保证两条 import 分支下 patch_redis 的
-# 「fakeredis.aioredis.FakeRedis → fakeredis.FakeRedis」fallback 都可用。
-try:
-    import fakeredis
-    import fakeredis.aioredis as fakeredis_aioredis
-    FakeRedis = fakeredis_aioredis.FakeRedis
-except ImportError:
-    import fakeredis
-    FakeRedis = fakeredis.FakeRedis
 from unittest.mock import AsyncMock
+
+# 硬依赖（B-023）：fakeredis[lua] 在 pyproject 的测试依赖里，漏装应当让
+# 集合阶段就炸，而不是 importorskip 那样静默 skip 掉整个集成测试套件。
+# 必须 import 子模块 —— 裸 import fakeredis 不保证绑定 .aioredis。
+import fakeredis.aioredis
 
 import pytest
 import pytest_asyncio
@@ -122,12 +117,7 @@ async def seed_voteables_from_snapshot(session, category: str, vote_year: int):
 @pytest.fixture(autouse=True)
 def patch_redis(monkeypatch):
     """Replace common.redis.get_redis with a fakeredis client per test."""
-    #fakeredis_mod = pytest.importorskip("fakeredis")
-    #fake = fakeredis_mod.aioredis.FakeRedis(decode_responses=True)
-    try:
-        fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
-    except:
-        fake = fakeredis.FakeRedis(decode_responses=True)
+    fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
 
     async def _get_redis_stub():
         return fake
