@@ -49,7 +49,7 @@
 | **U-13** | `Settings` 大量使用 Pydantic V1 的 `Field(..., env="X")`，pytest 输出有 20 条 `PydanticDeprecatedSince20` 告警 | 低 | 切到 V2 的 `model_config = SettingsConfigDict(...)` + `validation_alias`；属于先前代码的清理工作 |
 | **U-14** | 测试里用 in-memory sqlite + fakeredis；sqlite 不强制 `postgresql_where` 表达式，partial unique index 行为没被实际验证。CI 现在会跑 `alembic upgrade head` 在真 PG 上做 DDL 烟测，但**唯一索引的运行时行为**仍然没有专门测试 | 低 | 给 CI 加一个 PG-only 的契约测试：插两行同 email 的 user，断言第二个 INSERT 抛 IntegrityError |
 | **U-15** | `tests/integration/conftest.py` 用 `pytest.importorskip("fakeredis")`，万一 `fakeredis` 漏装，所有集成测试**静默 skip**，CI 也不会报错 | 低 | 改为 `import fakeredis` 硬依赖；`fakeredis` 已经进 `requirements.txt`，没理由再可选 |
-| **U-18** | ~~`UserDAO.save()` 没有 `session.merge()`；如果未来有 caller 传入 detached instance 会**静默 no-op**。当前所有 caller 都来自 `_authenticate` 返回的 attached 实例，问题没暴露~~ | ✅ 已完成 (2026-09-05) | `save()` 改走 `session.merge()`：attached 输入透传返回原实例、detached 输入落库并返回新托管实例（调用方用返回值）；回归测试 `tests/integration/test_user_dao_save.py` |
+| **U-18** | ~~`UserDAO.save()` 没有 `session.merge()`；如果未来有 caller 传入 detached instance 会**静默 no-op**~~（**原判断有误**：detached 输入在 `refresh()` 处抛 `InvalidRequestError`，从不静默） | ✅ 已完成 (2026-09-11) | **不加 merge**——`identities` 是 `delete-orphan`，merge 陈旧副本会删掉别处新建的绑定、覆盖 `removed` 解封、复活硬删行。改为 `save()` 显式拒绝 detached 实例；回归测试 `tests/integration/test_user_dao_save.py`（4 例） |
 
 ---
 

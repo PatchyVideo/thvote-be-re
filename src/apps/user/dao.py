@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from sqlalchemy import and_, func, select
+from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.db_model.activity_log import ActivityLog
@@ -51,20 +52,32 @@ class UserDAO:
         return user
 
     async def save(self, user: User) -> User:
-        """Persist in-place modifications; accepts a managed or detached instance.
+        """Commit in-place modifications on a **managed** user instance.
 
-        ``merge()`` re-attaches a detached instance (issuing one extra SELECT
-        only when the object is not already in this session) and returns the
-        instance bound to the session — callers should use the return value,
-        since for a detached input it is a *different* object than the one
-        passed in.  Guards against the historical silent no-op where committing
-        a session that was not tracking the mutated instance flushed nothing
-        (B-024 / U-18).
+        Every caller obtains ``user`` from this same session (``IdentityService``
+        is the single entry point), so the instance is always managed here.  A
+        detached instance is rejected outright rather than re-attached: merging
+        one would rebuild ``User.identities`` from the stale copy, and because
+        that relationship is ``delete-orphan`` any identity row missing from the
+        copy is DELETEd — silently dropping a binding made elsewhere.  The same
+        blind overwrite would resurrect a hard-deleted row and reset ``removed``,
+        undoing a ban.  Losing a write loudly beats corrupting three rows
+        quietly, so this stays an error (B-024 / U-18).
         """
-        user = await self.session.merge(user)
+        self._reject_detached(user)
         await self.session.commit()
         await self.session.refresh(user)
         return user
+
+    def _reject_detached(self, user: User) -> None:
+        """Raise unless *user* is tracked by this session."""
+        if user in self.session.sync_session:
+            return
+        raise InvalidRequestError(
+            f"UserDAO.save() requires an instance managed by this session; "
+            f"got a detached/transient User(id={user.id!r}). Re-load it via "
+            f"UserDAO.get_by_id() and apply the change to that instance."
+        )
 
     async def search_users(
         self,
