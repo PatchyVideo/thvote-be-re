@@ -199,10 +199,18 @@ upgrade:
    `removed=TRUE` 的行不回填身份(与 5.5 一致)。
 3. 删 `user` 的七个列、CHECK、四个 partial index。
 
-> **2026-09-12 复核补记(两条已知隐患,均只影响"带 0018 之前存量数据的库")**
+> **2026-09-12 复核补记(两条隐患,均已修;只影响"带 0018 之前存量数据的库")**
 >
 > 1. **归一化会撞新唯一约束**(已加前置检查拦住)。旧的 partial unique index 建在**原始列**上且**大小写敏感**,所以 `Foo@Example.com` 与 `foo@example.com` 可以合法共存;回填用 `lower(trim(...))` 归一化后两者塌成同一个 subject,撞 `uq_user_identity_provider_subject`。`trim(phone_number)` 同理(`' 138…'` vs `'138…'`)。真 PG 16 上已复现:迁移跑到一半抛 `UniqueViolation` 整体回滚。**现已在 `upgrade()` 开头加 `_assert_no_backfill_collisions`**,建表前就拒绝并点名冲突账号,而不是中途炸一个裸 Postgres 错误。
-> 2. **回填把"管理员封禁"当成了"用户自助注销"**(未修,见 [BACKLOG B-064](../../BACKLOG.md))。`removed=TRUE` 在旧表里有两种来源:`remove_voter` 自助注销(§5.5,确实该删身份行)与 `ban_user` 管理员封禁(`admin/service.py` 只翻 `removed`,**保留**身份行——`IdentityService.resolve` 正是靠这些行对封禁 subject 抛 `USER_REMOVED`,防止改头换面重新注册)。旧 schema 里两者不可区分,回填的 `removed = FALSE` 过滤把封禁账号也一并排除,于是封禁账号的邮箱/手机被释放、解封后又没有任何身份可登录。真 PG 上已复现(封禁账号回填得到 0 条 identity)。
+> 2. **回填曾把"管理员封禁"当成"用户自助注销"**(2026-09-12 已修)。`removed=TRUE` 在旧表里有两种来源:`remove_voter` 自助注销(§5.5)与 `ban_user` 管理员封禁(`admin/service.py` 只翻 `removed`)。原回填用 `removed = FALSE` 一刀切,把封禁账号也排除了 —— 而 `IdentityService.resolve` 正是靠身份行对封禁 subject 抛 `USER_REMOVED` 来防止改头换面重新注册,于是封禁账号的邮箱/手机被释放、解封后又没有任何身份可登录(真 PG 已复现:封禁账号回填得 0 条 identity)。
+>
+>    **两者其实可以区分**(复核时查实,此前误以为不可区分):旧 `remove_voter` 在同一次提交里把 `email`/`phone_number`/`password_hash` **全部置空**,而 `ban_user` 一个都不动;旧 CHECK `at_least_one_identifier` 又保证活跃账号必有 email 或 phone,封禁前是活跃的,所以必有其一。判别式即 `_BACKFILL_SCOPE`:
+>
+>    ```sql
+>    removed = FALSE OR email IS NOT NULL OR phone_number IS NOT NULL
+>    ```
+>
+>    于是两个目标不必取舍:封禁账号的身份行完整回填(封禁可执行、解封可登录),自助注销的账号一条都不回填 —— **包括旧 `remove_voter` 漏清的 `qq_openid`/`thbwiki_uid`**(§一.2 记的缺陷),不借回填把用户要求抹除的标识搬进新表。真 PG 上四种形态逐一验证通过。
 >
 > 两条对现有环境都**不影响**:测试机的 0018 已在近乎空库上跑完,新环境是空 `user` 表上跑 0018(回填是空操作),且 §9 已定"旧 Mongo `voters` 同步删除、上线即空库",不存在 legacy 用户导入通道(`COLLECTION_CONFIG` 里没有 user 映射)。隐患只在"拿 0018 之前的存量库重放迁移"时成立。
 

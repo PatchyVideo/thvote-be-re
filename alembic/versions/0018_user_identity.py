@@ -36,6 +36,25 @@ _BACKFILL = (
     ("qq", "qq_openid", "TRUE"),
     ("thbwiki", "thbwiki_uid", "TRUE"),
 )
+# 哪些账号该回填身份行。
+#
+# ``removed = TRUE`` 在旧表里有两种来源，而且**可以区分**：
+#   - 自助注销(``remove_voter``)：同一次提交里把 email / phone_number /
+#     password_hash 全部置空(GDPR / 个保法 §47 抹除)，所以两个联系列都是 NULL；
+#   - 管理员封禁(``admin.ban_user`` → ``UserDAO.set_removed``)：只翻 ``removed``，
+#     联系列原样保留。
+#
+# 旧 CHECK ``at_least_one_identifier`` 保证活跃账号必有 email 或 phone，
+# 被封禁的账号在封禁前是活跃的，因此必有其一 —— 判别式成立。
+#
+# 封禁账号**必须**回填：``IdentityService.resolve`` 正是靠这些身份行对封禁
+# subject 抛 ``USER_REMOVED``，防止对方拿同一邮箱/手机改头换面重新注册；
+# 解封后也要靠它们才能登录。自助注销的账号则一条都不回填 —— 包括旧
+# ``remove_voter`` 漏清的 qq_openid / thbwiki_uid(设计稿 §一.2 记为缺陷)，
+# 不能借回填把用户要求抹除的标识重新搬进新表。
+_BACKFILL_SCOPE = (
+    '(removed = FALSE OR email IS NOT NULL OR phone_number IS NOT NULL)'
+)
 _DROPPED_USER_COLUMNS = (
     "phone_number",
     "phone_verified",
@@ -70,7 +89,7 @@ def _assert_no_backfill_collisions(bind) -> None:
                        string_agg(id, ', ' ORDER BY id) AS ids
                   FROM "user"
                  WHERE {source} IS NOT NULL AND {source} <> ''
-                   AND removed = FALSE
+                   AND {_BACKFILL_SCOPE}
                  GROUP BY {source}
                 HAVING count(*) > 1
                  ORDER BY {source}
@@ -143,7 +162,8 @@ def upgrade() -> None:
                    CASE WHEN {verified} THEN register_date END,
                    register_date, register_ip_address, register_device_id
               FROM "user"
-             WHERE {source} IS NOT NULL AND {source} <> '' AND removed = FALSE
+             WHERE {source} IS NOT NULL AND {source} <> ''
+               AND {_BACKFILL_SCOPE}
             """
         )
 
