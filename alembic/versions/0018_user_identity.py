@@ -9,6 +9,10 @@ from the account's ``register_*``; soft-deleted accounts get no identity
 rows (matches the new remove_voter behaviour).  Destructive, no compat
 window — the system is not live yet.
 
+Before touching anything, ``_assert_no_backfill_collisions`` refuses to
+run when two live accounts would normalise onto the same ``(provider,
+subject)`` — see that function for why the old indexes allow it.
+
 Postgres-only; sqlite test schemas come from ``create_all``.
 
 Design: docs/superpowers/specs/2026-09-06-user-identity-model-design.md
@@ -43,9 +47,59 @@ _DROPPED_USER_COLUMNS = (
 )
 
 
+def _assert_no_backfill_collisions(bind) -> None:
+    """Fail before any DDL if the backfill would violate the new unique key.
+
+    The old schema's unique indexes are on the **raw** columns and are
+    case-sensitive, so ``Foo@Example.com`` and ``foo@example.com`` can
+    legally coexist in ``user``; the backfill normalises with
+    ``lower(trim(...))`` and would then trip
+    ``uq_user_identity_provider_subject`` **halfway through**, rolling back
+    a migration that has already dropped nothing yet but reports only a raw
+    Postgres error.  Same for ``trim(phone_number)`` (`' 138…'` vs `'138…'`).
+
+    Checking up front turns that into an actionable message naming the
+    offending values, so the operator can dedupe and re-run.
+    """
+    problems: list[str] = []
+    for provider, source, _ in _BACKFILL:
+        rows = bind.execute(
+            sa.text(
+                f"""
+                SELECT {source} AS subject, count(*) AS n,
+                       string_agg(id, ', ' ORDER BY id) AS ids
+                  FROM "user"
+                 WHERE {source} IS NOT NULL AND {source} <> ''
+                   AND removed = FALSE
+                 GROUP BY {source}
+                HAVING count(*) > 1
+                 ORDER BY {source}
+                """
+            )
+        ).fetchall()
+        for row in rows:
+            problems.append(
+                f"  {provider}: {row.subject!r} claimed by {row.n} accounts "
+                f"({row.ids})"
+            )
+    if problems:
+        raise RuntimeError(
+            "0018 backfill would violate uq_user_identity_provider_subject — "
+            "the old per-column unique indexes are case-sensitive but the "
+            "backfill normalises with lower()/trim(), so these collapse onto "
+            "one subject:\n"
+            + "\n".join(problems)
+            + "\n\nDedupe these accounts in the legacy schema (pick a winner "
+            "per subject) and re-run. Nothing has been changed."
+        )
+
+
 def upgrade() -> None:
-    if op.get_bind().dialect.name != "postgresql":
+    bind = op.get_bind()
+    if bind.dialect.name != "postgresql":
         return
+
+    _assert_no_backfill_collisions(bind)
 
     op.create_table(
         "user_identity",

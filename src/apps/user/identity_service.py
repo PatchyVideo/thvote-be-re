@@ -55,6 +55,18 @@ class IdentityService:
             raise UnauthorizedError("USER_REMOVED", details=403)
         return user
 
+    async def find_owner(
+        self, provider: IdentityProvider, raw_subject: str
+    ) -> User | None:
+        """Like ``resolve`` but returns banned owners instead of raising.
+
+        For flows that must not disclose ban status before a credential is
+        checked: the caller verifies the password first, then decides
+        whether ``USER_REMOVED`` may be revealed.
+        """
+        subject = normalize_subject(provider, raw_subject)
+        return await self.identity_dao.find_user(provider.value, subject)
+
     async def register(
         self,
         provider: IdentityProvider,
@@ -101,6 +113,12 @@ class IdentityService:
         if existing is not None and existing.user_id != user.id:
             raise ValidationError(conflict_code, details=409)
         if existing is not None:
+            # 已经绑在本人名下：不重建行，但本次请求刚证明过该 subject
+            # （验证码 / OAuth），所以顺带把回填来的未验证状态提升掉。
+            if not existing.verified:
+                existing.verified = True
+                existing.verified_at = datetime.now(UTC)
+                await self.user_dao.save(user)
             return BindResult(identity=existing, replaced_subject=None, changed=False)
 
         current = user.identity(provider.value)
@@ -115,11 +133,27 @@ class IdentityService:
         await self.user_dao.save(user)
         return BindResult(identity=identity, replaced_subject=replaced, changed=True)
 
-    async def touch_login(self, user: User, provider: IdentityProvider) -> None:
+    async def touch_login(
+        self, user: User, provider: IdentityProvider, *, proven: bool = False
+    ) -> None:
+        """Record a successful login on this identity.
+
+        ``proven=True`` means the caller just re-proved the subject in this
+        request (a verification code was consumed / OAuth returned), so an
+        identity that migration 0018 backfilled as unverified is promoted.
+        Without that promotion nothing in ``src/`` ever sets ``verified``
+        after creation, so such an account logs in fine but
+        ``_maybe_sign_vote_token`` returns "" forever — it silently cannot
+        vote, with no error anywhere.
+        """
         identity = user.identity(provider.value)
         if identity is None:
             return
-        identity.last_login_at = datetime.now(UTC)
+        now = datetime.now(UTC)
+        identity.last_login_at = now
+        if proven and not identity.verified:
+            identity.verified = True
+            identity.verified_at = now
         await self.user_dao.save(user)
 
     async def unbind_all(self, user: User) -> None:
