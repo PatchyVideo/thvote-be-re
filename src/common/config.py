@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import logging
-from typing import Optional, Set
+from typing import Annotated, Optional, Set
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -190,9 +190,48 @@ class Settings(BaseSettings):
     # 哪些认证来源的已验证身份能拿投票 token(spec 2026-09-06 §4/§11)。
     # Nacos 里写 JSON 数组字符串,如 "VOTE_ELIGIBLE_PROVIDERS": "[\"phone\"]";
     # 默认沿用旧 Rust 规则:手机或邮箱任一已验证即可。
-    vote_eligible_providers: list[str] = Field(
+    # NoDecode：关掉 env source 对复杂类型的 JSON 预解析，否则写成 "phone"
+    # 会在 source 层抛 SettingsError，下面的 validator 根本轮不到跑。
+    vote_eligible_providers: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["email", "phone"]
     )
+
+    @field_validator("vote_eligible_providers", mode="before")
+    @classmethod
+    def _parse_eligible_providers(cls, value):
+        """宽容解析 Nacos 传来的字符串。
+
+        ``src/common/nacos.py`` 把配置原样塞进 ``os.environ``，全是字符串；
+        pydantic-settings 对 ``list[str]`` 默认按 JSON 解析，于是把值写成
+        ``phone`` 或 ``email,phone``（旁边那些字符串型键就长这样）会在
+        ``Settings()`` 构造期抛 SettingsError，整个进程起不来。投票资格
+        配错应当收窄资格，不该让服务起不来，所以这里接受 JSON 数组、
+        逗号分隔、单个名字三种写法；彻底写坏则记日志并回到默认值。
+        """
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if not text:
+            return ["email", "phone"]
+        if text[0] in "[{":
+            import json
+
+            try:
+                parsed = json.loads(text)
+            except ValueError:
+                parsed = None
+            if isinstance(parsed, list):
+                return parsed
+            # 看着像 JSON 却解析不出数组：宁可回默认，也不要把整串当成
+            # 一个 provider 名字——那会被 vote_eligible_providers() 当未知
+            # 名字忽略掉，静默收窄成"谁都拿不到 vote_token"。
+            logger.error(
+                "VOTE_ELIGIBLE_PROVIDERS=%r 不是合法的 JSON 数组，回退默认 "
+                "['email', 'phone']；投票资格未按配置收窄",
+                value,
+            )
+            return ["email", "phone"]
+        return [part.strip() for part in text.split(",") if part.strip()]
 
     # 提名(二创)配置
     nomination_start_iso: Optional[str] = Field(

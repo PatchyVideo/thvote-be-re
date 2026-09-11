@@ -5,6 +5,29 @@
 > 创建日期：2026-04-27
 > **2026-08-31 整理**：合并 9 组重复条目、按日期倒序重排；**2026-07-01 之前**的条目已迁至 [CHANGELOG-archive-2026H1.md](./CHANGELOG-archive-2026H1.md)。
 
+## [2026-09-12] #29 归一化的登录链路复核：五处修复 + 迁移前置检查（B-064 待拍板）
+
+> 对 #29（`user` + `user_identity` 归一化）做的独立复核。七条候选问题逐条在真环境验证：五条确认并修复，一条确认为潜伏（加护栏），一条需先拍板口径（B-064）。
+
+### Fixed
+- **验证码登录不再漏掉「提升为已验证」**（`identity_service.touch_login(proven=True)` / `bind()` 已绑分支）。`_new_identity` 只在创建时写 `verified=True`，`src/` 里**没有任何地方**事后赋值 `verified`；而迁移 0018 是从 legacy `email_verified`/`phone_verified` 回填的，可能为 `false`。这类账号能正常登录，但 `_maybe_sign_vote_token` 里的 `identity.verified` 永远为假 → **静默拿不到 vote_token、投不了票，且任何地方都不报错**。#29 之前的实现有 `if not user.email_verified: user.email_verified = True`，归一化时丢了。
+- **密码登录不再在校验口令前泄露封禁状态**（`service.login_with_email_password` 改用新增的 `IdentityService.find_owner`）。`resolve()` 对封禁账号抛 `USER_REMOVED`/403，且跑在 `verify_password` 之前，未认证调用方因此能区分「该邮箱属于封禁账号」与「查无此邮箱」。改为先验口令，口令正确才告知 `USER_REMOVED`。
+- **登录顺带的 SSO 合并不再顶掉已有绑定**（`_merge_sso_session`）。它调的 `bind()` 语义是**替换**，被顶掉的 openid 随之释放、可被他人认领，且该路径此前**完全没有审计记录**（`_rebind_contact` 是有的）。现在已有绑定且 subject 不同则跳过并告警，真正新增绑定时补写 `bind_sso` 审计。换绑仍走 `update_*` / `bind_sso` 显式入口。> 注：设计稿 §一 已载明该路径在生产链路上暂不可达（GraphQL 桥接不传 redis/sid），属防御性修复。
+- **`VOTE_ELIGIBLE_PROVIDERS` 写错不再让进程起不来**（`config.Settings`）。`nacos.py` 把配置原样塞进 `os.environ`（全是字符串），pydantic-settings 对 `list[str]` 默认按 JSON 解析，写成 `phone` 或 `email,phone`（旁边字符串型键就长这样）会在 **source 层**抛 `SettingsError`——比字段校验器更早，所以 `mode="before"` 的校验器拦不住。改用 `Annotated[list[str], NoDecode]` 关掉预解析 + 校验器宽容解析（JSON 数组／逗号分隔／单个名字），看着像 JSON 却解不出数组时记错误日志并回默认值。
+- **Argon2 rehash 显式落库**（`login_with_email_password`）。此前只靠 `touch_login` 顺手 `save()`，而它在 `user.identity(provider) is None` 时会提前 return——今天不可达，但让一次写入依赖无关方法的内部实现是隐患。
+
+### Added
+- `alembic/versions/0018_user_identity.py`：`_assert_no_backfill_collisions()`，在**建表之前**拒绝会撞 `uq_user_identity_provider_subject` 的回填。旧 partial unique index 建在原始列上且大小写敏感，`Foo@Example.com` 与 `foo@example.com` 可合法共存，回填的 `lower(trim(...))` 会让两者塌成同一 subject（`trim(phone_number)` 同理）。真 PG 16 复现：原实现跑到一半抛 `UniqueViolation` 整体回滚；现在开工前报错并点名冲突账号，`alembic_version` 不动、`user_identity` 不建、`user` 列不删。
+- 回归测试 `tests/integration/test_identity_login_regressions.py`（6 例）与 `tests/unit/test_vote_eligible_providers_config.py`（7 例）。前者含两个对照用例（口令正确时正常报封禁、空位时正常补绑），确保修复不是「把功能关掉」。
+
+### 兼容性
+- **无破坏性**：无 schema / migration 版本变化（0018 仍是 0018，只加了一道不改变成功路径结果的前置检查）、无 GraphQL 契约变化、无需数据迁移或配置变更。
+- 行为变化仅三处，都是修正：① 回填出的未验证身份在验证码登录后变为已验证（此前永久投不了票）；② 封禁账号 + 错误口令改报 `INCORRECT_PASSWORD`（此前报 `USER_REMOVED`）；③ 登录路径不再改绑已有 SSO 身份。
+- `VOTE_ELIGIBLE_PROVIDERS` 现在多接受两种写法，原 JSON 数组写法不受影响。
+
+### 未修（需先拍板）
+- **B-064**：0018 回填的 `WHERE removed = FALSE` 把 `ban_user` 封禁的账号当成自助注销一并排除，其邮箱/手机被释放、解封后无身份可登录（真 PG 已复现，封禁账号回填得 0 条 identity）。旧 schema 里自助注销与封禁不可区分，取舍是「GDPR 抹除优先」还是「封禁可执行优先」，属产品口径。**现有环境不受影响**：测试机 0018 已在近乎空库上跑完，新环境是空 `user` 表跑 0018（回填为空操作），且设计稿 §9 已定「上线即空库」、`COLLECTION_CONFIG` 里没有 user 映射，不存在 legacy 用户导入通道。
+
 ## [2026-09-11] 回退 `UserDAO.save()` 的 `session.merge()`，改为显式拒绝 detached 实例（B-024 / U-18）
 
 > 承接 #30。#30 把 `save()` 改走 `session.merge()` 以「防 detached 静默 no-op」，但该前提不成立、且引入三条静默数据损坏路径，故回退并改为硬约束。

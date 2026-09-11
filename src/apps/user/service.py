@@ -158,15 +158,23 @@ class UserService:
     async def login_with_email_password(
         self, request: LoginEmailPasswordRequest
     ) -> LoginResponse:
-        user = await self.identities.resolve(IdentityProvider.EMAIL, request.email)
+        # find_owner 而非 resolve：resolve 对封禁账号直接抛 USER_REMOVED，
+        # 而它跑在验口令之前——未认证的调用方就能区分"这个邮箱属于封禁
+        # 账号"和"查无此邮箱"。先验口令，口令对了才谈封禁。
+        user = await self.identities.find_owner(IdentityProvider.EMAIL, request.email)
         if user is None or not user.password_hash:
             raise ValidationError("INCORRECT_PASSWORD", details=400)
 
         result = self.auth.verify_password(request.password, user.password_hash)
         if not result.valid:
             raise ValidationError("INCORRECT_PASSWORD", details=400)
+        if user.removed:
+            raise UnauthorizedError("USER_REMOVED", details=403)
         if result.needs_rehash and result.upgraded_hash:
+            # 显式落库：不要指望下面的 touch_login 顺手 save——它在
+            # identity 缺失时会提前 return，那条写入就无声丢了。
             user.password_hash = result.upgraded_hash
+            await self.user_dao.save(user)
 
         await self.identities.touch_login(user, IdentityProvider.EMAIL)
         await self._safe_log(
@@ -222,7 +230,7 @@ class UserService:
                 **_target_fields(provider, subject),
             )
         else:
-            await self.identities.touch_login(user, provider)
+            await self.identities.touch_login(user, provider, proven=True)
             await self._safe_log(
                 event_type="voter_login",
                 user_id=user.id,
@@ -357,8 +365,21 @@ class UserService:
             subject = data.get(key)
             if not subject:
                 continue
+            # 这条路径是"补绑"，不是"改绑"：账号已有该 provider 的绑定时
+            # 不得顶掉。bind() 的语义是替换——被顶掉的 openid 会随之释放，
+            # 任何人都能再去认领；而这里只是登录顺带的 courtesy，用户并未
+            # 表达换绑意图。换绑走 update_* / bind_sso 的显式入口。
+            current = user.identity(provider.value)
+            if current is not None and current.subject != subject:
+                logger.warning(
+                    "SSO merge skipped for user_id=%s provider=%s: "
+                    "already bound to a different subject",
+                    user.id,
+                    provider.value,
+                )
+                continue
             try:
-                await self.identities.bind(
+                bound = await self.identities.bind(
                     user, provider, subject, meta, conflict_code="SSO_ID_ALREADY_BOUND"
                 )
             except ValidationError as exc:
@@ -367,6 +388,15 @@ class UserService:
                     user.id,
                     provider.value,
                     exc.message,
+                )
+                continue
+            if bound.changed:
+                await self._safe_log(
+                    event_type="bind_sso",
+                    user_id=user.id,
+                    new_value=bound.identity.subject,
+                    requester_ip=meta.user_ip,
+                    additional_fingerprint=meta.additional_fingureprint,
                 )
 
     async def bind_sso(
