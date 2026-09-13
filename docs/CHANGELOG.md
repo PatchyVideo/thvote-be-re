@@ -5,6 +5,23 @@
 > 创建日期：2026-04-27
 > **2026-08-31 整理**：合并 9 组重复条目、按日期倒序重排；**2026-07-01 之前**的条目已迁至 [CHANGELOG-archive-2026H1.md](./CHANGELOG-archive-2026H1.md)。
 
+## [2026-09-13] B-065 REST 提交/回读接口按 vote_token 绑定身份（安全修复）
+
+> 外部 review 指出 6 个 REST 回读接口零鉴权；复核后确认，且写入路径有同源问题。根因：Rust 里 `/v1/get-*`、`/v1/voting-status/` 是 `submit-handler` 的**内网**路由，gateway 从 token 解出 vote_id 再转发；Python 重写把它们原样挂到公网 `/api/v1`，测试机 nginx `/v12-be/` 兜底可直达。`vote_id` 即 user_id（uuid4），会出现在 vote_token 载荷、管理端与导出数据里，不算秘密。
+
+### Fixed
+- **回读接口不再接受裸 `vote_id`**（`src/apps/submit/router.py`）：`POST /get-character/`、`/get-music/`、`/get-cp/`、`/get-paper/`、`/get-dojin/`、`/voting-status/` 改为从请求体 `vote_token` 解出 user_id 再查，只返回调用者自己的提交。缺 token → `401 VOTE_TOKEN_REQUIRED`，伪造/过期 → `401` + 校验错误码。与 GraphQL 桥接 `getSubmit*Vote` / `getVotingStatus` 和 legacy `/user-token-status` 语义对齐。
+- **提交接口的 `vote_id` 改为强制取 token 的 user_id**（新增 `_bind_submit_identity`）：此前 5 个 `POST /character/` 等端点只校验 token，`meta.vote_id` 仍原样落库，任何持有效 token 的用户都能以他人 vote_id 写入或改票。现与 Rust gateway `generate_submit_metadata`、GraphQL 桥接 `_make_meta` 一致，客户端传值被覆盖。
+- `docs/api/voteable-api-contract.md` §3.3 原文写"需要 userToken 鉴权"但实现没有，文档与代码已同步；2026-05-13 提交完成度设计稿中"get-* 不需要鉴权"一句加勘正注。
+
+### Added
+- `tests/integration/test_submit.py` 新增 15 例：6 路由 × 无 token 401、6 路由 × 伪造 token 401、跨用户 token 读不到他人提交、客户端伪造 `meta.vote_id` 不生效。
+
+### 兼容性
+- **REST 回读请求体变更**：`{"vote_id"}` → `{"vote_token"}`。仓内排查：前端 Touhou-Vote、admin-ui 均不调用这 6 个 REST 接口（前端回读走 GraphQL），唯一调用方是本仓集成测试，已随改。`QuerySubmitRequest.vote_id` 暂留为可选并忽略，让旧请求得到 `401` 而非 `422`；**移除条件**：确认无调用方再发 `vote_id`。
+- 提交接口请求体 shape 不变；行为变化仅"客户端 `meta.vote_id` 不再生效"，正常客户端本就不该传（Rust 时代前端从不控制该字段）。
+- 无 schema / migration / 配置变更；GraphQL 契约不变。
+
 ## [2026-09-12] #29 归一化的登录链路复核：六处修复 + 迁移回填前置检查
 
 > 对 #29（`user` + `user_identity` 归一化）做的独立复核。七条候选问题逐条在真环境验证：六条确认并修复，一条确认为潜伏（加护栏）。

@@ -77,7 +77,15 @@ class DojinSubmitRest(BaseModel):
 
 
 class QuerySubmitRequest(BaseModel):
-    vote_id: str
+    """Read-back request: the caller proves identity with ``vote_token``.
+
+    ``vote_id`` is accepted but ignored.  It survives only so pre-2026-09-13
+    clients that still send ``{"vote_id": ...}`` get a clean 401 instead of a
+    422; drop it once no caller sends it (see docs/api/voteable-api-contract.md §3.3).
+    """
+
+    vote_token: str | None = None
+    vote_id: str | None = None
 
 
 class VotingStatus(BaseModel):

@@ -220,7 +220,7 @@ interface DojinSlot {
 ```typescript
 interface SubmitMeta {
   voteToken?: string;       // 也可放在 Header
-  voteId: string;
+  voteId?: string;          // 服务端忽略：写入时一律取 voteToken 的 user_id（2026-09-13 起）
   attempt: number | null;
   createdAt: string;        // ISO 8601
   userIp: string;
@@ -230,21 +230,21 @@ interface SubmitMeta {
 
 ### 3.3 读取已提交的投票
 
-需要 userToken 鉴权。
+需要 **voteToken** 鉴权（2026-09-13 起）：请求体带 `vote_token`，服务端解出 user_id 后只返回该用户自己的提交。缺失或无效 token 一律 `401`（`detail` = `VOTE_TOKEN_REQUIRED` 或校验错误码）。旧字段 `vote_id` 仍可传但被忽略，兼容期结束后移除。
 
 | 接口 | Request | Response |
 |---|---|---|
-| `POST /get-character/` | `{ "vote_id": "..." }` | `CharacterSubmitRequest` 或空 |
-| `POST /get-music/` | `{ "vote_id": "..." }` | `MusicSubmitRequest` 或空 |
-| `POST /get-cp/` | `{ "vote_id": "..." }` | `CPSubmitRequest` 或空 |
-| `POST /get-paper/` | `{ "vote_id": "..." }` | `PaperSubmitRequest` 或空 |
-| `POST /get-dojin/` | `{ "vote_id": "..." }` | `DojinSubmitRequest` 或空 |
+| `POST /get-character/` | `{ "vote_token": "..." }` | `CharacterSubmitRequest` 或空 |
+| `POST /get-music/` | `{ "vote_token": "..." }` | `MusicSubmitRequest` 或空 |
+| `POST /get-cp/` | `{ "vote_token": "..." }` | `CPSubmitRequest` 或空 |
+| `POST /get-paper/` | `{ "vote_token": "..." }` | `PaperSubmitRequest` 或空 |
+| `POST /get-dojin/` | `{ "vote_token": "..." }` | `DojinSubmitRequest` 或空 |
 
 ### 3.4 投票状态
 
 | 接口 | 说明 |
 |---|---|
-| `POST /voting-status/` `{ "vote_id": "..." }` | 返回 `{ hasCharacter, hasMusic, hasCP, hasPaper, hasDojin }` |
+| `POST /voting-status/` `{ "vote_token": "..." }` | 需 voteToken 鉴权，返回**该用户自己**的 `{ characters, musics, cps, papers, dojin }`（均为 bool） |
 | `POST /voting-statistics/` `{}` | 返回总投票人数统计 |
 | `GET /nominations/approved` | 已审核通过的同人提名列表 |
 

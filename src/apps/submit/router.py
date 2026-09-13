@@ -14,6 +14,7 @@ from src.apps.submit.schemas import (
     MusicSubmitRest,
     PaperSubmitRest,
     QuerySubmitRequest,
+    SubmitMetadata,
     VotingStatistics,
     VotingStatus,
 )
@@ -48,6 +49,25 @@ def _verify_vote_token(token: str | None) -> VoteTokenPayload:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
 
+def _bind_submit_identity(meta: SubmitMetadata, client_ip: str) -> VoteTokenPayload:
+    """Verify the vote_token and pin server-controlled metadata fields.
+
+    ``vote_id`` is the token subject (user_id), never the client-supplied
+    value — otherwise any token holder could write as another voter.  Mirrors
+    the old Rust gateway's ``generate_submit_metadata`` and the GraphQL bridge.
+    ``user_ip`` likewise trusts the peer over anything the client sent.
+    """
+    payload = _verify_vote_token(meta.vote_token)
+    meta.vote_id = payload.user_id
+    meta.user_ip = client_ip
+    return payload
+
+
+def _readback_user_id(body: QuerySubmitRequest) -> str:
+    """Read-back is scoped by the vote_token; a raw ``vote_id`` is ignored."""
+    return _verify_vote_token(body.vote_token).user_id
+
+
 async def _acquire_vote_lock(user_id: str) -> tuple[str, str]:
     redis_client = await get_redis_client()
     lock_key = f"lock-submit-{user_id}"
@@ -71,8 +91,7 @@ async def submit_character_v1(
     service: SubmitService = Depends(get_submit_service),
     client_ip: str = Depends(get_client_ip),
 ) -> EmptyJSON:
-    payload = _verify_vote_token(body.meta.vote_token)
-    body.meta.user_ip = client_ip  # trust the peer over any client-supplied IP
+    payload = _bind_submit_identity(body.meta, client_ip)
     redis_client = await get_redis_client()
     await rate_limit(payload.user_id, redis_client)
     lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
@@ -91,8 +110,7 @@ async def submit_music_v1(
     service: SubmitService = Depends(get_submit_service),
     client_ip: str = Depends(get_client_ip),
 ) -> EmptyJSON:
-    payload = _verify_vote_token(body.meta.vote_token)
-    body.meta.user_ip = client_ip  # trust the peer over any client-supplied IP
+    payload = _bind_submit_identity(body.meta, client_ip)
     redis_client = await get_redis_client()
     await rate_limit(payload.user_id, redis_client)
     lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
@@ -111,8 +129,7 @@ async def submit_cp_v1(
     service: SubmitService = Depends(get_submit_service),
     client_ip: str = Depends(get_client_ip),
 ) -> EmptyJSON:
-    payload = _verify_vote_token(body.meta.vote_token)
-    body.meta.user_ip = client_ip  # trust the peer over any client-supplied IP
+    payload = _bind_submit_identity(body.meta, client_ip)
     redis_client = await get_redis_client()
     await rate_limit(payload.user_id, redis_client)
     lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
@@ -131,8 +148,7 @@ async def submit_paper_v1(
     service: SubmitService = Depends(get_submit_service),
     client_ip: str = Depends(get_client_ip),
 ) -> EmptyJSON:
-    payload = _verify_vote_token(body.meta.vote_token)
-    body.meta.user_ip = client_ip  # trust the peer over any client-supplied IP
+    payload = _bind_submit_identity(body.meta, client_ip)
     redis_client = await get_redis_client()
     await rate_limit(payload.user_id, redis_client)
     lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
@@ -151,8 +167,7 @@ async def submit_dojin_v1(
     service: SubmitService = Depends(get_submit_service),
     client_ip: str = Depends(get_client_ip),
 ) -> EmptyJSON:
-    payload = _verify_vote_token(body.meta.vote_token)
-    body.meta.user_ip = client_ip  # trust the peer over any client-supplied IP
+    payload = _bind_submit_identity(body.meta, client_ip)
     redis_client = await get_redis_client()
     await rate_limit(payload.user_id, redis_client)
     lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
@@ -170,7 +185,7 @@ async def get_submit_character_v1(
     body: QuerySubmitRequest,
     service: SubmitService = Depends(get_submit_service),
 ) -> CharacterSubmitRest:
-    return await service.get_character_submit(body.vote_id)
+    return await service.get_character_submit(_readback_user_id(body))
 
 
 @router.post("/get-music/", response_model=MusicSubmitRest)
@@ -178,7 +193,7 @@ async def get_submit_music_v1(
     body: QuerySubmitRequest,
     service: SubmitService = Depends(get_submit_service),
 ) -> MusicSubmitRest:
-    return await service.get_music_submit(body.vote_id)
+    return await service.get_music_submit(_readback_user_id(body))
 
 
 @router.post("/get-cp/", response_model=CPSubmitRest)
@@ -186,7 +201,7 @@ async def get_submit_cp_v1(
     body: QuerySubmitRequest,
     service: SubmitService = Depends(get_submit_service),
 ) -> CPSubmitRest:
-    return await service.get_cp_submit(body.vote_id)
+    return await service.get_cp_submit(_readback_user_id(body))
 
 
 @router.post("/get-paper/", response_model=PaperSubmitRest)
@@ -194,7 +209,7 @@ async def get_submit_paper_v1(
     body: QuerySubmitRequest,
     service: SubmitService = Depends(get_submit_service),
 ) -> PaperSubmitRest:
-    return await service.get_paper_submit(body.vote_id)
+    return await service.get_paper_submit(_readback_user_id(body))
 
 
 @router.post("/get-dojin/", response_model=DojinSubmitRest)
@@ -202,7 +217,7 @@ async def get_submit_dojin_v1(
     body: QuerySubmitRequest,
     service: SubmitService = Depends(get_submit_service),
 ) -> DojinSubmitRest:
-    return await service.get_dojin_submit(body.vote_id)
+    return await service.get_dojin_submit(_readback_user_id(body))
 
 
 @router.post("/voting-status/", response_model=VotingStatus)
@@ -210,7 +225,7 @@ async def get_voting_status_v1(
     body: QuerySubmitRequest,
     service: SubmitService = Depends(get_submit_service),
 ) -> VotingStatus:
-    return await service.get_voting_status(body.vote_id)
+    return await service.get_voting_status(_readback_user_id(body))
 
 
 @router.post("/voting-statistics/", response_model=VotingStatistics)
