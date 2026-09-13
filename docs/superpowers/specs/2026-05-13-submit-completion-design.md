@@ -38,6 +38,8 @@ class SubmitMetadata(BaseModel):
 
 新增 `_verify_vote_token(body)` 依赖函数，仅在 5 个提交端点使用（get-* / voting-status 不需要）：
 
+> ⚠️ **2026-09-13 勘正**：上面这句是错的。Rust 里 get-* / voting-status 是 submit-handler 的**内网**路由，只有 gateway 按 token 解出 vote_id 后才调它；Python 把它们挂到公网却没补鉴权，等于任何人拿 vote_id 就能读投票。现已改为按 `vote_token` 回读，写入端的 `vote_id` 也改为强制取 token 的 user_id。见 CHANGELOG 2026-09-13。
+
 ```python
 async def _verify_vote_token(body) -> VoteTokenPayload:
     if not body.meta.vote_token:

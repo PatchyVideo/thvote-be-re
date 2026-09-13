@@ -118,33 +118,110 @@ async def test_submit_paper_invalid_json(client):
 @pytest.mark.asyncio
 async def test_voting_status_after_submit(client):
     token = _make_vote_token("user-status-001")
-    vote_id = "thvote-2026-test-status-001"
     # vote gate: complete questionnaire first
     await client.post("/api/v1/paper/", json={
         "papers_json": "{}",
-        "meta": {"vote_token": token, "vote_id": vote_id}
+        "meta": {"vote_token": token}
     })
     # Submit character
     await client.post("/api/v1/character/", json={
         "characters": [{"id": "博丽灵梦"}],
-        "meta": {"vote_token": token, "vote_id": vote_id}
+        "meta": {"vote_token": token}
     })
-    # Check status
-    resp = await client.post("/api/v1/voting-status/", json={"vote_id": vote_id})
+    # Check status: read-back is scoped by the vote_token, never by a raw vote_id
+    resp = await client.post("/api/v1/voting-status/", json={"vote_token": token})
     assert resp.status_code == 200
     data = resp.json()
     assert data["characters"] is True
     assert data["musics"] is False
 
 
+READBACK_ROUTES = [
+    "/api/v1/get-character/",
+    "/api/v1/get-music/",
+    "/api/v1/get-cp/",
+    "/api/v1/get-paper/",
+    "/api/v1/get-dojin/",
+    "/api/v1/voting-status/",
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", READBACK_ROUTES)
+async def test_readback_rejects_raw_vote_id_without_token(client, route):
+    """A bare vote_id must never be enough to read someone's submission."""
+    resp = await client.post(route, json={"vote_id": "user-test-001"})
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "VOTE_TOKEN_REQUIRED"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", READBACK_ROUTES)
+async def test_readback_rejects_invalid_token(client, route):
+    resp = await client.post(route, json={"vote_token": "totally.invalid.token"})
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_readback_is_scoped_to_token_user(client):
+    """Another user's token cannot read my submission, even if it names my vote_id."""
+    owner = _make_vote_token("user-owner-001")
+    other = _make_vote_token("user-other-001")
+    await client.post("/api/v1/paper/", json={
+        "papers_json": "{}", "meta": {"vote_token": owner}
+    })
+    await client.post("/api/v1/character/", json={
+        "characters": [{"id": "博丽灵梦"}], "meta": {"vote_token": owner}
+    })
+
+    mine = await client.post("/api/v1/get-character/", json={"vote_token": owner})
+    assert mine.status_code == 200
+    assert [c["id"] for c in mine.json()["characters"]] == ["博丽灵梦"]
+
+    theirs = await client.post(
+        "/api/v1/get-character/",
+        json={"vote_token": other, "vote_id": "user-owner-001"},
+    )
+    assert theirs.status_code == 200
+    assert theirs.json()["characters"] == []
+
+    status = await client.post(
+        "/api/v1/voting-status/",
+        json={"vote_token": other, "vote_id": "user-owner-001"},
+    )
+    assert status.json()["characters"] is False
+
+
+@pytest.mark.asyncio
+async def test_submit_binds_vote_id_to_token_not_client_value(client):
+    """A client-supplied meta.vote_id must not let a token holder write as someone else."""
+    attacker = _make_vote_token("user-attacker-001")
+    victim = _make_vote_token("user-victim-001")
+    await client.post("/api/v1/paper/", json={
+        "papers_json": "{}",
+        "meta": {"vote_token": attacker, "vote_id": "user-victim-001"},
+    })
+    resp = await client.post("/api/v1/character/", json={
+        "characters": [{"id": "雾雨魔理沙"}],
+        "meta": {"vote_token": attacker, "vote_id": "user-victim-001"},
+    })
+    assert resp.status_code == 200
+
+    as_victim = await client.post("/api/v1/voting-status/", json={"vote_token": victim})
+    assert as_victim.json() == {
+        "characters": False, "musics": False, "cps": False, "papers": False, "dojin": False
+    }
+    as_attacker = await client.post("/api/v1/get-character/", json={"vote_token": attacker})
+    assert [c["id"] for c in as_attacker.json()["characters"]] == ["雾雨魔理沙"]
+
+
 @pytest.mark.asyncio
 async def test_statistics_num_finished_paper(client):
     token = _make_vote_token("user-stat-paper-001")
     papers = json.dumps([{"id": 1, "answer": [1]}])
-    vote_id = "thvote-2026-stat-paper-001"
     await client.post("/api/v1/paper/", json={
         "papers_json": papers,
-        "meta": {"vote_token": token, "vote_id": vote_id}
+        "meta": {"vote_token": token}
     })
     resp = await client.post("/api/v1/voting-statistics/", json={})
     assert resp.status_code == 200
