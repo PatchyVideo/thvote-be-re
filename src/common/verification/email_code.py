@@ -1,11 +1,17 @@
 """Email verification code service.
 
 Mirrors Rust user-manager behavior:
-    code key:   email-verify-{email}        TTL 3600s
-    guard key:  email-verify-guard-{email}  TTL 120s
+    code key:     email-verify-{email}           TTL 3600s
+    guard key:    email-verify-guard-{email}     TTL 120s
+    attempts key: email-verify-attempts-{email}  TTL 3600s (added 2026-09-13)
 
 The guard prevents resends within 120s; the code itself lives for 1 hour
 to give users time to switch tabs / open mail clients.
+
+The attempts counter is a Python-side addition (Rust had none): a 6-digit
+code that lives an hour and is only guarded by a per-IP login limit can be
+brute-forced from many IPs.  After MAX_WRONG_ATTEMPTS mismatches the code is
+invalidated and the user must request a new one.
 
 Codes are 6 random digits with leading zeros preserved.
 """
@@ -27,6 +33,7 @@ logger = logging.getLogger(__name__)
 CODE_TTL_SECONDS = 3600
 GUARD_TTL_SECONDS = 120
 CODE_LENGTH = 6
+MAX_WRONG_ATTEMPTS = 5
 
 
 def _code_key(email: str) -> str:
@@ -35,6 +42,10 @@ def _code_key(email: str) -> str:
 
 def _guard_key(email: str) -> str:
     return f"email-verify-guard-{email}"
+
+
+def _attempts_key(email: str) -> str:
+    return f"email-verify-attempts-{email}"
 
 
 def _generate_code() -> str:
@@ -73,6 +84,7 @@ class EmailCodeService:
 
         code = _generate_code()
         await redis.set(_code_key(email), code, ex=CODE_TTL_SECONDS)
+        await redis.delete(_attempts_key(email))  # fresh code, fresh guess budget
 
         try:
             await self.smtp_client.send_verification_email(recipient=email, code=code)
@@ -91,15 +103,32 @@ class EmailCodeService:
         """Validate and consume a previously sent code.
 
         Successful validation deletes the code (one-shot).  Mismatch /
-        absence raises ValidationError("INCORRECT_VERIFY_CODE").
+        absence raises ValidationError("INCORRECT_VERIFY_CODE").  The
+        MAX_WRONG_ATTEMPTS-th mismatch also invalidates the code, so a
+        later correct guess fails too; the error code stays the same so
+        the client contract is unchanged.
         """
         if is_test_login_bypass(email, submitted_code):  # TEST_LOGIN_BYPASS 上线前移除
             return
         redis = await get_redis()
         expected = await redis.get(_code_key(email))
-        if expected is None or expected != submitted_code:
+        if expected is None:
+            raise ValidationError("INCORRECT_VERIFY_CODE", details=400)
+        if expected != submitted_code:
+            await self._record_wrong_attempt(redis, email)
             raise ValidationError("INCORRECT_VERIFY_CODE", details=400)
         await redis.delete(_code_key(email))
+        await redis.delete(_attempts_key(email))
+
+    async def _record_wrong_attempt(self, redis, email: str) -> None:
+        """Count a mismatch; on the last allowed one, burn the code."""
+        attempts = await redis.incr(_attempts_key(email))
+        if attempts == 1:
+            await redis.expire(_attempts_key(email), CODE_TTL_SECONDS)
+        if attempts >= MAX_WRONG_ATTEMPTS:
+            await redis.delete(_code_key(email))
+            await redis.delete(_attempts_key(email))
+            logger.warning("email code invalidated after %d wrong attempts", attempts)
 
 
 @lru_cache(maxsize=1)

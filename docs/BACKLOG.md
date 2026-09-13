@@ -91,6 +91,7 @@
 - **B-049 尾项** admin-ui legacy 面板视觉验收后删除；无 UI 端点可选补
 - **B-047** IP→ASN 机房归属取证（可独立，属反作弊 Phase 2）
 - **B-056** 迁移命名约定与 zfq 沟通（顺带同步：下一个迁移编号 **0018**、down=0017）
+- ~~**B-066** 全站权限扫描后的两处加固~~ ✅ **已完成**（2026-09-13，`fix/scraper-ratelimit-email-code-attempts`）：`POST /scraper/scrape` per-IP 10/min；邮箱验证码错 5 次作废。扫描的其余结论收进 `docs/operations/production-readiness-checklist.md`（P-1 关文档/GraphiQL、P-2 admin IP 白名单为**上线硬性项**；S-1 SSO `state`/`sid` 在接 SSO 前必须修）
 - ~~**B-065** REST 提交/回读接口的 vote_id 越权~~ ✅ **已完成**（2026-09-13，`fix/rest-readback-token-auth`）：6 个 `get-*`/`voting-status` 改按 `vote_token` 回读；5 个提交端点把 `meta.vote_id` 强制绑定为 token 的 user_id。契约见 `docs/api/voteable-api-contract.md` §3.2–3.4，细节见 CHANGELOG 2026-09-13
 - ~~**B-060** 高级搜索 per-IP 限流细化 + 两条终审小尾巴~~ ✅ **已完成**（2026-08-22，`feat/b060-b057`）：`ClientIPMiddleware`(ContextVar) + 双层预算(per-IP 10/min + 全局 30/min) + 扣费后置到真正执行重算处（小尾巴①注释失实随之消除）+ 等锁改跟随锁存活轮询（上限 60s，锁消失提前接手；真机实测重算 ~8s，原固定 5s 会让等锁者集体重复计算）+ 3 个新测试真实覆盖等锁分支（小尾巴②销账：sleep 让出事件循环即可在 fakeredis 下触发 waiter 路径）
 
