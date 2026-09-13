@@ -71,6 +71,7 @@
 | [`operations/aliyun-onboarding.md`](./operations/aliyun-onboarding.md) | 阿里云 PNVS + DirectMail 从零到上线接入手册（账号/RAM/域名验证/SMTP/smoke + 常见坑） |
 | [`operations/captcha-onboarding.md`](./operations/captcha-onboarding.md) | 验证码 2.0 人机验证接入手册（B-043：开通/建场景/RAM AK/Nacos 六键/smoke + **个人→公家账户切换清单**） |
 | [`operations/login-config-checklist.md`](./operations/login-config-checklist.md) | 🎯 登录模块所需 Nacos 配置项**待填清单**（按登录方式分组 + JSON 骨架 + 访问入口） |
+| [`operations/production-readiness-checklist.md`](./operations/production-readiness-checklist.md) | 🚨 **生产上线待办清单**：关 API 文档/GraphiQL、admin IP 白名单、强密钥、删测试旁路、CORS 收紧等硬性项 + 权限扫描的建议项（2026-09-13） |
 | [`operations/mock-vote-data.md`](./operations/mock-vote-data.md) | Mock 投票数据生成器手册（`scripts/generate_mock_votes.py`：一条命令灌几千合成投票供 result 联调，`mock-` 前缀可随时清理，**仅测试环境**） |
 
 ## 数据样本（`scraper/`）

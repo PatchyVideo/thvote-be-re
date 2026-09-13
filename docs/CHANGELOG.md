@@ -5,6 +5,22 @@
 > 创建日期：2026-04-27
 > **2026-08-31 整理**：合并 9 组重复条目、按日期倒序重排；**2026-07-01 之前**的条目已迁至 [CHANGELOG-archive-2026H1.md](./CHANGELOG-archive-2026H1.md)。
 
+## [2026-09-13] B-066 全站权限扫描：scraper 限流 + 邮箱验证码错 5 次作废
+
+> B-065 之后对登录/token 签发、admin、投票侧数据端点、中间件与配置做了一轮只读扫描（4 个并行审计 + 人工复核）。结论：没有第二个越权洞；本条目落地两处加固，其余结论收进新文档 `docs/operations/production-readiness-checklist.md`。
+
+### Fixed
+- **`POST /api/v1/scraper/scrape` 增加 per-IP 限流**（`src/apps/scraper/router.py`）：10 次/60 秒，超出 `429 REQUEST_TOO_FREQUENT`。此前公开、无鉴权、无限流，任何人都能驱动服务器用自己的 Pixiv 凭据去刷第三方站点。出站目标本就被各站点正则锁死在固定域名，不是任意 SSRF。
+- **邮箱验证码错 5 次作废**（`src/common/verification/email_code.py`，新增 `MAX_WRONG_ATTEMPTS`、`email-verify-attempts-{email}` 计数键，TTL 与码同为 3600s）：此前 6 位码有效 1 小时，唯一防线是登录接口 per-IP 5 次/分钟，多 IP 可撞。旧 Rust 也没有次数限制，属新增防线。发新码时计数清零；成功消费时一并删除。错误码保持 `INCORRECT_VERIFY_CODE`，客户端契约不变。短信码由阿里云 PNVS 校验，其自身有次数控制，不在本条范围。
+
+### Added
+- `docs/operations/production-readiness-checklist.md`：生产上线待办清单。硬性项：关 `/docs`/`/openapi.json`/GraphiQL（测试机实测公网 200）、`ADMIN_ALLOWED_IPS`+`TRUSTED_PROXY_IPS` 必配、`ADMIN_SECRET` 换强值、删测试登录旁路、CORS 收紧、前端截止时间改回。建议项含 SSO `state`/`sid` 未校验（当前路径不可达）等。
+- 测试：`tests/unit/test_email_code_service.py` +3 例（第 5 次错作废、第 4 次错后正确码仍可用、发新码清零）；`tests/integration/test_scraper_rate_limit.py` +1 例（第 11 次 429）。
+
+### 兼容性
+- 无接口 shape 变化、无 schema/migration/配置变更。scraper 限流阈值对正常填表用户（粘几个链接）不可感知。
+- 邮箱码连错 5 次后即使输对也报 `INCORRECT_VERIFY_CODE`，用户需重新发码（受 120s 发码守卫约束）。
+
 ## [2026-09-13] B-065 REST 提交/回读接口按 vote_token 绑定身份（安全修复）
 
 > 外部 review 指出 6 个 REST 回读接口零鉴权；复核后确认，且写入路径有同源问题。根因：Rust 里 `/v1/get-*`、`/v1/voting-status/` 是 `submit-handler` 的**内网**路由，gateway 从 token 解出 vote_id 再转发；Python 重写把它们原样挂到公网 `/api/v1`，测试机 nginx `/v12-be/` 兜底可直达。`vote_id` 即 user_id（uuid4），会出现在 vote_token 载荷、管理端与导出数据里，不算秘密。

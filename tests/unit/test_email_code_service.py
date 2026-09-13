@@ -8,6 +8,7 @@ from src.common.exceptions import RateLimitError, ValidationError
 from src.common.verification.email_code import (
     CODE_TTL_SECONDS,
     GUARD_TTL_SECONDS,
+    MAX_WRONG_ATTEMPTS,
     EmailCodeService,
 )
 
@@ -29,6 +30,15 @@ class _FakeRedis:
 
     async def delete(self, key):
         self.store.pop(key, None)
+
+    async def incr(self, key):
+        current = int(self.store.get(key, ("0", None))[0]) + 1
+        self.store[key] = (str(current), self.store.get(key, ("0", None))[1])
+        return current
+
+    async def expire(self, key, seconds):
+        if key in self.store:
+            self.store[key] = (self.store[key][0], seconds)
 
 
 class _FakeSmtp:
@@ -118,3 +128,44 @@ async def test_consume_unknown_email(fake_redis):
     svc = EmailCodeService(smtp_client=_FakeSmtp())
     with pytest.raises(ValidationError):
         await svc.consume("nobody@example.com", "000000")
+
+
+@pytest.mark.asyncio
+async def test_consume_invalidates_code_after_max_wrong_attempts(fake_redis):
+    """A brute-forcer gets MAX_WRONG_ATTEMPTS guesses, then the code is dead
+    even if the next guess is right."""
+    fake_redis.store["email-verify-a@example.com"] = ("123456", 3600)
+    svc = EmailCodeService(smtp_client=_FakeSmtp())
+
+    for _ in range(MAX_WRONG_ATTEMPTS):
+        with pytest.raises(ValidationError):
+            await svc.consume("a@example.com", "000000")
+
+    assert "email-verify-a@example.com" not in fake_redis.store
+    with pytest.raises(ValidationError):
+        await svc.consume("a@example.com", "123456")
+
+
+@pytest.mark.asyncio
+async def test_consume_succeeds_below_attempt_limit(fake_redis):
+    """Control: one fewer wrong guess must NOT kill the code."""
+    fake_redis.store["email-verify-a@example.com"] = ("123456", 3600)
+    svc = EmailCodeService(smtp_client=_FakeSmtp())
+
+    for _ in range(MAX_WRONG_ATTEMPTS - 1):
+        with pytest.raises(ValidationError):
+            await svc.consume("a@example.com", "000000")
+
+    await svc.consume("a@example.com", "123456")
+    assert "email-verify-a@example.com" not in fake_redis.store
+    assert "email-verify-attempts-a@example.com" not in fake_redis.store
+
+
+@pytest.mark.asyncio
+async def test_send_resets_wrong_attempt_counter(fake_redis):
+    """A fresh code starts with a fresh budget of guesses."""
+    fake_redis.store["email-verify-attempts-a@example.com"] = ("4", 3600)
+    svc = EmailCodeService(smtp_client=_FakeSmtp())
+
+    await svc.send("a@example.com")
+    assert "email-verify-attempts-a@example.com" not in fake_redis.store
