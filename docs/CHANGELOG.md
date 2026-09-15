@@ -5,6 +5,19 @@
 > 创建日期：2026-04-27
 > **2026-08-31 整理**：合并 9 组重复条目、按日期倒序重排；**2026-07-01 之前**的条目已迁至 [CHANGELOG-archive-2026H1.md](./CHANGELOG-archive-2026H1.md)。
 
+## [2026-09-15] 修正音乐候选「我的女仆，我甜美的女仆」的错误数据
+
+> 稀翁玉曲目 `My Maid, Sweet Maid` 在早期导入时被英文逗号拆坏，后端白名单快照和测试库里存成了 `name="My Maid"`、`name_jp=" Sweet Maid"`、旧 id `d60777dd`。前端 `packages/shared/data/music.ts` 早已改正（id `462e28a2`）。投票页按曲名把后端候选对到前端静态表取封面和试听音频，名字对不上，这首歌在投票页没有封面、也放不了。
+
+### Fixed
+- `src/apps/result/data/whitelist_music.json`：用 `scripts/extract_whitelist.mjs` 从前端重新提取，diff 只有这一条（id `d60777dd`→`462e28a2`，name/name_jp 改正），其余 611 条和 244 条角色不变。
+- 测试库 `voteable_music` id=417：`name` 改为 `我的女仆，我甜美的女仆`，`name_jp` 改为 `My Maid, Sweet Maid`（直接 SQL，带原值条件，`UPDATE 1`；admin 没有改 voteable 名称的接口）。改完用 `POST /api/v1/admin/compute-results?vote_year=12` 重跑了计票。
+
+### 兼容性
+- 计票已改读 DB（`load_whitelist_db`），JSON 快照只是 `scripts/whitelist_to_import.py` 的导入数据源，id 变化不影响计票。`candidate_music` id=601、voteable id=417 不变，已有投票（按整数 candidateId 存）不受影响；`old_id` 全表为 NULL，未改。
+- 结果计算的 `historical` 目前固定为 `{}`，按名字查历史的路径没有数据，改名不断链。
+- 无接口 shape、schema、migration、配置变更。生产环境仍是老 Rust 服务，不涉及。
+
 ## [2026-09-13] B-066 全站权限扫描：scraper 限流 + 邮箱验证码错 5 次作废
 
 > B-065 之后对登录/token 签发、admin、投票侧数据端点、中间件与配置做了一轮只读扫描（4 个并行审计 + 人工复核）。结论：没有第二个越权洞；本条目落地两处加固，其余结论收进新文档 `docs/operations/production-readiness-checklist.md`。
