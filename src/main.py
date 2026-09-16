@@ -134,7 +134,7 @@ def create_app() -> FastAPI:
     # GZip: vote-objects 等 JSON 响应体积大且可压(实测角色 100KB→23KB、
     # 曲目 255KB→32KB)。放在最外层;nginx 侧若已 gzip 不会二次压缩。
     # starlette 默认排除 text/event-stream 与二进制类型。
-        # compresslevel=6:JSON 场景下压缩率与 9 几乎一致,但 CPU 更低;
+    # compresslevel=6:JSON 场景下压缩率与 9 几乎一致,但 CPU 更低;
     # <128KB 的响应在主线程压缩,避免拖慢 event loop。
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
