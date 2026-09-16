@@ -700,6 +700,23 @@ Query: category?, vote_year?
 | `GET /admin/sync/history` | 同步历史 |
 | `POST /admin/sync/cancel` | 取消同步 |
 | `POST /admin/sync/retry/{run_id}` | 重试同步 |
+| `GET /admin/cache/stats` | 🆕 各 scope 当前缓存键数量（管理台「缓存」卡片） |
+| `POST /admin/cache/flush` | 🆕 手动失效缓存，body `{"scope": "all"\|"vote_objects"\|"questionnaire"\|"autocomplete"\|"nominations"}`；返回 `{ok, scope, deleted, total}`；未知 scope → 422 |
+
+### 9.9 缓存策略 🆕
+
+全局公共读接口在 Redis 缓存，写入即失效 + TTL 兜底：
+
+| 数据 | 键 | TTL | 写入失效触发 |
+|---|---|---|---|
+| 投票对象列表/详情 | `vote_objects:{year}:{category}[:{id}]` | 600s | work CRUD、voteable 导入/改归属/改资源、候选导入/改/删/合并 |
+| 问卷结构 | `questionnaire:structure:{year}` | 1800s | 问卷/题组/问题/选项 CRUD、整树导入 |
+| 自动补全 | `autocomplete:{year}:{limit}:{q}` | 60s | 候选/作品变更 |
+| 已通过提名 | `nominations:approved:{page}:{size}` | 60s | 提名 approve/reject |
+
+- 失效用 `SCAN` 前缀删除（非 `KEYS`）；管理台可用 `POST /admin/cache/flush` 手动强刷。
+- **不缓存**：带 `vote_token`/用户身份的读接口（`/submit/get-*`、`/voting-status/`、`/user/me` 等）。
+- 结果页榜单是计票产物（`result:*`，由 `POST /admin/compute-results` 重建），不纳入手动刷缓存。
 
 ---
 
@@ -717,6 +734,7 @@ Query: category?, vote_year?
 | `GET /vote-objects/music` | 🚧 | 同上 |
 | `GET /vote-objects/{category}/{id}` | 🚧 | 字段 camelCase；0019 增 `imageUrl`/`aliases`（音乐含 `musicUrl`/`include`） |
 | `PUT /admin/voteables/{id}/resources` | 🆕 0019 | 资源类字段编辑 |
+| `GET /admin/cache/stats`、`POST /admin/cache/flush` | 🆕 | 缓存计数/手动失效 |
 | `POST /admin/candidates/import` | 🚧 | response 新增 `createdVoteables`/`linkedExisting` |
 | `GET /admin/candidates` | 🚧 | response 精简 |
 | `POST /admin/candidates/{id}/relink` | 🆕 | |

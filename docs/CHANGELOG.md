@@ -5,6 +5,32 @@
 > 创建日期：2026-04-27
 > **2026-08-31 整理**：合并 9 组重复条目、按日期倒序重排；**2026-07-01 之前**的条目已迁至 [CHANGELOG-archive-2026H1.md](./CHANGELOG-archive-2026H1.md)。
 
+## [2026-09-17] 公共读接口 Redis 缓存 + 管理台手动刷缓存
+
+> `vote-objects`/问卷结构/自动补全/公开提名列表此前每次直查数据库；项目 Redis 一直存在
+> 却只用于限流/会话/计票锁。本次接入缓存（写入即失效 + TTL 兜底），并给管理台加刷缓存入口。
+
+### Added
+- **`src/common/cache.py`**：JSON/原始文本读写 + `invalidate_prefix`（**SCAN 游标**删除，替代 `KEYS`）；全部 fail-open（Redis 故障不影响请求）。
+- **vote-objects 缓存**（`src/apps/vote_objects/router.py`）：列表 `vote_objects:{year}:{category}`、详情 `vote_objects:detail:{category}:{id}`，TTL 600s；命中直接返回缓存字节，`GZipMiddleware` 仍压缩。
+- **问卷结构缓存**：`questionnaire:structure:{year}`，TTL 1800s。
+- **自动补全缓存**：`autocomplete:{year}:{limit}:{q}`，TTL 60s。
+- **公开提名列表缓存**：`nominations:approved:{page}:{size}`，TTL 60s。
+- **管理端刷缓存**（`src/apps/admin/router.py`）：`GET /admin/cache/stats`（各 scope 键数）、`POST /admin/cache/flush`（scope 白名单 `all|vote_objects|questionnaire|autocomplete|nominations`，未知 → 422）。管理台 Dashboard 新增「缓存」卡片（计数 + 单项/一键刷新）。
+
+### Changed
+- 失效逻辑补齐：`_clear_vote_objects_cache` 改为 SCAN 并同时清 `autocomplete:`；候选导入/改/删/合并/拆分、提名 approve/reject、问卷 admin 全部 13 个写端点都接上对应前缀失效（此前候选变更根本不失效）。
+
+### 兼容性
+- 无接口 shape 变化（vote-objects 响应不变，只是更快）。
+- 明确**不缓存**带 `vote_token`/用户身份的读接口与所有写端点。
+- `result:*` 仍是计票产物，由 `POST /admin/compute-results` 重建，不纳入手动刷缓存。
+
+### Tests
+- 新增 `tests/unit/test_cache.py`（往返/前缀失效/fail-open）。
+- `test_vote_objects.py` 增缓存写入断言；`test_admin_voteables.py` 增 stats/flush/scope 校验/鉴权。
+- 全量 `666 passed, 4 skipped`。
+
 ## [2026-09-16] 投票对象资源 URL 后端化（0019）
 
 > 角色立绘 / 曲目封面 / 试听 URL 原存在前端 `packages/shared/data/{character,music}.ts`，

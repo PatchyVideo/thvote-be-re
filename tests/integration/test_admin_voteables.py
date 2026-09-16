@@ -269,3 +269,48 @@ async def test_update_voteable_resources_requires_admin(app, db_session):
             json={"category": "character", "image_url": "https://x/y.png"},
         )
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_cache_stats_and_flush(app, db_session, admin_secret):
+    """管理端缓存计数 + 手动刷新 + 白名单 scope 校验 + 鉴权。"""
+    await _seed(db_session)
+    headers = {"X-Admin-Secret": admin_secret}
+    async with _client(app) as ac:
+        # 触发公共接口写缓存（无候选也会写空响应缓存）
+        r = await ac.get("/api/v1/vote-objects/characters?vote_year=2026")
+        assert r.status_code == 200
+
+        stats = (await ac.get("/api/v1/admin/cache/stats", headers=headers)).json()
+        assert stats["counts"]["vote_objects"] >= 1
+        assert "vote_objects" in stats["scopes"]
+
+        flush = await ac.post(
+            "/api/v1/admin/cache/flush",
+            json={"scope": "vote_objects"},
+            headers=headers,
+        )
+        assert flush.status_code == 200
+        body = flush.json()
+        assert body["ok"] is True and body["total"] >= 1
+
+        stats2 = (await ac.get("/api/v1/admin/cache/stats", headers=headers)).json()
+        assert stats2["counts"]["vote_objects"] == 0
+
+        # 未知 scope → 422（白名单，不接受任意 pattern）
+        bad = await ac.post(
+            "/api/v1/admin/cache/flush", json={"scope": "nope"}, headers=headers
+        )
+        assert bad.status_code == 422
+
+        # scope=all 正常
+        allflush = await ac.post(
+            "/api/v1/admin/cache/flush", json={"scope": "all"}, headers=headers
+        )
+        assert allflush.status_code == 200 and allflush.json()["ok"] is True
+
+        # 无 secret → 403（路由级 require_admin）
+        noauth = await ac.post(
+            "/api/v1/admin/cache/flush", json={"scope": "all"}
+        )
+        assert noauth.status_code == 403

@@ -39,6 +39,7 @@ from src.apps.admin.service import AdminService, SyncService
 from src.apps.admin.sync.progress import set_current_run
 from src.apps.admin.voteable_import_service import VoteableImportService
 from src.apps.admin.work_service import WorkService
+from src.common.cache import invalidate_prefix
 from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeInProgressError, ComputeService
 from src.apps.result.dao import ResultNotComputedError
@@ -105,9 +106,11 @@ async def import_candidates(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> ImportCandidatesResponse:
     _check_admin_secret(settings, x_admin_secret)
     count = await service.import_candidates(body)
+    await _clear_vote_objects_cache(redis)
     return ImportCandidatesResponse(imported=count)
 
 
@@ -281,6 +284,7 @@ async def import_candidates_content(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> CandidateImportResponse:
     _check_admin_secret(settings, x_admin_secret)
     result = await service.import_candidates_from_content(
@@ -288,6 +292,8 @@ async def import_candidates_content(
     )
     if "parse_error" in result:
         raise HTTPException(status_code=400, detail=result["parse_error"])
+    if not body.dry_run:
+        await _clear_vote_objects_cache(redis)
     return CandidateImportResponse(**result)
 
 
@@ -298,6 +304,7 @@ async def update_candidate(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
     result = await service.update_candidate(candidate_id, body.category, body.fields)
@@ -305,6 +312,7 @@ async def update_candidate(
         raise HTTPException(status_code=404, detail="CANDIDATE_NOT_FOUND")
     if result == "conflict":
         raise HTTPException(status_code=409, detail="CANDIDATE_NAME_CONFLICT")
+    await _clear_vote_objects_cache(redis)
     return {"ok": True}
 
 
@@ -315,11 +323,13 @@ async def delete_candidate(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
     deleted = await service.delete_candidate(candidate_id, category)
     if not deleted:
         raise HTTPException(status_code=404, detail="CANDIDATE_NOT_FOUND")
+    await _clear_vote_objects_cache(redis)
     return {"ok": True}
 
 
@@ -344,6 +354,7 @@ async def merge_candidate(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
     result = await service.merge_candidate(candidate_id, target_id, category)
@@ -353,6 +364,7 @@ async def merge_candidate(
         raise HTTPException(status_code=404, detail="TARGET_NOT_FOUND")
     if result == "self":
         raise HTTPException(status_code=400, detail="CANNOT_MERGE_SELF")
+    await _clear_vote_objects_cache(redis)
     return {"ok": True}
 
 
@@ -363,11 +375,13 @@ async def unmerge_candidate(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
     result = await service.unmerge_candidate(candidate_id, category)
     if result == "not_found":
         raise HTTPException(status_code=404, detail="CANDIDATE_NOT_FOUND")
+    await _clear_vote_objects_cache(redis)
     return {"ok": True}
 
 
@@ -408,11 +422,13 @@ async def approve_nomination(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
     ok = await service.review_nomination(nomination_id, approve=True, reason="")
     if not ok:
         raise HTTPException(status_code=404, detail="NOMINATION_NOT_FOUND")
+    await _clear_nominations_cache(redis)
     return {"ok": True}
 
 
@@ -423,6 +439,7 @@ async def reject_nomination(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
     ok = await service.review_nomination(
@@ -430,6 +447,7 @@ async def reject_nomination(
     )
     if not ok:
         raise HTTPException(status_code=404, detail="NOMINATION_NOT_FOUND")
+    await _clear_nominations_cache(redis)
     return {"ok": True}
 
 
@@ -628,13 +646,69 @@ async def retry_sync(
 
 
 async def _clear_vote_objects_cache(redis: aioredis.Redis) -> None:
-    """Clear vote-objects cache keys after work/voteable mutations."""
-    try:
-        keys = await redis.keys("vote_objects:*")
-        if keys:
-            await redis.delete(*keys)
-    except Exception:
-        pass
+    """work/voteable/候选变更后失效 vote-objects 与 autocomplete。
+
+    SCAN 前缀删除（不再用 KEYS，避免阻塞 Redis）。
+    """
+    await invalidate_prefix(redis, "vote_objects:")
+    await invalidate_prefix(redis, "autocomplete:")
+
+
+async def _clear_nominations_cache(redis: aioredis.Redis) -> None:
+    """提名审核后失效公开的「已通过提名」列表。"""
+    await invalidate_prefix(redis, "nominations:")
+
+
+# ── 缓存管理（管理台手动刷新，B-…）────────────────────────────────────────
+# 白名单 scope → 固定前缀，绝不接受前端传任意 pattern（防误删/清库）。
+# 注意：result:* 是计票产物，由 POST /admin/compute-results 重建，不在此列。
+_CACHE_SCOPES: dict[str, list[str]] = {
+    "vote_objects": ["vote_objects:"],
+    "questionnaire": ["questionnaire:"],
+    "autocomplete": ["autocomplete:"],
+    "nominations": ["nominations:"],
+}
+
+
+@router.get("/cache/stats")
+async def cache_stats(
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict:
+    """各 scope 当前缓存键数量（管理台展示用）。"""
+    counts: dict[str, int] = {}
+    for scope, prefixes in _CACHE_SCOPES.items():
+        n = 0
+        for prefix in prefixes:
+            async for _ in redis.scan_iter(match=f"{prefix}*", count=500):
+                n += 1
+        counts[scope] = n
+    return {"counts": counts, "scopes": sorted(_CACHE_SCOPES)}
+
+
+@router.post("/cache/flush")
+async def flush_cache(
+    body: Optional[dict] = None,
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict:
+    """手动失效缓存。
+
+    body: {"scope": "all" | "vote_objects" | "questionnaire"
+                     | "autocomplete" | "nominations"}
+    """
+    scope = (body or {}).get("scope", "all")
+    if scope == "all":
+        prefixes = [p for ps in _CACHE_SCOPES.values() for p in ps]
+    elif scope in _CACHE_SCOPES:
+        prefixes = _CACHE_SCOPES[scope]
+    else:
+        raise HTTPException(status_code=422, detail="UNKNOWN_CACHE_SCOPE")
+    deleted = {prefix: await invalidate_prefix(redis, prefix) for prefix in prefixes}
+    return {
+        "ok": True,
+        "scope": scope,
+        "deleted": deleted,
+        "total": sum(deleted.values()),
+    }
 
 
 @router.get("/works")
