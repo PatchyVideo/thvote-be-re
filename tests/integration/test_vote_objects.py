@@ -43,7 +43,9 @@ async def _seed_work_and_voteable(session):
     """Helper: create work + voteable_character + candidate in new schema."""
     await session.execute(text("INSERT INTO work (id, name, type) VALUES (1, '红魔乡', 'new')"))
     await session.execute(text(
-        "INSERT INTO voteable_character (id, name, work_id) VALUES (10, '灵梦', 1)"
+        "INSERT INTO voteable_character (id, name, work_id, image_url, aliases) "
+        "VALUES (10, '灵梦', 1, 'https://cdn.example.com/reimu.png', "
+        "'[\"reimu\", \"红白\"]')"
     ))
     await session.execute(text(
         "INSERT INTO voteable_character (id, name, work_id) VALUES (11, '魔理沙', 1)"
@@ -52,7 +54,9 @@ async def _seed_work_and_voteable(session):
         "INSERT INTO voteable_character (id, name, work_id) VALUES (12, '博丽灵梦', 1)"
     ))
     await session.execute(text(
-        "INSERT INTO voteable_music (id, name, work_id) VALUES (20, '曲A', 1)"
+        "INSERT INTO voteable_music (id, name, work_id, image_url, music_url, \"include\") "
+        "VALUES (20, '曲A', 1, 'https://cdn.example.com/a.jpg', "
+        "'https://cdn.example.com/a.mp3', '[\"专辑X\"]')"
     ))
     await session.commit()
 
@@ -135,3 +139,53 @@ async def test_detail_and_404(app):
         assert ok.json()["name"] == "灵梦"
         nf = await ac.get("/api/v1/vote-objects/character/999999")
         assert nf.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_vote_objects_expose_resources_and_aliases(app):
+    """0019: 公共接口下发 imageUrl / aliases / musicUrl / include。"""
+    a, maker = app
+    async with maker() as s:
+        await _seed_work_and_voteable(s)
+        await s.execute(text(
+            "INSERT INTO candidate_character (vote_year, voteable_id) VALUES (2026, 10)"
+        ))
+        await s.execute(text(
+            "INSERT INTO candidate_character (vote_year, voteable_id) VALUES (2026, 11)"
+        ))
+        await s.execute(text(
+            "INSERT INTO candidate_music (vote_year, voteable_id) VALUES (2026, 20)"
+        ))
+        await s.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=a), base_url="http://test") as ac:
+        chars = (await ac.get(
+            "/api/v1/vote-objects/characters?vote_year=2026"
+        )).json()
+        music = (await ac.get(
+            "/api/v1/vote-objects/music?vote_year=2026"
+        )).json()
+
+    char = [i for g in chars["groups"] for i in g["items"] if i["name"] == "灵梦"][0]
+    assert char["imageUrl"] == "https://cdn.example.com/reimu.png"
+    assert char["aliases"] == ["reimu", "红白"]
+    assert "musicUrl" not in char  # 角色不带曲目字段
+
+    song = [i for g in music["groups"] for i in g["items"] if i["name"] == "曲A"][0]
+    assert song["imageUrl"] == "https://cdn.example.com/a.jpg"
+    assert song["musicUrl"] == "https://cdn.example.com/a.mp3"
+    assert song["include"] == ["专辑X"]
+
+    # 详情端点同样下发
+    async with AsyncClient(transport=ASGITransport(app=a), base_url="http://test") as ac:
+        cid = next(
+            i["candidateId"]
+            for g in chars["groups"] for i in g["items"] if i["name"] == "灵梦"
+        )
+        detail = (await ac.get(f"/api/v1/vote-objects/character/{cid}")).json()
+    assert detail["imageUrl"] == "https://cdn.example.com/reimu.png"
+    assert detail["aliases"] == ["reimu", "红白"]
+
+    # 无资源时不报错、返回 null/[]
+    empty = [i for g in chars["groups"] for i in g["items"] if i["name"] == "魔理沙"][0]
+    assert empty["imageUrl"] is None and empty["aliases"] == []

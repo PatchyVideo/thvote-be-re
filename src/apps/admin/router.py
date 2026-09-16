@@ -33,6 +33,7 @@ from src.apps.admin.schemas import (
     SyncStatusResponse,
     UserDetailResponse,
     UserListResponse,
+    VoteableResourceUpdate,
 )
 from src.apps.admin.service import AdminService, SyncService
 from src.apps.admin.sync.progress import set_current_run
@@ -777,8 +778,9 @@ async def list_voteables(
         .offset((max(page, 1) - 1) * page_size)
         .limit(page_size)
     )).all()
-    items = [
-        {
+    items = []
+    for v, work_name, work_type in rows:
+        item = {
             "id": v.id,
             "name": v.name,
             "nameJp": v.name_jp,
@@ -788,9 +790,14 @@ async def list_voteables(
             "workId": v.work_id,
             "workName": work_name,
             "workType": work_type,
+            # 资源类字段（前端统一加载 / 管理台编辑）
+            "imageUrl": v.image_url,
+            "aliases": v.aliases or [],
         }
-        for v, work_name, work_type in rows
-    ]
+        if category == "music":
+            item["musicUrl"] = v.music_url
+            item["include"] = v.include or []
+        items.append(item)
     return {"items": items, "total": total}
 
 
@@ -826,5 +833,75 @@ async def update_voteable_work(
         row.work_id = None
     await session.commit()
     # vote-objects 公开接口按 work 出 filterMeta,归属变更后必须失效缓存
+    await _clear_vote_objects_cache(redis)
+    return {"ok": True}
+
+
+def _clean_optional_url(value: Optional[str], field: str) -> Optional[str]:
+    """空串=清空(None)；非 http(s) 或超长 → 422。"""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if not text.startswith(("http://", "https://")):
+        raise HTTPException(status_code=422, detail=f"INVALID_URL:{field}")
+    if len(text) > 2048:
+        raise HTTPException(status_code=422, detail=f"URL_TOO_LONG:{field}")
+    return text
+
+
+def _clean_str_list(value: Optional[list[str]], cap: int = 100) -> list[str]:
+    """去空/去重保序，限制长度，防止超长 JSON 灌库。"""
+    if not value:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in value:
+        text = str(raw).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+        if len(out) >= cap:
+            break
+    return out
+
+
+@router.put("/voteables/{voteable_id}/resources")
+async def update_voteable_resources(
+    voteable_id: int,
+    body: VoteableResourceUpdate,
+    session: AsyncSession = Depends(get_db_session),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict:
+    """编辑 voteable 的资源类字段（image / music / include / aliases）。
+
+    部分更新：只改请求里显式出现的字段；空串 → 清空为 NULL/[]。
+    character 忽略 music_url / include。写后清 vote-objects 缓存。
+    """
+    from sqlalchemy import select
+
+    model = _voteable_model(body.category)
+    row = (await session.execute(
+        select(model).where(model.id == voteable_id)
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="NOT_FOUND")
+
+    provided = body.model_dump(exclude_unset=True)
+    if "image_url" in provided:
+        row.image_url = _clean_optional_url(provided["image_url"], "image_url")
+    if "aliases" in provided:
+        row.aliases = _clean_str_list(provided["aliases"])
+    if body.category == "music":
+        if "music_url" in provided:
+            row.music_url = _clean_optional_url(
+                provided["music_url"], "music_url"
+            )
+        if "include" in provided:
+            row.include = _clean_str_list(provided["include"], cap=50)
+
+    await session.commit()
     await _clear_vote_objects_cache(redis)
     return {"ok": True}

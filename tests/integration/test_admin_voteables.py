@@ -28,10 +28,21 @@ async def _seed(db_session) -> dict:
     db_session.add(work)
     await db_session.flush()
     sanae = VoteableCharacter(
-        name="东风谷早苗", name_jp="東風谷早苗", type="new", work_id=work.id
+        name="东风谷早苗",
+        name_jp="東風谷早苗",
+        type="new",
+        work_id=work.id,
+        image_url="https://cdn.example.com/sanae.png",
+        aliases=["早苗", "sanae"],
     )
     reimu = VoteableCharacter(name="博丽灵梦", work_id=None)
-    faith = VoteableMusic(name="信仰是为了虚幻之人", work_id=work.id)
+    faith = VoteableMusic(
+        name="信仰是为了虚幻之人",
+        work_id=work.id,
+        image_url="https://cdn.example.com/faith.jpg",
+        music_url="https://cdn.example.com/faith.mp3",
+        include=["东方风神录"],
+    )
     db_session.add_all([sanae, reimu, faith])
     await db_session.commit()
     return {
@@ -64,6 +75,10 @@ async def test_list_voteables_with_work_fields(app, db_session, admin_secret):
     assert sanae["workType"] == "old"
     reimu = by_id[ids["reimu_id"]]
     assert reimu["workId"] is None and reimu["workName"] is None
+    # 资源字段
+    assert sanae["imageUrl"] == "https://cdn.example.com/sanae.png"
+    assert sanae["aliases"] == ["早苗", "sanae"]
+    assert reimu["imageUrl"] is None and reimu["aliases"] == []
 
 
 @pytest.mark.asyncio
@@ -147,4 +162,110 @@ async def test_update_voteable_work(app, db_session, admin_secret):
 async def test_voteables_require_admin(app, db_session):
     async with _client(app) as ac:
         resp = await ac.get("/api/v1/admin/voteables?category=character")
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_list_voteables_music_resource_fields(app, db_session, admin_secret):
+    await _seed(db_session)
+    async with _client(app) as ac:
+        resp = await ac.get(
+            "/api/v1/admin/voteables?category=music",
+            headers={"X-Admin-Secret": admin_secret},
+        )
+    assert resp.status_code == 200
+    row = resp.json()["items"][0]
+    assert row["imageUrl"] == "https://cdn.example.com/faith.jpg"
+    assert row["musicUrl"] == "https://cdn.example.com/faith.mp3"
+    assert row["include"] == ["东方风神录"]
+
+
+@pytest.mark.asyncio
+async def test_update_voteable_resources_character(app, db_session, admin_secret):
+    ids = await _seed(db_session)
+    headers = {"X-Admin-Secret": admin_secret}
+    async with _client(app) as ac:
+        # 部分更新：只给 image_url + aliases
+        resp = await ac.put(
+            f"/api/v1/admin/voteables/{ids['reimu_id']}/resources",
+            json={"category": "character",
+                  "image_url": "https://cdn.example.com/reimu.png",
+                  "aliases": ["灵梦", "红白"]},
+            headers=headers,
+        )
+        assert resp.status_code == 200 and resp.json()["ok"] is True
+        # 空串 → 清空 image_url；aliases 并集
+        resp = await ac.put(
+            f"/api/v1/admin/voteables/{ids['sanae_id']}/resources",
+            json={"category": "character", "image_url": "  ",
+                  "aliases": ["青蛙子"]},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+    db_session.expire_all()
+    reimu = (await db_session.execute(
+        select(VoteableCharacter).where(VoteableCharacter.id == ids["reimu_id"])
+    )).scalar_one()
+    assert reimu.image_url == "https://cdn.example.com/reimu.png"
+    assert reimu.aliases == ["灵梦", "红白"]
+    sanae = (await db_session.execute(
+        select(VoteableCharacter).where(VoteableCharacter.id == ids["sanae_id"])
+    )).scalar_one()
+    assert sanae.image_url is None  # 清空
+    assert sanae.aliases == ["青蛙子"]  # 管理端语义=整体替换
+
+
+@pytest.mark.asyncio
+async def test_update_voteable_resources_music(app, db_session, admin_secret):
+    ids = await _seed(db_session)
+    headers = {"X-Admin-Secret": admin_secret}
+    async with _client(app) as ac:
+        resp = await ac.put(
+            f"/api/v1/admin/voteables/{ids['faith_id']}/resources",
+            json={"category": "music",
+                  "music_url": "https://cdn.example.com/new.mp3",
+                  "include": ["东方地灵殿"],
+                  "image_url": "https://cdn.example.com/new.jpg"},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+    db_session.expire_all()
+    faith = (await db_session.execute(
+        select(VoteableMusic).where(VoteableMusic.id == ids["faith_id"])
+    )).scalar_one()
+    assert faith.music_url == "https://cdn.example.com/new.mp3"
+    assert faith.include == ["东方地灵殿"]  # 管理端语义=整体替换
+    assert faith.image_url == "https://cdn.example.com/new.jpg"
+
+
+@pytest.mark.asyncio
+async def test_update_voteable_resources_validation(app, db_session, admin_secret):
+    ids = await _seed(db_session)
+    headers = {"X-Admin-Secret": admin_secret}
+    async with _client(app) as ac:
+        # 非 http(s) → 422
+        resp = await ac.put(
+            f"/api/v1/admin/voteables/{ids['reimu_id']}/resources",
+            json={"category": "character", "image_url": "javascript:alert(1)"},
+            headers=headers,
+        )
+        assert resp.status_code == 422
+        # 不存在的 voteable → 404
+        resp = await ac.put(
+            "/api/v1/admin/voteables/999999/resources",
+            json={"category": "character", "image_url": "https://x/y.png"},
+            headers=headers,
+        )
+        assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_voteable_resources_requires_admin(app, db_session):
+    ids = await _seed(db_session)
+    async with _client(app) as ac:
+        resp = await ac.put(
+            f"/api/v1/admin/voteables/{ids['reimu_id']}/resources",
+            json={"category": "character", "image_url": "https://x/y.png"},
+        )
     assert resp.status_code == 403
