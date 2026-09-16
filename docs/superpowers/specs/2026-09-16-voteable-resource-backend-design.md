@@ -25,7 +25,7 @@
 | D5 | DB 用 voteable 表 1:1 加列，不建通用资源表 |
 | D6 | 后端基线 `origin/main`；前端 `zfq_dev_fe` 以 merge（非 rebase）同步 `origin/dev` |
 | D7 | 复用 `/admin/*` 已有 router 级 `require_admin`（secret + IP 白名单，fail-closed） |
-| D8 | 前端 sessionStorage 缓存加 5 分钟 TTL，规避“管理台改了不生效” |
+| D8 | 前端 sessionStorage 缓存改为「先渲染、后台 revalidate」：命中缓存立即渲染，TTL(5min) 只决定何时后台刷新；避免阻塞式重拉 |
 
 ## 迁移字段（实测 244 角色 / 612 曲目，名称 100% 匹配）
 
@@ -59,6 +59,7 @@
 - 重写 `packages/vote/src/common/lib/voteObjectsDataSource.ts`：直接映射后端字段，删除按 name 匹配；
   缓存加 5 分钟 TTL。
 - 结果页新增 `packages/result/src/lib/voteObjectResources.ts`；5 处静态表调用改为后端索引。
+- 性能：投票页按类别懒加载（角色页不再拉曲目）；缓存改为先渲染后台 revalidate；后端加 `GZipMiddleware`。
 - 删除 `packages/shared/data/character.ts`、`music.ts`、`vote/common/lib/getNickName.ts`、
   `result/lib/getIDtoName.ts`、`result/pages/Test.vue`（及其路由）。
 

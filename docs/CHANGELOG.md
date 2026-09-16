@@ -29,6 +29,12 @@
 ### Fixed（顺带）
 - 修复 `admin-ui/src/views/WorksView.vue`：此前对不上现有 `useAsync`/`usePagination`/`DataTable` API，`vue-tsc` 直接失败，admin-ui 无法构建。
 
+### Performance（同日后补：修复投票列表页变慢）
+- **后端加 `GZipMiddleware`**（`src/main.py`）：vote-objects JSON 实测角色 `100KB→23KB`、曲目 `255KB→32KB`（4~8×）。此前仅 vote 的 nginx 配了 gzip，result 的 `/res-be` 与 dev 代理都未压缩。
+- **前端投票页按类别懒加载**：`VoteCharacter.vue` 只调 `loadCharacterVoteObjects()`、`VoteMusic.vue` 只调 `loadMusicVoteObjects()`（原都调 `loadVoteObjects()` 一次拉两个列表）。角色列表页不再为曲目付 32KB + 一次 DB 查询。
+- **缓存改「先渲染、后台 revalidate」**：sessionStorage 命中即同步渲染并立即返回，TTL 只决定何时在后台刷新，不再阻塞页面。原来 5 分钟 TTL 会让已缓存的列表页重新等待网络（测试机 TTFB 0.3~1.3s），这是"变慢"的主因。
+- 量化：静态表删除使 JS 少 **371KB(min)/50KB(gzip)**；API 增 ~38KB(gzip)。首次加载净约 −12KB，命中缓存后不再有阻塞请求。
+
 ### 兼容性
 - 只增列/只增字段，旧前端与旧调用方不受影响；但**新前端强依赖新字段 → 必须后端先发布、再发布前端**。
 - 数据迁移为一次性人工步骤（测试库已执行：角色 image 164、aliases 175；曲目 image 605、music 612、include 231）。
