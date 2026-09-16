@@ -2,6 +2,7 @@
 
 import uuid
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,8 +21,10 @@ from src.apps.submit.schemas import (
 )
 from src.apps.submit.service import SubmitService
 from src.apps.user.deps import get_client_ip
+from src.common.cache import cache_get_json, cache_set_json
 from src.common.database import get_db_session
 from src.common.middleware.rate_limit import get_redis_client, rate_limit
+from src.common.redis import get_redis
 from src.common.security.jwt import (
     JWTValidationError,
     VoteTokenPayload,
@@ -29,6 +32,9 @@ from src.common.security.jwt import (
 )
 
 router = APIRouter(prefix="", tags=["submit-handler"])
+
+# 公开的「已通过提名」列表,60s 缓存;审核动作按 nominations: 前缀失效。
+NOMINATIONS_CACHE_TTL = 60
 
 
 async def get_submit_service(
@@ -240,8 +246,16 @@ async def list_approved_nominations_v1(
     page: int = 1,
     page_size: int = 50,
     session: AsyncSession = Depends(get_db_session),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
-    """Public: approved dojin nominations, deduped by udid with count."""
+    """Public: approved dojin nominations, deduped by udid with count.
+
+    Redis 缓存 60s；管理员审核动作会按 ``nominations:`` 前缀失效。
+    """
+    key = f"nominations:approved:{page}:{page_size}"
+    cached = await cache_get_json(redis, key)
+    if cached is not None:
+        return cached
     rows = await SubmitDAO(session).list_approved_nominations(page, page_size)
     items = [
         {
@@ -253,4 +267,6 @@ async def list_approved_nominations_v1(
         }
         for r in rows
     ]
-    return {"items": items, "page": page}
+    payload = {"items": items, "page": page}
+    await cache_set_json(redis, key, payload, NOMINATIONS_CACHE_TTL)
+    return payload

@@ -5,6 +5,67 @@
 > 创建日期：2026-04-27
 > **2026-08-31 整理**：合并 9 组重复条目、按日期倒序重排；**2026-07-01 之前**的条目已迁至 [CHANGELOG-archive-2026H1.md](./CHANGELOG-archive-2026H1.md)。
 
+## [2026-09-17] 公共读接口 Redis 缓存 + 管理台手动刷缓存
+
+> `vote-objects`/问卷结构/自动补全/公开提名列表此前每次直查数据库；项目 Redis 一直存在
+> 却只用于限流/会话/计票锁。本次接入缓存（写入即失效 + TTL 兜底），并给管理台加刷缓存入口。
+
+### Added
+- **`src/common/cache.py`**：JSON/原始文本读写 + `invalidate_prefix`（**SCAN 游标**删除，替代 `KEYS`）；全部 fail-open（Redis 故障不影响请求）。
+- **vote-objects 缓存**（`src/apps/vote_objects/router.py`）：列表 `vote_objects:{year}:{category}`、详情 `vote_objects:detail:{category}:{id}`，TTL 600s；命中直接返回缓存字节，`GZipMiddleware` 仍压缩。
+- **问卷结构缓存**：`questionnaire:structure:{year}`，TTL 1800s。
+- **自动补全缓存**：`autocomplete:{year}:{limit}:{q}`，TTL 60s。
+- **公开提名列表缓存**：`nominations:approved:{page}:{size}`，TTL 60s。
+- **管理端刷缓存**（`src/apps/admin/router.py`）：`GET /admin/cache/stats`（各 scope 键数）、`POST /admin/cache/flush`（scope 白名单 `all|vote_objects|questionnaire|autocomplete|nominations`，未知 → 422）。管理台 Dashboard 新增「缓存」卡片（计数 + 单项/一键刷新）。
+
+### Changed
+- 失效逻辑补齐：`_clear_vote_objects_cache` 改为 SCAN 并同时清 `autocomplete:`；候选导入/改/删/合并/拆分、提名 approve/reject、问卷 admin 全部 13 个写端点都接上对应前缀失效（此前候选变更根本不失效）。
+
+### 兼容性
+- 无接口 shape 变化（vote-objects 响应不变，只是更快）。
+- 明确**不缓存**带 `vote_token`/用户身份的读接口与所有写端点。
+- `result:*` 仍是计票产物，由 `POST /admin/compute-results` 重建，不纳入手动刷缓存。
+
+### Tests
+- 新增 `tests/unit/test_cache.py`（往返/前缀失效/fail-open）。
+- `test_vote_objects.py` 增缓存写入断言；`test_admin_voteables.py` 增 stats/flush/scope 校验/鉴权。
+- 全量 `666 passed, 4 skipped`。
+
+## [2026-09-16] 投票对象资源 URL 后端化（0019）
+
+> 角色立绘 / 曲目封面 / 试听 URL 原存在前端 `packages/shared/data/{character,music}.ts`，
+> 由前端**按 `name`** 匹配挂到后端候选上，管理台无法配置、改名即失效。本次迁到后端
+> 与 voteable 1:1 绑定，公共接口下发，管理台可编辑，前端静态表与匹配逻辑整体删除。
+
+### Added
+- **迁移 `0019_voteable_resources`**（`alembic/versions/0019_voteable_resources.py`）：`voteable_character.image_url`、`voteable_music.image_url`、`voteable_music.music_url`、`voteable_music.include`（JSON，默认 `[]`）。Postgres-only 幂等；`aliases` 列已存在仅回填。
+- **公共接口下发资源**（`src/apps/vote_objects/dao.py`）：`GET /api/v1/vote-objects/{characters|music}` 与 `/{category}/{id}` 的 item 新增 `imageUrl`、`aliases`（音乐另加 `musicUrl`、`include`）。
+- **管理端资源配置**：`GET /admin/voteables` 补资源字段；新增 `PUT /admin/voteables/{id}/resources`（部分更新、空串清空、URL 仅 http(s) 且 ≤2048、写后清缓存）。复用路由级 `require_admin`。
+- **迁移工具**：`scripts/voteable_resources.json`（一次性数据工件，含来源 commit）+ `scripts/import_voteable_resources.py`（按 name 导入，默认 dry-run/只填空值，`--apply --yes` 写入，`--overwrite` 覆盖）。
+- 管理台新页「投票对象资源」（`admin-ui/src/views/VoteableResourcesView.vue` + `api/voteables.ts`），产物已重建提交到 `src/admin_ui/`。
+- 前端统一加载层 `packages/shared/api/voteObjects.ts`；结果页资源索引 `packages/result/src/lib/voteObjectResources.ts`。
+
+### Changed
+- 投票页 `voteObjectsDataSource` 不再按 name 匹配静态表，直接映射后端字段；sessionStorage 缓存加 5 分钟 TTL（后端资源可被管理台修改）。
+- class 定义抽到 `packages/shared/model/{character,music}.ts`。
+
+### Removed
+- 删除 `packages/shared/data/character.ts`、`music.ts`（Touhou-Vote 仓库）及按 name 取 URL 的老逻辑；连带清理死代码 `vote/common/lib/getNickName.ts`、`result/lib/getIDtoName.ts`、`result/pages/Test.vue`。
+
+### Fixed（顺带）
+- 修复 `admin-ui/src/views/WorksView.vue`：此前对不上现有 `useAsync`/`usePagination`/`DataTable` API，`vue-tsc` 直接失败，admin-ui 无法构建。
+
+### Performance（同日后补：修复投票列表页变慢）
+- **后端加 `GZipMiddleware`**（`src/main.py`）：vote-objects JSON 实测角色 `100KB→23KB`、曲目 `255KB→32KB`（4~8×）。此前仅 vote 的 nginx 配了 gzip，result 的 `/res-be` 与 dev 代理都未压缩。
+- **前端投票页按类别懒加载**：`VoteCharacter.vue` 只调 `loadCharacterVoteObjects()`、`VoteMusic.vue` 只调 `loadMusicVoteObjects()`（原都调 `loadVoteObjects()` 一次拉两个列表）。角色列表页不再为曲目付 32KB + 一次 DB 查询。
+- **缓存改「先渲染、后台 revalidate」**：sessionStorage 命中即同步渲染并立即返回，TTL 只决定何时在后台刷新，不再阻塞页面。原来 5 分钟 TTL 会让已缓存的列表页重新等待网络（测试机 TTFB 0.3~1.3s），这是"变慢"的主因。
+- 量化：静态表删除使 JS 少 **371KB(min)/50KB(gzip)**；API 增 ~38KB(gzip)。首次加载净约 −12KB，命中缓存后不再有阻塞请求。
+
+### 兼容性
+- 只增列/只增字段，旧前端与旧调用方不受影响；但**新前端强依赖新字段 → 必须后端先发布、再发布前端**。
+- 数据迁移为一次性人工步骤（测试库已执行：角色 image 164、aliases 175；曲目 image 605、music 612、include 231）。
+- 无 GraphQL schema 变更；`color`/`title` 不建列（源数据分别为全表常量和全空），前端用常量/空串。
+
 ## [2026-09-13] B-066 全站权限扫描：scraper 限流 + 邮箱验证码错 5 次作废
 
 > B-065 之后对登录/token 签发、admin、投票侧数据端点、中间件与配置做了一轮只读扫描（4 个并行审计 + 人工复核）。结论：没有第二个越权洞；本条目落地两处加固，其余结论收进新文档 `docs/operations/production-readiness-checklist.md`。

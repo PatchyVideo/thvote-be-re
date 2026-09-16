@@ -250,7 +250,11 @@ interface SubmitMeta {
 
 ---
 
-## 四、投票对象（Vote Objects）🚧 本次改动
+## 四、投票对象（Vote Objects）
+
+> 🚧 2026-09-16（迁移 0019）：资源类 URL 从「前端静态表按 `name` 匹配」迁到后端，
+> 与 voteable 1:1 绑定。item 新增 `imageUrl` / `aliases`（音乐再加 `musicUrl` / `include`），
+> 前端直接使用，不再本地匹配资源。`_source` 数据见后端 `scripts/voteable_resources.json`。
 
 ### 4.1 获取角色列表
 
@@ -260,34 +264,38 @@ GET /vote-objects/characters?vote_year={year}
 
 | Query | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `vote_year` | int | 否 | 默认当前年份 |
+| `vote_year` | int | 否 | 默认 `settings.vote_year` |
 
 ```typescript
 // Response 200:
 interface VoteObjectsCharacterResponse {
   voteYear: number;
   groups: CharacterGroup[];
+  filterMeta: FilterMeta;        // 前端筛选下拉用
   aliasMap: Record<string, number>;
 }
 
 interface CharacterGroup {
-  group: string;          // origin（首登作品），空=未分类
+  group: string;                 // work 名（首登作品），空 = 未分类
   items: CharacterItem[];
 }
 
 interface CharacterItem {
-  candidateId: number;    // 🔑 投票时作为 VoteSlot.id 提交
+  candidateId: number;           // 🔑 投票时作为 VoteSlot.id 提交
   name: string;
   nameJp: string;
-  origin: string;
-  type: string;
-  firstAppearance: string | null;
+  type: string;                  // old / new / book / CD / others
+  firstAppearance: string | null; // YYYYMMDD
+  workIds: number[];
+  workTypes: string[];
+  imageUrl: string | null;       // 🆕 0019：立绘；null → 前端占位图
+  aliases: string[];             // 🆕 0019：别名（前端搜索语料）
 }
 
-// aliasMap:
-//   key = 别名（含 name 本身、日文名、所有 aliases）
-//   value = candidateId
-//   前端用此 map 做本地即时匹配
+interface FilterMeta {
+  kinds: { type: string; label: string }[];
+  works: { workId: number; name: string; type: string }[];
+}
 ```
 
 ### 4.2 获取音乐列表
@@ -300,11 +308,12 @@ GET /vote-objects/music?vote_year={year}
 interface VoteObjectsMusicResponse {
   voteYear: number;
   groups: MusicGroup[];
+  filterMeta: FilterMeta;
   aliasMap: Record<string, number>;
 }
 
 interface MusicGroup {
-  group: string;          // album，空=未分类
+  group: string;                 // work 名（专辑），空 = 未分类
   items: MusicItem[];
 }
 
@@ -312,9 +321,14 @@ interface MusicItem {
   candidateId: number;
   name: string;
   nameJp: string;
-  type: string;
+  type: string;                  // game / book / CD / others
   firstAppearance: string | null;
-  album: string | null;
+  workIds: number[];
+  workTypes: string[];
+  imageUrl: string | null;       // 🆕 0019：封面
+  musicUrl: string | null;       // 🆕 0019：试听（短音频）
+  include: string[];             // 🆕 0019：收录专辑列表
+  aliases: string[];
 }
 ```
 
@@ -327,19 +341,13 @@ GET /vote-objects/{category}/{candidateId}
 | Path | 类型 | 值 |
 |---|---|---|
 | `category` | enum | `"character"` 或 `"music"` |
-| `candidateId` | int | 来自列表的 candidateId |
+| `candidateId` | int | 列表里的 `candidateId` |
 
-```typescript
-interface VoteItemDetail {
-  candidateId: number;
-  voteYear: number;
-  name: string;
-  nameJp: string;
-  origin: string;              // character 专属，music 为 ""
-  firstAppearance: string | null;
-  album: string | null;        // music 专属，character 为 null
-}
-```
+返回该 item 全部字段 + `voteYear`（`imageUrl/aliases`，音乐含 `musicUrl/include`）。不存在 → `404 NOT_FOUND`。
+
+### 4.4 资源配置（管理端）
+
+见 §9.5「Voteable 管理」的 `PUT /admin/voteables/{id}/resources`。
 
 ---
 
@@ -584,47 +592,62 @@ Response 200: { "ok": true }
 
 > 只删 candidate 行，不删 voteable。其余 candidate 管理端点（fields/merges/merge-into/unmerge）🚧废弃。
 
-### 9.5 Voteable 管理 🆕
+### 9.5 Voteable 管理 🆕（0019 起含资源配置）
 
 #### `GET /admin/voteables`
 
 ```
-Query: category=character|music, q?=, page, pageSize
+Query: category=character|music（必填）, q?, page?, page_size?
 ```
 
 ```typescript
 // Response 200:
 {
   "items": [{
-    "voteableId": 5,
-    "name": "博麗靈夢",
-    "nameJp": "博麗 霊夢",
-    "origin": "東方紅魔鄉",     // character
-    "album": null,              // music
-    "type": "主角",
-    "firstAppearance": "2002-08-11",
-    "aliases": ["靈夢", "紅白"],
+    "id": 48,
+    "name": "博丽灵梦",
+    "nameJp": "博麗　霊夢",
+    "type": "old",
+    "firstAppearance": "19970815",
     "oldId": null,
-    "candidateYears": [2024, 2025]
+    "workId": 1, "workName": "东方灵异传", "workType": "old",
+    "imageUrl": "https://asset.lilywhite.cc/...@100px.png",  // 🆕 0019
+    "aliases": ["博麗霊夢", "红白"],                          // 🆕 回填
+    // category=music 时额外返回：
+    "musicUrl": "https://asset.lilywhite.cc/...@10s.mp3",
+    "include": ["幺乐团的历史"]
   }],
-  "total": 150
+  "total": 244
 }
 ```
+
+> 鉴权：`/admin/*` 路由级 `require_admin`，`X-Admin-Secret` 必填且受 `ADMIN_ALLOWED_IPS` 白名单约束（fail-closed）。
 
 #### `POST /admin/voteables/{id}`
 
 ```typescript
-// Request (insertSelective):
+// Request: 改 work 归属
+{ "category": "character" | "music", "work_id": 1 | null }
+// work_id=null 清空；work 不存在 → 409；voteable 不存在 → 404
+// Response 200: { "ok": true }
+```
+
+#### `PUT /admin/voteables/{id}/resources` 🆕
+
+部分更新：**只改请求里显式出现的字段**；空串 → 清空为 `NULL` / `[]`；
+URL 仅允许 `http(s)` 且 ≤ 2048；character 忽略 `music_url` / `include`。
+
+```typescript
+// Request:
 {
-  "name"?: "博麗靈夢",
-  "nameJp"?: "博麗 霊夢",
-  "type"?: "主角",
-  "firstAppearance"?: "2002-08-11",
-  "origin"?: "東方紅魔鄉",      // character
-  "album"?: "東方幻奏響",       // music
-  "aliases"?: ["靈夢", "紅白", "はくれい"]
+  "category": "character" | "music",
+  "image_url"?: "https://..." | "",       // 角色立绘 / 曲目封面
+  "music_url"?: "https://..." | "",       // music 专属：试听
+  "include"?: ["专辑A", "专辑B"],          // music 专属：收录专辑（整体替换）
+  "aliases"?: ["别名1", "别名2"]           // 整体替换（管理台编辑全量列表）
 }
 // Response 200: { "ok": true }
+// 非法 URL → 422 INVALID_URL:{field}；不存在 → 404 NOT_FOUND
 ```
 
 ### 9.6 计票
@@ -677,6 +700,23 @@ Query: category?, vote_year?
 | `GET /admin/sync/history` | 同步历史 |
 | `POST /admin/sync/cancel` | 取消同步 |
 | `POST /admin/sync/retry/{run_id}` | 重试同步 |
+| `GET /admin/cache/stats` | 🆕 各 scope 当前缓存键数量（管理台「缓存」卡片） |
+| `POST /admin/cache/flush` | 🆕 手动失效缓存，body `{"scope": "all"\|"vote_objects"\|"questionnaire"\|"autocomplete"\|"nominations"}`；返回 `{ok, scope, deleted, total}`；未知 scope → 422 |
+
+### 9.9 缓存策略 🆕
+
+全局公共读接口在 Redis 缓存，写入即失效 + TTL 兜底：
+
+| 数据 | 键 | TTL | 写入失效触发 |
+|---|---|---|---|
+| 投票对象列表/详情 | `vote_objects:{year}:{category}[:{id}]` | 600s | work CRUD、voteable 导入/改归属/改资源、候选导入/改/删/合并 |
+| 问卷结构 | `questionnaire:structure:{year}` | 1800s | 问卷/题组/问题/选项 CRUD、整树导入 |
+| 自动补全 | `autocomplete:{year}:{limit}:{q}` | 60s | 候选/作品变更 |
+| 已通过提名 | `nominations:approved:{page}:{size}` | 60s | 提名 approve/reject |
+
+- 失效用 `SCAN` 前缀删除（非 `KEYS`）；管理台可用 `POST /admin/cache/flush` 手动强刷。
+- **不缓存**：带 `vote_token`/用户身份的读接口（`/submit/get-*`、`/voting-status/`、`/user/me` 等）。
+- 结果页榜单是计票产物（`result:*`，由 `POST /admin/compute-results` 重建），不纳入手动刷缓存。
 
 ---
 
@@ -692,7 +732,9 @@ Query: category?, vote_year?
 |---|---|---|
 | `GET /vote-objects/characters` | 🚧 | response 新增 `aliasMap`、`candidateId`、字段 camelCase |
 | `GET /vote-objects/music` | 🚧 | 同上 |
-| `GET /vote-objects/{category}/{id}` | 🚧 | 字段 camelCase |
+| `GET /vote-objects/{category}/{id}` | 🚧 | 字段 camelCase；0019 增 `imageUrl`/`aliases`（音乐含 `musicUrl`/`include`） |
+| `PUT /admin/voteables/{id}/resources` | 🆕 0019 | 资源类字段编辑 |
+| `GET /admin/cache/stats`、`POST /admin/cache/flush` | 🆕 | 缓存计数/手动失效 |
 | `POST /admin/candidates/import` | 🚧 | response 新增 `createdVoteables`/`linkedExisting` |
 | `GET /admin/candidates` | 🚧 | response 精简 |
 | `POST /admin/candidates/{id}/relink` | 🆕 | |

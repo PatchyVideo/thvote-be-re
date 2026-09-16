@@ -33,11 +33,13 @@ from src.apps.admin.schemas import (
     SyncStatusResponse,
     UserDetailResponse,
     UserListResponse,
+    VoteableResourceUpdate,
 )
 from src.apps.admin.service import AdminService, SyncService
 from src.apps.admin.sync.progress import set_current_run
 from src.apps.admin.voteable_import_service import VoteableImportService
 from src.apps.admin.work_service import WorkService
+from src.common.cache import invalidate_prefix
 from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeInProgressError, ComputeService
 from src.apps.result.dao import ResultNotComputedError
@@ -104,9 +106,11 @@ async def import_candidates(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> ImportCandidatesResponse:
     _check_admin_secret(settings, x_admin_secret)
     count = await service.import_candidates(body)
+    await _clear_vote_objects_cache(redis)
     return ImportCandidatesResponse(imported=count)
 
 
@@ -280,6 +284,7 @@ async def import_candidates_content(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> CandidateImportResponse:
     _check_admin_secret(settings, x_admin_secret)
     result = await service.import_candidates_from_content(
@@ -287,6 +292,8 @@ async def import_candidates_content(
     )
     if "parse_error" in result:
         raise HTTPException(status_code=400, detail=result["parse_error"])
+    if not body.dry_run:
+        await _clear_vote_objects_cache(redis)
     return CandidateImportResponse(**result)
 
 
@@ -297,6 +304,7 @@ async def update_candidate(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
     result = await service.update_candidate(candidate_id, body.category, body.fields)
@@ -304,6 +312,7 @@ async def update_candidate(
         raise HTTPException(status_code=404, detail="CANDIDATE_NOT_FOUND")
     if result == "conflict":
         raise HTTPException(status_code=409, detail="CANDIDATE_NAME_CONFLICT")
+    await _clear_vote_objects_cache(redis)
     return {"ok": True}
 
 
@@ -314,11 +323,13 @@ async def delete_candidate(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
     deleted = await service.delete_candidate(candidate_id, category)
     if not deleted:
         raise HTTPException(status_code=404, detail="CANDIDATE_NOT_FOUND")
+    await _clear_vote_objects_cache(redis)
     return {"ok": True}
 
 
@@ -343,6 +354,7 @@ async def merge_candidate(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
     result = await service.merge_candidate(candidate_id, target_id, category)
@@ -352,6 +364,7 @@ async def merge_candidate(
         raise HTTPException(status_code=404, detail="TARGET_NOT_FOUND")
     if result == "self":
         raise HTTPException(status_code=400, detail="CANNOT_MERGE_SELF")
+    await _clear_vote_objects_cache(redis)
     return {"ok": True}
 
 
@@ -362,11 +375,13 @@ async def unmerge_candidate(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
     result = await service.unmerge_candidate(candidate_id, category)
     if result == "not_found":
         raise HTTPException(status_code=404, detail="CANDIDATE_NOT_FOUND")
+    await _clear_vote_objects_cache(redis)
     return {"ok": True}
 
 
@@ -407,11 +422,13 @@ async def approve_nomination(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
     ok = await service.review_nomination(nomination_id, approve=True, reason="")
     if not ok:
         raise HTTPException(status_code=404, detail="NOMINATION_NOT_FOUND")
+    await _clear_nominations_cache(redis)
     return {"ok": True}
 
 
@@ -422,6 +439,7 @@ async def reject_nomination(
     x_admin_secret: Optional[str] = Header(None),
     service: AdminService = Depends(get_admin_service),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
     ok = await service.review_nomination(
@@ -429,6 +447,7 @@ async def reject_nomination(
     )
     if not ok:
         raise HTTPException(status_code=404, detail="NOMINATION_NOT_FOUND")
+    await _clear_nominations_cache(redis)
     return {"ok": True}
 
 
@@ -627,13 +646,69 @@ async def retry_sync(
 
 
 async def _clear_vote_objects_cache(redis: aioredis.Redis) -> None:
-    """Clear vote-objects cache keys after work/voteable mutations."""
-    try:
-        keys = await redis.keys("vote_objects:*")
-        if keys:
-            await redis.delete(*keys)
-    except Exception:
-        pass
+    """work/voteable/候选变更后失效 vote-objects 与 autocomplete。
+
+    SCAN 前缀删除（不再用 KEYS，避免阻塞 Redis）。
+    """
+    await invalidate_prefix(redis, "vote_objects:")
+    await invalidate_prefix(redis, "autocomplete:")
+
+
+async def _clear_nominations_cache(redis: aioredis.Redis) -> None:
+    """提名审核后失效公开的「已通过提名」列表。"""
+    await invalidate_prefix(redis, "nominations:")
+
+
+# ── 缓存管理（管理台手动刷新，B-…）────────────────────────────────────────
+# 白名单 scope → 固定前缀，绝不接受前端传任意 pattern（防误删/清库）。
+# 注意：result:* 是计票产物，由 POST /admin/compute-results 重建，不在此列。
+_CACHE_SCOPES: dict[str, list[str]] = {
+    "vote_objects": ["vote_objects:"],
+    "questionnaire": ["questionnaire:"],
+    "autocomplete": ["autocomplete:"],
+    "nominations": ["nominations:"],
+}
+
+
+@router.get("/cache/stats")
+async def cache_stats(
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict:
+    """各 scope 当前缓存键数量（管理台展示用）。"""
+    counts: dict[str, int] = {}
+    for scope, prefixes in _CACHE_SCOPES.items():
+        n = 0
+        for prefix in prefixes:
+            async for _ in redis.scan_iter(match=f"{prefix}*", count=500):
+                n += 1
+        counts[scope] = n
+    return {"counts": counts, "scopes": sorted(_CACHE_SCOPES)}
+
+
+@router.post("/cache/flush")
+async def flush_cache(
+    body: Optional[dict] = None,
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict:
+    """手动失效缓存。
+
+    body: {"scope": "all" | "vote_objects" | "questionnaire"
+                     | "autocomplete" | "nominations"}
+    """
+    scope = (body or {}).get("scope", "all")
+    if scope == "all":
+        prefixes = [p for ps in _CACHE_SCOPES.values() for p in ps]
+    elif scope in _CACHE_SCOPES:
+        prefixes = _CACHE_SCOPES[scope]
+    else:
+        raise HTTPException(status_code=422, detail="UNKNOWN_CACHE_SCOPE")
+    deleted = {prefix: await invalidate_prefix(redis, prefix) for prefix in prefixes}
+    return {
+        "ok": True,
+        "scope": scope,
+        "deleted": deleted,
+        "total": sum(deleted.values()),
+    }
 
 
 @router.get("/works")
@@ -777,8 +852,9 @@ async def list_voteables(
         .offset((max(page, 1) - 1) * page_size)
         .limit(page_size)
     )).all()
-    items = [
-        {
+    items = []
+    for v, work_name, work_type in rows:
+        item = {
             "id": v.id,
             "name": v.name,
             "nameJp": v.name_jp,
@@ -788,9 +864,14 @@ async def list_voteables(
             "workId": v.work_id,
             "workName": work_name,
             "workType": work_type,
+            # 资源类字段（前端统一加载 / 管理台编辑）
+            "imageUrl": v.image_url,
+            "aliases": v.aliases or [],
         }
-        for v, work_name, work_type in rows
-    ]
+        if category == "music":
+            item["musicUrl"] = v.music_url
+            item["include"] = v.include or []
+        items.append(item)
     return {"items": items, "total": total}
 
 
@@ -826,5 +907,75 @@ async def update_voteable_work(
         row.work_id = None
     await session.commit()
     # vote-objects 公开接口按 work 出 filterMeta,归属变更后必须失效缓存
+    await _clear_vote_objects_cache(redis)
+    return {"ok": True}
+
+
+def _clean_optional_url(value: Optional[str], field: str) -> Optional[str]:
+    """空串=清空(None)；非 http(s) 或超长 → 422。"""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if not text.startswith(("http://", "https://")):
+        raise HTTPException(status_code=422, detail=f"INVALID_URL:{field}")
+    if len(text) > 2048:
+        raise HTTPException(status_code=422, detail=f"URL_TOO_LONG:{field}")
+    return text
+
+
+def _clean_str_list(value: Optional[list[str]], cap: int = 100) -> list[str]:
+    """去空/去重保序，限制长度，防止超长 JSON 灌库。"""
+    if not value:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in value:
+        text = str(raw).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+        if len(out) >= cap:
+            break
+    return out
+
+
+@router.put("/voteables/{voteable_id}/resources")
+async def update_voteable_resources(
+    voteable_id: int,
+    body: VoteableResourceUpdate,
+    session: AsyncSession = Depends(get_db_session),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict:
+    """编辑 voteable 的资源类字段（image / music / include / aliases）。
+
+    部分更新：只改请求里显式出现的字段；空串 → 清空为 NULL/[]。
+    character 忽略 music_url / include。写后清 vote-objects 缓存。
+    """
+    from sqlalchemy import select
+
+    model = _voteable_model(body.category)
+    row = (await session.execute(
+        select(model).where(model.id == voteable_id)
+    )).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="NOT_FOUND")
+
+    provided = body.model_dump(exclude_unset=True)
+    if "image_url" in provided:
+        row.image_url = _clean_optional_url(provided["image_url"], "image_url")
+    if "aliases" in provided:
+        row.aliases = _clean_str_list(provided["aliases"])
+    if body.category == "music":
+        if "music_url" in provided:
+            row.music_url = _clean_optional_url(
+                provided["music_url"], "music_url"
+            )
+        if "include" in provided:
+            row.include = _clean_str_list(provided["include"], cap=50)
+
+    await session.commit()
     await _clear_vote_objects_cache(redis)
     return {"ok": True}

@@ -60,6 +60,7 @@ class VoteObjectsDAO:
                         VoteableCharacter.type,
                         VoteableCharacter.first_appearance,
                         VoteableCharacter.aliases,
+                        VoteableCharacter.image_url,
                         Work.id,
                         Work.name,
                         Work.type,
@@ -79,7 +80,18 @@ class VoteObjectsDAO:
         items: list[dict] = []
         alias_pairs: list[tuple[int, list[str]]] = []
         for row in rows:
-            cid, name, name_jp, vtype, first_app, aliases, wid, wname, wtype = row
+            (
+                cid,
+                name,
+                name_jp,
+                vtype,
+                first_app,
+                aliases,
+                image_url,
+                wid,
+                wname,
+                wtype,
+            ) = row
             work_ids = [wid] if wid is not None else []
             work_types = [wtype] if wtype else []
             items.append(
@@ -91,6 +103,9 @@ class VoteObjectsDAO:
                     "firstAppearance": first_app or None,
                     "workIds": work_ids,
                     "workTypes": work_types,
+                    # 资源类 URL 与别名（前端统一加载 / 搜索语料）
+                    "imageUrl": image_url or None,
+                    "aliases": aliases or [],
                     "_workNames": {wid: wname} if wid else {},
                     "_groupKey": wname or "未分类",
                 }
@@ -123,6 +138,9 @@ class VoteObjectsDAO:
                         VoteableMusic.type,
                         VoteableMusic.first_appearance,
                         VoteableMusic.aliases,
+                        VoteableMusic.image_url,
+                        VoteableMusic.music_url,
+                        VoteableMusic.include,
                         Work.id,
                         Work.name,
                         Work.type,
@@ -142,7 +160,20 @@ class VoteObjectsDAO:
         items: list[dict] = []
         alias_pairs: list[tuple[int, list[str]]] = []
         for row in rows:
-            cid, name, name_jp, vtype, first_app, aliases, wid, wname, wtype = row
+            (
+                cid,
+                name,
+                name_jp,
+                vtype,
+                first_app,
+                aliases,
+                image_url,
+                music_url,
+                includes,
+                wid,
+                wname,
+                wtype,
+            ) = row
             work_ids = [wid] if wid is not None else []
             work_types = [wtype] if wtype else []
             items.append(
@@ -154,6 +185,11 @@ class VoteObjectsDAO:
                     "firstAppearance": first_app or None,
                     "workIds": work_ids,
                     "workTypes": work_types,
+                    # 资源类 URL：封面 + 试听；include = 收录专辑
+                    "imageUrl": image_url or None,
+                    "musicUrl": music_url or None,
+                    "include": includes or [],
+                    "aliases": aliases or [],
                     "_workNames": {wid: wname} if wid else {},
                     "_groupKey": wname or "未分类",
                 }
@@ -185,6 +221,8 @@ class VoteObjectsDAO:
                         VoteableCharacter.name_jp,
                         VoteableCharacter.type,
                         VoteableCharacter.first_appearance,
+                        VoteableCharacter.aliases,
+                        VoteableCharacter.image_url,
                         Work.id,
                         Work.name,
                         Work.type,
@@ -199,7 +237,19 @@ class VoteObjectsDAO:
             ).one_or_none()
             if row is None:
                 return None
-            cid, vy, name, name_jp, vtype, first_app, wid, wname, wtype = row
+            (
+                cid,
+                vy,
+                name,
+                name_jp,
+                vtype,
+                first_app,
+                aliases,
+                image_url,
+                wid,
+                wname,
+                wtype,
+            ) = row
             return {
                 "candidateId": cid,
                 "voteYear": vy,
@@ -209,6 +259,8 @@ class VoteObjectsDAO:
                 "firstAppearance": first_app or None,
                 "workIds": [wid] if wid is not None else [],
                 "workTypes": [wtype] if wtype else [],
+                "imageUrl": image_url or None,
+                "aliases": aliases or [],
             }
         else:
             row = (
@@ -220,6 +272,10 @@ class VoteObjectsDAO:
                         VoteableMusic.name_jp,
                         VoteableMusic.type,
                         VoteableMusic.first_appearance,
+                        VoteableMusic.aliases,
+                        VoteableMusic.image_url,
+                        VoteableMusic.music_url,
+                        VoteableMusic.include,
                         Work.id,
                         Work.name,
                         Work.type,
@@ -234,7 +290,21 @@ class VoteObjectsDAO:
             ).one_or_none()
             if row is None:
                 return None
-            cid, vy, name, name_jp, vtype, first_app, wid, wname, wtype = row
+            (
+                cid,
+                vy,
+                name,
+                name_jp,
+                vtype,
+                first_app,
+                aliases,
+                image_url,
+                music_url,
+                includes,
+                wid,
+                wname,
+                wtype,
+            ) = row
             return {
                 "candidateId": cid,
                 "voteYear": vy,
@@ -244,6 +314,10 @@ class VoteObjectsDAO:
                 "firstAppearance": first_app or None,
                 "workIds": [wid] if wid is not None else [],
                 "workTypes": [wtype] if wtype else [],
+                "imageUrl": image_url or None,
+                "musicUrl": music_url or None,
+                "include": includes or [],
+                "aliases": aliases or [],
             }
 
 

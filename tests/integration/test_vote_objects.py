@@ -5,6 +5,7 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from src.common.redis import get_redis as _ORIGINAL_GET_REDIS
 from src.db_model.base import Base
 
 
@@ -18,7 +19,7 @@ async def engine():
 
 
 @pytest_asyncio.fixture
-async def app(engine):
+async def app(engine, patch_redis):
     from src.common.database import get_db_session
     from src.common.redis import get_redis
     from src.main import create_app
@@ -29,13 +30,42 @@ async def app(engine):
         async with maker() as s:
             yield s
 
+    # 复用 conftest autouse patch_redis 的 FakeRedis（同一次测试内共享）。
     async def _override_get_redis():
-        import fakeredis
-        return fakeredis.aioredis.FakeRedis(decode_responses=True)
+        return patch_redis
 
     a = create_app()
     a.dependency_overrides[get_db_session] = _override_get_db
-    a.dependency_overrides[get_redis] = _override_get_redis
+    # 覆盖所有 router 在 import 时捕获的 get_redis 函数对象。
+    # conftest 的 autouse patch_redis 只 monkeypatch 模块属性，而
+    # `Depends(get_redis)` 在 import 时已绑定对象，故必须逐个覆盖。
+    import importlib
+
+    import src.common.redis as redis_module
+
+    override_targets = {redis_module.get_redis, _ORIGINAL_GET_REDIS}
+    for modname in (
+        "src.apps.vote_objects.router",
+        "src.apps.admin.router",
+        "src.apps.admin.monitor.router",
+        "src.apps.autocomplete.router",
+        "src.apps.questionnaire.router",
+        "src.apps.questionnaire.admin_router",
+        "src.apps.result.router",
+        "src.apps.submit.router",
+        "src.apps.user.router",
+        "src.apps.user.deps",
+        "src.common.middleware.rate_limit",
+    ):
+        try:
+            mod = importlib.import_module(modname)
+        except Exception:
+            continue
+        dep = getattr(mod, "get_redis", None)
+        if dep is not None:
+            override_targets.add(dep)
+    for dep in override_targets:
+        a.dependency_overrides[dep] = _override_get_redis
     yield a, maker
 
 
@@ -43,7 +73,9 @@ async def _seed_work_and_voteable(session):
     """Helper: create work + voteable_character + candidate in new schema."""
     await session.execute(text("INSERT INTO work (id, name, type) VALUES (1, '红魔乡', 'new')"))
     await session.execute(text(
-        "INSERT INTO voteable_character (id, name, work_id) VALUES (10, '灵梦', 1)"
+        "INSERT INTO voteable_character (id, name, work_id, image_url, aliases) "
+        "VALUES (10, '灵梦', 1, 'https://cdn.example.com/reimu.png', "
+        "'[\"reimu\", \"红白\"]')"
     ))
     await session.execute(text(
         "INSERT INTO voteable_character (id, name, work_id) VALUES (11, '魔理沙', 1)"
@@ -52,7 +84,9 @@ async def _seed_work_and_voteable(session):
         "INSERT INTO voteable_character (id, name, work_id) VALUES (12, '博丽灵梦', 1)"
     ))
     await session.execute(text(
-        "INSERT INTO voteable_music (id, name, work_id) VALUES (20, '曲A', 1)"
+        "INSERT INTO voteable_music (id, name, work_id, image_url, music_url, \"include\") "
+        "VALUES (20, '曲A', 1, 'https://cdn.example.com/a.jpg', "
+        "'https://cdn.example.com/a.mp3', '[\"专辑X\"]')"
     ))
     await session.commit()
 
@@ -135,3 +169,76 @@ async def test_detail_and_404(app):
         assert ok.json()["name"] == "灵梦"
         nf = await ac.get("/api/v1/vote-objects/character/999999")
         assert nf.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_vote_objects_expose_resources_and_aliases(app):
+    """0019: 公共接口下发 imageUrl / aliases / musicUrl / include。"""
+    a, maker = app
+    async with maker() as s:
+        await _seed_work_and_voteable(s)
+        await s.execute(text(
+            "INSERT INTO candidate_character (vote_year, voteable_id) VALUES (2026, 10)"
+        ))
+        await s.execute(text(
+            "INSERT INTO candidate_character (vote_year, voteable_id) VALUES (2026, 11)"
+        ))
+        await s.execute(text(
+            "INSERT INTO candidate_music (vote_year, voteable_id) VALUES (2026, 20)"
+        ))
+        await s.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=a), base_url="http://test") as ac:
+        chars = (await ac.get(
+            "/api/v1/vote-objects/characters?vote_year=2026"
+        )).json()
+        music = (await ac.get(
+            "/api/v1/vote-objects/music?vote_year=2026"
+        )).json()
+
+    char = [i for g in chars["groups"] for i in g["items"] if i["name"] == "灵梦"][0]
+    assert char["imageUrl"] == "https://cdn.example.com/reimu.png"
+    assert char["aliases"] == ["reimu", "红白"]
+    assert "musicUrl" not in char  # 角色不带曲目字段
+
+    song = [i for g in music["groups"] for i in g["items"] if i["name"] == "曲A"][0]
+    assert song["imageUrl"] == "https://cdn.example.com/a.jpg"
+    assert song["musicUrl"] == "https://cdn.example.com/a.mp3"
+    assert song["include"] == ["专辑X"]
+
+    # 详情端点同样下发
+    async with AsyncClient(transport=ASGITransport(app=a), base_url="http://test") as ac:
+        cid = next(
+            i["candidateId"]
+            for g in chars["groups"] for i in g["items"] if i["name"] == "灵梦"
+        )
+        detail = (await ac.get(f"/api/v1/vote-objects/character/{cid}")).json()
+    assert detail["imageUrl"] == "https://cdn.example.com/reimu.png"
+    assert detail["aliases"] == ["reimu", "红白"]
+
+    # 无资源时不报错、返回 null/[]
+    empty = [i for g in chars["groups"] for i in g["items"] if i["name"] == "魔理沙"][0]
+    assert empty["imageUrl"] is None and empty["aliases"] == []
+
+
+@pytest.mark.asyncio
+async def test_vote_objects_response_is_cached(app, patch_redis):
+    """公共接口响应写入 Redis 缓存（同一次 app fixture 共享 FakeRedis）。"""
+    a, maker = app
+    async with maker() as s:
+        await _seed_work_and_voteable(s)
+        await s.execute(text(
+            "INSERT INTO candidate_character (vote_year, voteable_id) VALUES (2026, 10)"
+        ))
+        await s.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=a), base_url="http://test") as ac:
+        r1 = await ac.get("/api/v1/vote-objects/characters?vote_year=2026")
+        assert r1.status_code == 200
+
+    keys = [k async for k in patch_redis.scan_iter(match="vote_objects:*")]
+    assert "vote_objects:2026:characters" in keys
+
+    async with AsyncClient(transport=ASGITransport(app=a), base_url="http://test") as ac:
+        r2 = await ac.get("/api/v1/vote-objects/characters?vote_year=2026")
+    assert r2.status_code == 200 and r2.json() == r1.json()
