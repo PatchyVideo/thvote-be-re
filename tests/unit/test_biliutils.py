@@ -114,3 +114,8 @@ async def test_redis_outage_does_not_block_guest_bootstrap(monkeypatch):
 
     assert cookies["buvid3"] == "B3"
     set_cache.assert_awaited_once()
+
+
+def test_default_user_agent_is_non_browser():
+    """Bilibili API 412s browser UAs without WBI; curl UA is accepted."""
+    assert biliutils.get_header()["User-Agent"].startswith("curl/")

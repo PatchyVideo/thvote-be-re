@@ -84,16 +84,15 @@ async def bvid_converter(bvid: str | None = None, aid: int | None = None) -> str
 def get_header() -> dict[str, str]:
     """Get HTTP headers for Bilibili API requests.
 
-    Returns:
-        Headers dictionary
+    Bilibili's public API returns HTTP 412 + an HTML challenge when the
+    request carries a browser User-Agent (without WBI signature), but accepts
+    non-browser clients.  Verified on the test host: Chrome UA -> 412 HTML,
+    curl UA -> 200 JSON with the same headers/cookies.  Keep the default
+    non-browser UA; BILIBILI_USER_AGENT can override it if needed.
     """
     import os
 
-    user_agent = os.getenv(
-        "BILIBILI_USER_AGENT",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    )
+    user_agent = os.getenv("BILIBILI_USER_AGENT", "curl/8.5.0")
     return {
         "User-Agent": user_agent,
         "Referer": "https://www.bilibili.com",
