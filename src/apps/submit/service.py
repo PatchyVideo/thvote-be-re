@@ -110,15 +110,24 @@ class SubmitValidator:
 
         Rejects (message pinpoints the offending combination, as the PRD asks):
         - fewer than 2 or more than 3 members, or a blank member id;
-        - the same member listed twice / three members not pairwise distinct;
+        - a 3-member combination with a repeated member (PRD 2.5.4: "可选取两个
+          相同的角色" 但 "当同一组合选择了两个相同的角色，则不能添加第三个
+          角色" / "不得存在相同角色的三人组合": A,A,B 与 A,A,A 都拒绝);
         - the same combination twice (order-insensitive — "包含相同角色的组合，
           即使角色顺序不同…也视为同样的组合");
         - an ``active`` member outside the combination.
+
+        A 2-member combination of the *same* character (A×A) is legal (PRD 2.5.4
+        "可选取两个相同的角色"), so the duplicate rule only applies at 3 members.
+        Combination keys are multisets — ``tuple(sorted(members))`` — never sets:
+        the repeat count is part of the identity (A×A ≠ A×B), and it matches the
+        recount key (``src/apps/result/compute.py``) so dedupe can't disagree
+        with the tally.
         """
         first_set = False
         if len(data.cps) < 1 or len(data.cps) > self.CP_MAX_ITEMS:
             raise ValueError(f"数量{len(data.cps)}不在范围内[1,{self.CP_MAX_ITEMS}]")
-        seen_keys: set[frozenset[str]] = set()
+        seen_keys: set[tuple[str, ...]] = set()
         for idx, c in enumerate(data.cps, start=1):
             if (c.reason is not None) and len(c.reason) > 4096:
                 raise ValueError(f"第{idx}个组合理由过长")
@@ -135,10 +144,12 @@ class SubmitValidator:
                     f"第{idx}个组合人数{len(members)}不在范围内"
                     f"[{self.CP_MIN_MEMBERS},{self.CP_MAX_MEMBERS}]"
                 )
-            if len(set(members)) != len(members):
+            # 2 人组合允许 A×A（PRD「可选取两个相同的角色」）；
+            # 3 人组合不允许任何重复成员（A,A,B / A,A,A 拒绝）。
+            if len(members) == self.CP_MAX_MEMBERS and len(set(members)) != len(members):
                 raise ValueError(f"第{idx}个组合存在相同角色")
 
-            key = frozenset(members)
+            key = tuple(sorted(members))
             if key in seen_keys:
                 raise ValueError(f"第{idx}个组合与前面的组合重复")
             seen_keys.add(key)

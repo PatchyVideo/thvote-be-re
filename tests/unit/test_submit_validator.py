@@ -111,6 +111,36 @@ def test_validate_cp_duplicate_member_rejected():
             cps=[CPSubmit(id_a="A", id_b="A", id_c="B")], meta=META))
 
 
+def test_validate_cp_three_same_member_rejected():
+    # A×A 只能停在 2 人；第三人再加同一角色同样拒绝
+    with pytest.raises(ValueError, match="相同角色"):
+        v.validate_cp(CPSubmitRest(
+            cps=[CPSubmit(id_a="A", id_b="A", id_c="A")], meta=META))
+
+
+def test_validate_cp_same_character_pair_ok():
+    # PRD 2.5.4「可选取两个相同的角色」：A×A 是合法组合(R-05 曾误拒)
+    cps = [CPSubmit(id_a="A", id_b="A", active="A")]
+    data = CPSubmitRest(cps=cps, meta=META)
+    assert v.validate_cp(data) is data
+
+
+def test_validate_cp_same_pair_duplicate_combination_rejected():
+    # 组合 key 必须是多重集：(A,A) 与 (A,A) 是同一组合 → 拒绝
+    with pytest.raises(ValueError, match="组合重复"):
+        v.validate_cp(CPSubmitRest(
+            cps=[CPSubmit(id_a="A", id_b="A"),
+                 CPSubmit(id_a="A", id_b="A")],
+            meta=META))
+
+
+def test_validate_cp_same_pair_and_mixed_pair_are_distinct():
+    # 多重集口径：A×A 与 A×B 是两个不同组合，不能当成重复
+    cps = [CPSubmit(id_a="A", id_b="A"), CPSubmit(id_a="A", id_b="B")]
+    data = CPSubmitRest(cps=cps, meta=META)
+    assert v.validate_cp(data) is data
+
+
 def test_validate_cp_duplicate_combination_rejected():
     # 顺序不同也算同一个组合
     with pytest.raises(ValueError, match="组合重复"):
