@@ -5,6 +5,23 @@
 > 创建日期：2026-04-27
 > **2026-08-31 整理**：合并 9 组重复条目、按日期倒序重排；**2026-07-01 之前**的条目已迁至 [CHANGELOG-archive-2026H1.md](./CHANGELOG-archive-2026H1.md)。
 
+## [2026-10-20] Scraper 测试补齐 + DLsite 解析修复（B-063）
+
+> 前端作品提名页的“自动获取信息”此前只有 URL 路由/限流测试；本轮补全
+> 站点路由与关键解析器单测，并用 Playwright 从真实前端页面验证。
+
+### Added
+- **`tests/unit/test_scraper_sites.py`**（22 例）：Steam/THBWiki/Bilibili/DLsite/Dizzylab/Melon 的成功解析；Pixiv/YouTube/Twitter 缺凭据 fail-closed；AcFun/Nico/贴吧/微博 结构缺失时返回结构化 `parsererr`；`process.get_data` 对未知 URL 与解析异常的处理。
+- **URL 路由全量用例**：Bilibili（BV/AV/CV/移动端）、Twitter/X、Pixiv 图/小说、Nico 动画/静画、YouTube、微博、贴吧、PatchyVideo、Steam、DLsite、Melonbooks、Dizzylab、AcFun 视频/文章，共 28 个链接形态。
+- **`scripts/e2e/scraper_frontend.js` + `docs/testing/scraper-e2e.md`**：Playwright 从前端登录/提名页发起的真实 E2E 脚本与运行手册。
+
+### Fixed
+- **DLsite 解析**：`title_el[0].text_content()` 是 BeautifulSoup API，lxml 元素没有该方法，真实页面会直接 `parsererr`；改为 `"".join(itertext())`。
+
+### Tests
+- Scraper 相关 51 例全过；`apps/scraper` 行覆盖 **22.1% → 55%**（Steam/THBWiki/DLsite/Dizzylab/Melon 均 69%+）。
+- Playwright 前端 E2E：手机号 `19900000001` + 固定码 `888888` 登录，提名页实测 THBWiki/Steam 自动填充成功，Bilibili 当前失败与非法域名均按预期报错。
+
 ## [2026-10-20] 老 Mongo 用户导入：bcrypt 兼容 + 旧 id 映射（migration 0020）
 
 > 为把 `thvote_users/voters.bson`（121,957 条）导入测试库，恢复 0018 删掉的
