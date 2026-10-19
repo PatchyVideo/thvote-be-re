@@ -96,10 +96,46 @@ def test_validate_cp_too_many():
         v.validate_cp(CPSubmitRest(cps=cps, meta=META))
 
 
+# ── cp structure rules (R-05 / PRD 2.5.4) ──────────────────────────────
+
+def test_validate_cp_blank_member_rejected():
+    with pytest.raises(ValueError, match="未填写的角色"):
+        v.validate_cp(CPSubmitRest(
+            cps=[CPSubmit(id_a="A", id_b="")], meta=META))
+
+
+def test_validate_cp_duplicate_member_rejected():
+    # 三人组合里有相同角色 → PRD 明确禁止
+    with pytest.raises(ValueError, match="相同角色"):
+        v.validate_cp(CPSubmitRest(
+            cps=[CPSubmit(id_a="A", id_b="A", id_c="B")], meta=META))
+
+
+def test_validate_cp_duplicate_combination_rejected():
+    # 顺序不同也算同一个组合
+    with pytest.raises(ValueError, match="组合重复"):
+        v.validate_cp(CPSubmitRest(
+            cps=[CPSubmit(id_a="A", id_b="B"), CPSubmit(id_a="B", id_b="A")],
+            meta=META))
+
+
+def test_validate_cp_three_member_combination_ok():
+    cps = [CPSubmit(id_a="A", id_b="B", id_c="C", active="B")]
+    data = CPSubmitRest(cps=cps, meta=META)
+    assert v.validate_cp(data) is data
+
+
+def test_validate_cp_distinct_combinations_ok():
+    cps = [CPSubmit(id_a="A", id_b="B"), CPSubmit(id_a="A", id_b="C")]
+    data = CPSubmitRest(cps=cps, meta=META)
+    assert v.validate_cp(data) is data
+
+
 # ── paper ──────────────────────────────────────────────────────────────
 # papers_json 是不透明业务数据(前端真实载荷为嵌套对象,统计侧不读原始表),
-# 只验「合法 JSON + UTF-8 ≤ 256KB」。旧的"非空列表+整数id"校验是按想象格式写的,
-# 会拒掉真实前端载荷,已按 spec 2026-06-07 移除。
+# 只验「合法 JSON + UTF-8 ≤ 256KB + 非空容器」。旧的"非空列表+整数id"校验是按
+# 想象格式写的会拒掉真实前端载荷(已按 spec 2026-06-07 移除);"空载荷"校验是
+# R-03 的止损(空 "{}" 曾能解锁投票)。
 
 
 def test_validate_paper_accepts_real_frontend_payload():
@@ -118,11 +154,29 @@ def test_validate_paper_accepts_real_frontend_payload():
     assert v.validate_paper(data) is data
 
 
-def test_validate_paper_accepts_any_valid_json_shape():
-    # 列表、对象、甚至标量都放行——结构不归后端管
-    for payload in ['[{"id": 1}]', "{}", '"just a string"']:
+def test_validate_paper_accepts_any_non_empty_json_container():
+    # 列表/对象都放行——内部结构不归后端管
+    for payload in ['[{"id": 1}]', '{"mainQuestionnaire": {"id": 11}}']:
         data = PaperSubmitRest(papers_json=payload, meta=META)
         assert v.validate_paper(data) is data
+
+
+@pytest.mark.parametrize("payload", ["{}", "[]", '"just a string"', "null"])
+def test_validate_paper_rejects_empty_or_scalar_payload(payload):
+    """R-03: 空载荷("{}")曾被当作「已完成问卷」解锁投票,提交期即拒绝。"""
+    with pytest.raises(ValueError, match="问卷数据为空"):
+        v.validate_paper(PaperSubmitRest(papers_json=payload, meta=META))
+
+
+def test_is_paper_meaningful():
+    from src.apps.submit.service import SubmitValidator
+    assert SubmitValidator.is_paper_meaningful('{"a": 1}') is True
+    assert SubmitValidator.is_paper_meaningful('[{"id": 1}]') is True
+    assert SubmitValidator.is_paper_meaningful("{}") is False
+    assert SubmitValidator.is_paper_meaningful("[]") is False
+    assert SubmitValidator.is_paper_meaningful("null") is False
+    assert SubmitValidator.is_paper_meaningful("{not json") is False
+    assert SubmitValidator.is_paper_meaningful(None) is False
 
 
 def test_validate_paper_invalid_json():
@@ -159,3 +213,41 @@ def test_validate_dojin_reason_too_long():
                           title="T", author="A", reason="x" * 4097)]
     with pytest.raises(ValueError, match="理由过长"):
         v.validate_dojin(DojinSubmitRest(dojins=dojins, meta=META))
+
+
+# ── dojin limits (R-06 / PRD 2.6) ──────────────────────────────────────
+
+def _dojin(**over):
+    base = dict(dojin_type="manga", url="http://a.com", title="T",
+                author="A", reason="R")
+    base.update(over)
+    return DojinSubmit(**base)
+
+
+def test_validate_dojin_more_than_five_rejected():
+    dojins = [_dojin(url=f"http://a.com/{i}") for i in range(6)]
+    with pytest.raises(ValueError, match=r"\[1,5\]"):
+        v.validate_dojin(DojinSubmitRest(dojins=dojins, meta=META))
+
+
+def test_validate_dojin_five_accepted():
+    dojins = [_dojin(url=f"http://a.com/{i}") for i in range(5)]
+    data = DojinSubmitRest(dojins=dojins, meta=META)
+    assert v.validate_dojin(data) is data
+
+
+@pytest.mark.parametrize("field,limit", [
+    ("title", 256), ("author", 128), ("url", 2048), ("reason", 1024),
+    ("image_url", 2048),
+])
+def test_validate_dojin_field_limits(field, limit):
+    data = DojinSubmitRest(
+        dojins=[_dojin(**{field: "x" * (limit + 1)})], meta=META
+    )
+    with pytest.raises(ValueError, match="过长"):
+        v.validate_dojin(data)
+    # 正好到上限必须通过(防 off-by-one)
+    data = DojinSubmitRest(
+        dojins=[_dojin(**{field: "x" * limit})], meta=META
+    )
+    assert v.validate_dojin(data) is data

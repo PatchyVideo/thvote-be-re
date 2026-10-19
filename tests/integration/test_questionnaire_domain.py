@@ -120,15 +120,20 @@ async def test_get_answers_null_attempt_legacy_rows_readable(session):
 @pytest.mark.asyncio
 async def test_empty_paper_submit_rejected_not_silent_leak(session):
     """append-only 下空提交无法表达"清空整卷"——必须显式拒绝,
-    否则旧批次会静默保持可见(终审修复)。"""
+    否则旧批次会静默保持可见(终审修复)。
+
+    R-01 起作答行必须指向已存结构,故这里先 seed 结构再提交合法作答:
+    旧版本用例依赖「无结构也能写入」这一缺陷行为。
+    """
     from src.apps.questionnaire.dao import QuestionnaireDAO
     from src.apps.questionnaire.service import QuestionnaireService
     from src.common.exceptions import ValidationError
 
+    await _seed(session)
     svc = QuestionnaireService(QuestionnaireDAO(session))
     await svc.submit_answers("v-empty", 12, [{
-        "questionnaireId": 1, "groupId": 1, "activeQuestionId": 100,
-        "selectedOptionIds": [11], "input": "",
+        "questionnaireId": 1, "groupId": 10, "activeQuestionId": 100,
+        "selectedOptionIds": [1000], "input": "",
     }])
     with pytest.raises(ValidationError):
         await svc.submit_answers("v-empty", 12, [])
