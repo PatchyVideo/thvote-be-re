@@ -21,7 +21,7 @@
 ### Changed
 - **`src/common/security/password.py`**：新增 `verify_legacy_password` / `verify_any_password`；`AuthProvider` 暴露同名方法。
 - **`src/apps/user/service.py`**：登录、改密、注销改用 `verify_any_password`；bcrypt 登录成功后升级 Argon2id 并清空 `legacy_salt`。
-- **`pyproject.toml`**：加回 `bcrypt>=4.0.0`。
+- **`pyproject.toml`**：加回 `bcrypt>=4.0.0`；`sqlalchemy` 改为 `sqlalchemy[asyncio]`，显式拉 `greenlet`（SQLAlchemy 2.1 起不再自动安装，Python 3.14 CI 的 alembic 因此失败）。
 
 ### 兼容性
 - Argon2i 老哈希无需改动即可验证并自动升级；bcrypt 老哈希保留原密码。
