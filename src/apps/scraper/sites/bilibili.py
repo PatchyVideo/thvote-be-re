@@ -69,7 +69,7 @@ async def bilidata(wid: str, udid: str | None = None) -> RespBody:
 
     try:
         response = await request_api(
-            api_url, headers=get_header(), cookies=get_cookies()
+            api_url, headers=get_header(), cookies=await get_cookies()
         )
     except Exception as e:
         return RespBody(status="apierr", msg=f"请求失败: {str(e)}")
@@ -150,7 +150,7 @@ async def biliarticledata(cv: str, udid: str | None = None) -> RespBody:
     api_url = f"https://api.bilibili.com/x/article/view?id={cv}"
     try:
         response = await request_api(
-            api_url, headers=get_header(), cookies=get_cookies()
+            api_url, headers=get_header(), cookies=await get_cookies()
         )
     except Exception as e:
         return RespBody(status="apierr", msg=f"请求失败: {str(e)}")

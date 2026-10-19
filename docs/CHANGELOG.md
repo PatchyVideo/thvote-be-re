@@ -17,6 +17,7 @@
 
 ### Fixed
 - **DLsite 解析**：`title_el[0].text_content()` 是 BeautifulSoup API，lxml 元素没有该方法，真实页面会直接 `parsererr`；改为 `"".join(itertext())`。
+- **Bilibili 无账号抓取**：不再只发随机 `buvid3`。`get_cookies()` 先读 env 覆盖，再查 12h 缓存，最后调用 `/x/frontend/finger/spi` 获取访客 `buvid3/buvid4` + 当前 `b_nut`；无需 `SESSDATA`，Redis 故障也不阻断。
 
 ### Tests
 - Scraper 相关 51 例全过；`apps/scraper` 行覆盖 **22.1% → 55%**（Steam/THBWiki/DLsite/Dizzylab/Melon 均 69%+）。

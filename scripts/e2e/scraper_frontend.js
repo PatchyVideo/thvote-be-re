@@ -34,10 +34,10 @@ const CASES = [
     expect: { ok: true, title: 'Touhou Luna Nights' },
   },
   {
-    // 已知线上失败：B 站 API 对测试机返回非 JSON，前端应给出友好错误。
-    name: 'Bilibili-current-failure',
+    // 访客 Cookie（SPI）方案：无需 SESSDATA 即可拿到 JSON。
+    name: 'Bilibili',
     url: 'https://www.bilibili.com/video/BV1xx411c7mD',
-    expect: { ok: false, toast: '不支持该网站或获取信息错误' },
+    expect: { ok: true, title: '字幕君交流场所' },
   },
   {
     name: 'Unsupported-host',

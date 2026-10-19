@@ -6,6 +6,17 @@ and HTTP headers configuration.
 
 from __future__ import annotations
 
+import logging
+import os
+import time
+import uuid
+from datetime import timedelta
+
+from src.apps.scraper.utils.cache import get_cache, set_cache
+from src.apps.scraper.utils.network import request_api
+
+logger = logging.getLogger(__name__)
+
 TABLE = "fZodR9XQDSUm21yCkr6zBqiveYah8bt4xsWpHnJE7jL5VG3guMTKNPAwcF"
 TR: dict[str, int] = {TABLE[i]: i for i in range(58)}
 SALT = 11
@@ -91,44 +102,80 @@ def get_header() -> dict[str, str]:
     }
 
 
-def get_cookies() -> dict[str, str]:
+# 访客 Cookie（不依赖 B 站账号）：
+# /x/frontend/finger/spi 会签发 b_3/b_4，分别作为 buvid3/buvid4；
+# 加上 b_nut 时间戳后，公开的 view 接口即可返回 JSON，无需 SESSDATA。
+_GUEST_CACHE_KEY = "bilibili_guest_cookies"
+_GUEST_CACHE_TTL = timedelta(hours=12)
+_SPI_URL = "https://api.bilibili.com/x/frontend/finger/spi"
+
+
+def _cookies_from_env() -> dict[str, str]:
+    """Old-deployment override: SESSDATA / buvid3 / b_nut from env."""
+    cookies: dict[str, str] = {}
+    mapping = {
+        "BILIBILI_SESSDATA": "SESSDATA",
+        "BILIBILI_B_LSID": "b_lsid",
+        "BILIBILI_B_NUT": "b_nut",
+        "BILIBILI_BUVID3": "buvid3",
+    }
+    for env_name, cookie_name in mapping.items():
+        value = os.getenv(env_name, "")
+        if value:
+            cookies[cookie_name] = value
+    return cookies
+
+
+async def _fetch_guest_cookies() -> dict[str, str]:
+    """Ask Bilibili for a guest buvid pair and add a fresh b_nut."""
+    try:
+        response = await request_api(_SPI_URL, headers=get_header(), timeout=10.0)
+    except Exception as exc:  # noqa: BLE001 - degrade to random buvid3 below
+        logger.warning("Bilibili guest cookie bootstrap failed: %s", exc)
+        return {}
+    data = response.get("data") or {}
+    buvid3 = data.get("b_3")
+    buvid4 = data.get("b_4")
+    if not buvid3:
+        logger.warning("Bilibili SPI response missing b_3: %r", response.get("code"))
+        return {}
+    cookies = {"buvid3": str(buvid3), "b_nut": str(int(time.time()))}
+    if buvid4:
+        cookies["buvid4"] = str(buvid4)
+    return cookies
+
+
+async def get_cookies() -> dict[str, str]:
     """Get cookies for Bilibili API requests.
 
-    Returns cookies from environment variables or generates a basic buvid3.
+    Priority:
+    1. explicit env cookies (old deployment compatibility):
+       BILIBILI_SESSDATA / BILIBILI_BUVID3 / BILIBILI_B_NUT / BILIBILI_B_LSID;
+    2. cached guest cookies (12h TTL);
+    3. freshly issued guest cookies via /x/frontend/finger/spi.
 
-    Environment variables:
-        BILIBILI_SESSDATA: Session data cookie
-        BILIBILI_B_UID: Bilibili user ID
-        BILIBILI_B_LSID: LSID cookie
-        BILIBILI_B_NUT: Nut cookie
-        BILIBILI_BUVID3: Basic user visitor ID
-
-    Returns:
-        Cookies dictionary
+    No Bilibili account is required for the normal path.
     """
-    import os
+    env_cookies = _cookies_from_env()
+    if env_cookies:
+        return env_cookies
 
-    cookies = {}
+    try:
+        cached = await get_cache(_GUEST_CACHE_KEY)
+    except Exception:  # noqa: BLE001 - Redis outage must not break scraping
+        cached = None
+    if cached:
+        return dict(cached)
 
-    sessdata = os.getenv("BILIBILI_SESSDATA", "")
-    if sessdata:
-        cookies["SESSDATA"] = sessdata
+    cookies = await _fetch_guest_cookies()
+    if cookies:
+        try:
+            await set_cache(_GUEST_CACHE_KEY, cookies, ex=_GUEST_CACHE_TTL)
+        except Exception:  # noqa: BLE001 - cache is optional
+            logger.warning("Failed to cache Bilibili guest cookies", exc_info=True)
+        return cookies
 
-    b_uid = os.getenv("BILIBILI_B_LSID", "")
-    if b_uid:
-        cookies["b_lsid"] = os.getenv("BILIBILI_B_LSID", "")
-
-    b_nut = os.getenv("BILIBILI_B_NUT", "")
-    if b_nut:
-        cookies["b_nut"] = b_nut
-
-    buvid3 = os.getenv("BILIBILI_BUVID3", "")
-    if buvid3:
-        cookies["buvid3"] = buvid3
-
-    if not cookies:
-        import uuid
-
-        cookies["buvid3"] = str(uuid.uuid4()).upper()
-
-    return cookies
+    # Last resort: the old random-UUID behavior. It usually gets blocked, but
+    # keeps the request shape valid and surfaces as a normal apierr.
+    logger.warning("Using random Bilibili buvid3 fallback (guest bootstrap failed)")
+    return {"buvid3": str(uuid.uuid4()).upper()}

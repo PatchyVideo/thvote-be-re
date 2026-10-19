@@ -34,7 +34,7 @@ node scripts/e2e/scraper_frontend.js
 |---|---|---|
 | THBWiki | `https://thwiki.cc/东方红魔乡` | 标题/作者/封面正确填充 |
 | Steam | `https://store.steampowered.com/app/851100/` | `Touhou Luna Nights` / `Team Ladybug` |
-| Bilibili | `https://www.bilibili.com/video/BV1xx411c7mD` | 当前 API 返回非 JSON，前端提示“不支持该网站或获取信息错误”（已知问题，非前端崩溃） |
+| Bilibili | `https://www.bilibili.com/video/BV1xx411c7mD` | 访客 Cookie 方案下标题/UP 主/封面正确填充 |
 | 非法域名 | `https://example.com/some-work` | 同样提示不支持 |
 
 ## 已知线上不可用/受限
