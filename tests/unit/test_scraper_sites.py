@@ -156,6 +156,19 @@ async def test_bilibili_maps_json_and_music_area(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_bilibili_uses_configured_proxy(monkeypatch):
+    _silence_cache(monkeypatch, bilibili)
+    monkeypatch.setenv("BILIBILI_PROXY", "http://proxy.example:8080")
+    monkeypatch.setattr(bilibili, "get_cookies", AsyncMock(return_value={}))
+    request_api = AsyncMock(return_value=BILI_PAYLOAD)
+    monkeypatch.setattr(bilibili, "request_api", request_api)
+
+    await bilibili.bilidata("BV1xx411c7mD")
+
+    assert request_api.await_args.kwargs["proxy"] == "http://proxy.example:8080"
+
+
+@pytest.mark.asyncio
 async def test_bilibili_banned_returns_apierr(monkeypatch):
     _silence_cache(monkeypatch, bilibili)
     monkeypatch.setattr(bilibili, "get_header", lambda: {})

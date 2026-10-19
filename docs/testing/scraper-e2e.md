@@ -37,6 +37,32 @@ node scripts/e2e/scraper_frontend.js
 | Bilibili | `https://www.bilibili.com/video/BV1xx411c7mD` | 访客 Cookie 已实现；**测试机出口 IP 仍被风控**，默认按“友好报错”验收。未被风控的网络设 `BILI_EXPECT=ok` 可验收真实填充（本地实测 code=0） |
 | 非法域名 | `https://example.com/some-work` | 同样提示不支持 |
 
+## B 站代理（BILIBILI_PROXY）
+
+测试机出口 IP 被 B 站风控时，访客 Cookie 也拿不到 JSON。给 B 站单独配代理：
+
+1. 准备一个**测试服务器 `154.37.215.62` 能访问**的代理，要求能出网到
+   `api.bilibili.com:443` 和 `www.bilibili.com:443`。
+2. 在测试 Nacos `thvote_be`（DEFAULT_GROUP / test namespace）加：
+
+   ```properties
+   BILIBILI_PROXY=http://user:password@proxy-host:port
+   ```
+
+   - 只作用于 B 站（SPI 访客 Cookie、视频/专栏 API、b23 短链），其他站点不走这个代理；
+   - 建议用 HTTP/HTTPS 代理；SOCKS5 需要额外安装 `socksio`，当前依赖里没有；
+   - 密码含特殊字符时要做 URL 编码；
+   - 代理有 IP 白名单时，放行 `154.37.215.62`。
+3. 保存并发布 Nacos 配置后，**重启/redeploy 后端容器**让环境变量生效。
+4. 用 `BILI_EXPECT=ok` 跑 E2E 验收：
+
+   ```bash
+   BILI_EXPECT=ok node scripts/e2e/scraper_frontend.js
+   ```
+
+参考：本机用 `BILIBILI_PROXY=http://127.0.0.1:10808` 实测
+`/x/web-interface/view?bvid=...` 返回 `code=0`。
+
 ## 已知线上不可用/受限
 
 - YouTube：测试环境未配 `YOUTUBE_API_KEY` → `apierr: YOUTUBE_API_KEY not configured`；

@@ -110,6 +110,11 @@ _GUEST_CACHE_TTL = timedelta(hours=12)
 _SPI_URL = "https://api.bilibili.com/x/frontend/finger/spi"
 
 
+def get_proxy() -> str | None:
+    """Optional Bilibili-only proxy (test host egress IP is risk-controlled)."""
+    return os.getenv("BILIBILI_PROXY", "").strip() or None
+
+
 def _cookies_from_env() -> dict[str, str]:
     """Old-deployment override: SESSDATA / buvid3 / b_nut from env."""
     cookies: dict[str, str] = {}
@@ -129,7 +134,9 @@ def _cookies_from_env() -> dict[str, str]:
 async def _fetch_guest_cookies() -> dict[str, str]:
     """Ask Bilibili for a guest buvid pair and add a fresh b_nut."""
     try:
-        response = await request_api(_SPI_URL, headers=get_header(), timeout=10.0)
+        response = await request_api(
+            _SPI_URL, headers=get_header(), timeout=10.0, proxy=get_proxy()
+        )
     except Exception as exc:  # noqa: BLE001 - degrade to random buvid3 below
         logger.warning("Bilibili guest cookie bootstrap failed: %s", exc)
         return {}
@@ -171,8 +178,8 @@ async def get_cookies() -> dict[str, str]:
     if cookies:
         try:
             await set_cache(_GUEST_CACHE_KEY, cookies, ex=_GUEST_CACHE_TTL)
-        except Exception:  # noqa: BLE001 - cache is optional
-            logger.warning("Failed to cache Bilibili guest cookies", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - cache is optional
+            logger.warning("Failed to cache Bilibili guest cookies: %s", exc)
         return cookies
 
     # Last resort: the old random-UUID behavior. It usually gets blocked, but

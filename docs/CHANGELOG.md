@@ -17,6 +17,7 @@
 
 ### Fixed
 - **DLsite 解析**：`title_el[0].text_content()` 是 BeautifulSoup API，lxml 元素没有该方法，真实页面会直接 `parsererr`；改为 `"".join(itertext())`。
+- **Bilibili 代理支持**：新增 `BILIBILI_PROXY`，仅作用于 B 站（SPI/视频/专栏/b23），用于出口 IP 被风控的部署；未配置时行为不变。
 - **Bilibili 无账号抓取**：不再只发随机 `buvid3`。`get_cookies()` 先读 env 覆盖，再查 12h 缓存，最后调用 `/x/frontend/finger/spi` 获取访客 `buvid3/buvid4` + 当前 `b_nut`；无需 `SESSDATA`，Redis 故障也不阻断。**注**：测试机出口 IP 仍被 B 站风控返回 HTML，本机同代码实测 code=0；该机需代理或 SESSDATA 才能真实抓取。
 
 ### Tests

@@ -9,7 +9,7 @@ import time
 from typing import TYPE_CHECKING
 
 from src.apps.scraper.schemas import RespBody, ScrapeData
-from src.apps.scraper.utils.biliutils import get_cookies, get_header
+from src.apps.scraper.utils.biliutils import get_cookies, get_header, get_proxy
 from src.apps.scraper.utils.cache import get_cache, set_cache
 from src.apps.scraper.utils.network import request_api, wait_for_rate_limit
 
@@ -69,7 +69,10 @@ async def bilidata(wid: str, udid: str | None = None) -> RespBody:
 
     try:
         response = await request_api(
-            api_url, headers=get_header(), cookies=await get_cookies()
+            api_url,
+            headers=get_header(),
+            cookies=await get_cookies(),
+            proxy=get_proxy(),
         )
     except Exception as e:
         return RespBody(status="apierr", msg=f"请求失败: {str(e)}")
@@ -150,7 +153,10 @@ async def biliarticledata(cv: str, udid: str | None = None) -> RespBody:
     api_url = f"https://api.bilibili.com/x/article/view?id={cv}"
     try:
         response = await request_api(
-            api_url, headers=get_header(), cookies=await get_cookies()
+            api_url,
+            headers=get_header(),
+            cookies=await get_cookies(),
+            proxy=get_proxy(),
         )
     except Exception as e:
         return RespBody(status="apierr", msg=f"请求失败: {str(e)}")

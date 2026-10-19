@@ -28,6 +28,7 @@ from src.apps.scraper.sites.tieba import tiebadata
 from src.apps.scraper.sites.twitter import twidata
 from src.apps.scraper.sites.weibo import wbdata
 from src.apps.scraper.sites.youtube import ytbdata
+from src.apps.scraper.utils.biliutils import get_proxy
 from src.apps.scraper.utils.network import get_redirect_url
 
 load_dotenv()
@@ -64,7 +65,9 @@ async def parse_url(url: str) -> tuple[str | None, Any | None]:
         url,
         re.IGNORECASE,
     ):
-        redirect_url = await get_redirect_url(b23_match.group(0))
+        redirect_url = await get_redirect_url(
+            b23_match.group(0), proxy=get_proxy()
+        )
         if redirect_url:
             url = redirect_url
 

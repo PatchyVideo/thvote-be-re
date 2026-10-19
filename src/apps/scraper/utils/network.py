@@ -12,16 +12,20 @@ from typing import Any
 import httpx
 
 
-async def get_redirect_url(url: str) -> str | None:
+async def get_redirect_url(url: str, proxy: str | None = None) -> str | None:
     """Get redirect URL from short URLs (like b23.tv).
 
     Args:
         url: Short URL to resolve
+        proxy: Optional proxy URL
 
     Returns:
         Redirected URL or None
     """
-    async with httpx.AsyncClient(follow_redirects=False) as client:
+    client_kwargs: dict[str, Any] = {"follow_redirects": False}
+    if proxy:
+        client_kwargs["proxy"] = proxy
+    async with httpx.AsyncClient(**client_kwargs) as client:
         try:
             response = await client.head(url, timeout=10.0)
             return response.headers.get("Location")
@@ -30,7 +34,7 @@ async def get_redirect_url(url: str) -> str | None:
 
 
 async def request_website(url: str, **kwargs: Any) -> httpx.Response:
-    """Send HTTP request to a website (no proxy).
+    """Send HTTP request to a website (optional proxy).
 
     Args:
         url: Target URL
@@ -40,7 +44,11 @@ async def request_website(url: str, **kwargs: Any) -> httpx.Response:
         HTTP response
     """
     timeout = kwargs.pop("timeout", 30.0)
-    async with httpx.AsyncClient(**kwargs) as client:
+    proxy = kwargs.pop("proxy", None)
+    client_kwargs = dict(kwargs)
+    if proxy:
+        client_kwargs["proxy"] = proxy
+    async with httpx.AsyncClient(**client_kwargs) as client:
         if kwargs.get("data") or kwargs.get("json"):
             response = await client.post(url=url, timeout=timeout)
         elif kwargs.pop("method", None) == "post":
@@ -51,7 +59,7 @@ async def request_website(url: str, **kwargs: Any) -> httpx.Response:
 
 
 async def request_api(url: str, **kwargs: Any) -> dict[str, Any]:
-    """Send HTTP request to an API endpoint (no proxy).
+    """Send HTTP request to an API endpoint (optional proxy).
 
     Args:
         url: Target API URL
@@ -61,7 +69,11 @@ async def request_api(url: str, **kwargs: Any) -> dict[str, Any]:
         JSON response as dict
     """
     timeout = kwargs.pop("timeout", 30.0)
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    proxy = kwargs.pop("proxy", None)
+    client_kwargs: dict[str, Any] = {"follow_redirects": True}
+    if proxy:
+        client_kwargs["proxy"] = proxy
+    async with httpx.AsyncClient(**client_kwargs) as client:
         if kwargs.get("data") or kwargs.get("json"):
             response = await client.post(url=url, timeout=timeout, **kwargs)
         elif kwargs.pop("method", None) == "post":

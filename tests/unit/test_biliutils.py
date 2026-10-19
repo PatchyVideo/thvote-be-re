@@ -22,6 +22,7 @@ def _clear_bili_env(monkeypatch):
         "BILIBILI_B_LSID",
         "BILIBILI_B_NUT",
         "BILIBILI_BUVID3",
+        "BILIBILI_PROXY",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -31,11 +32,11 @@ async def test_guest_cookies_fetched_and_cached(monkeypatch):
     monkeypatch.setattr(biliutils, "get_cache", AsyncMock(return_value=None))
     set_cache = AsyncMock()
     monkeypatch.setattr(biliutils, "set_cache", set_cache)
-    monkeypatch.setattr(
-        biliutils,
-        "request_api",
-        AsyncMock(return_value={"code": 0, "data": {"b_3": "B3", "b_4": "B4"}}),
+    request_api = AsyncMock(
+        return_value={"code": 0, "data": {"b_3": "B3", "b_4": "B4"}}
     )
+    monkeypatch.setattr(biliutils, "request_api", request_api)
+    monkeypatch.setenv("BILIBILI_PROXY", "http://proxy.example:8080")
 
     cookies = await biliutils.get_cookies()
 
@@ -47,6 +48,7 @@ async def test_guest_cookies_fetched_and_cached(monkeypatch):
     assert key == "bilibili_guest_cookies"
     assert value["buvid3"] == "B3"
     assert set_cache.await_args.kwargs["ex"] == timedelta(hours=12)
+    assert request_api.await_args.kwargs["proxy"] == "http://proxy.example:8080"
 
 
 @pytest.mark.asyncio
