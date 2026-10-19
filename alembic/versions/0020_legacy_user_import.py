@@ -35,7 +35,7 @@ def upgrade() -> None:
             legacy_object_id VARCHAR(24) PRIMARY KEY,
             user_id VARCHAR(64) NOT NULL
                 REFERENCES "user"(id) ON DELETE CASCADE,
-            role VARCHAR(16) NOT NULL,
+            role VARCHAR(32) NOT NULL,
             batch_id VARCHAR(36) NOT NULL,
             imported_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             CONSTRAINT ck_legacy_user_mapping_role CHECK (

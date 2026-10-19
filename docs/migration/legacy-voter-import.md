@@ -9,7 +9,7 @@
 | 变更 | 位置 |
 |---|---|
 | `user.legacy_salt` 列（bcrypt 盐） | migration `0020` |
-| `legacy_user_mapping` 表（旧 `_id` → 新 `user.id`） | migration `0020` |
+| `legacy_user_mapping` 表（旧 `_id` → 新 `user.id`） | migration `0020`（`0021` 把 `role` 放宽到 VARCHAR(32)） |
 | Argon2 + bcrypt 双路径校验 | `src/common/security/password.py` |
 | 登录/改密/注销三处接 `verify_any_password`，升级时清盐 | `src/apps/user/service.py` |
 | 一次性导入器 | `scripts/import_legacy_voters.py` |

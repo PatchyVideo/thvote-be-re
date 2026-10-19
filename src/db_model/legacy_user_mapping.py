@@ -38,7 +38,7 @@ class LegacyUserMapping(Base):
         nullable=False,
         index=True,
     )
-    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
     # Import batch: lets the rollback script delete exactly one run.
     batch_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     imported_at: Mapped[datetime] = mapped_column(

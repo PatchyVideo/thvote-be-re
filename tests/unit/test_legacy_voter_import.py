@@ -14,6 +14,10 @@ from scripts.import_legacy_voters import (
     normalize_voter,
     plan_import,
 )
+from src.db_model.legacy_user_mapping import (
+    MAPPING_ROLE_VALUES,
+    LegacyUserMapping,
+)
 
 BASE = datetime(2022, 1, 1, tzinfo=UTC)
 
@@ -139,3 +143,9 @@ def test_manual_review_flags_differing_hashes_without_logs() -> None:
     b = _voter("b", email="a@example.com", password_hash="$2y$10$b", salt="salt1234")
     plan = plan_import([a, b], {}, include_test_accounts=True)
     assert [v.legacy_id for v in plan.manual_review] == ["a"]
+
+
+def test_mapping_role_column_fits_every_role() -> None:
+    """Regression for 0020: VARCHAR(16) could not hold conflict_existing."""
+    column_length = LegacyUserMapping.__table__.c.role.type.length
+    assert max(len(role) for role in MAPPING_ROLE_VALUES) <= column_length
