@@ -23,7 +23,7 @@ const CODE = process.env.CODE || '888888';
 const OUT = process.env.E2E_OUT_DIR || '/tmp/thvote-scraper-e2e';
 // 测试机 154.37.215.62 的出口 IP 被 B 站风控时只能验收“友好报错”；
 // 在未被风控的网络(或配了 B 站代理)上设 BILI_EXPECT=ok 验收真实抓取。
-const BILI_EXPECT = process.env.BILI_EXPECT || 'error';
+const BILI_EXPECT = process.env.BILI_EXPECT || 'ok';
 
 const CASES = [
   {
@@ -37,7 +37,7 @@ const CASES = [
     expect: { ok: true, title: 'Touhou Luna Nights' },
   },
   {
-    // 访客 Cookie（SPI）方案已实现；测试机出口 IP 被风控时仍是 HTML。
+    // 已修复：B 站 API 对浏览器 UA 返回 412，改用 curl UA 后 200 JSON。
     name: 'Bilibili',
     url: 'https://www.bilibili.com/video/BV1xx411c7mD',
     expect:

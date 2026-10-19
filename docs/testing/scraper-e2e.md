@@ -34,7 +34,7 @@ node scripts/e2e/scraper_frontend.js
 |---|---|---|
 | THBWiki | `https://thwiki.cc/东方红魔乡` | 标题/作者/封面正确填充 |
 | Steam | `https://store.steampowered.com/app/851100/` | `Touhou Luna Nights` / `Team Ladybug` |
-| Bilibili | `https://www.bilibili.com/video/BV1xx411c7mD` | 访客 Cookie 已实现；**测试机出口 IP 仍被风控**，默认按“友好报错”验收。未被风控的网络设 `BILI_EXPECT=ok` 可验收真实填充（本地实测 code=0） |
+| Bilibili | `https://www.bilibili.com/video/BV1xx411c7mD` | 正常抓取。B 站 API 对浏览器 UA 返回 412，scraper 已改用 curl UA |
 | 非法域名 | `https://example.com/some-work` | 同样提示不支持 |
 
 ## 已知线上不可用/受限
