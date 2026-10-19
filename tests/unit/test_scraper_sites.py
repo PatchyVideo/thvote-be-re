@@ -140,7 +140,7 @@ async def test_thbwiki_no_result(monkeypatch):
 async def test_bilibili_maps_json_and_music_area(monkeypatch):
     _silence_cache(monkeypatch, bilibili)
     monkeypatch.setattr(bilibili, "get_header", lambda: {})
-    monkeypatch.setattr(bilibili, "get_cookies", lambda: {})
+    monkeypatch.setattr(bilibili, "get_cookies", AsyncMock(return_value={}))
     monkeypatch.setattr(
         bilibili, "request_api", AsyncMock(return_value=BILI_PAYLOAD)
     )
@@ -159,7 +159,7 @@ async def test_bilibili_maps_json_and_music_area(monkeypatch):
 async def test_bilibili_banned_returns_apierr(monkeypatch):
     _silence_cache(monkeypatch, bilibili)
     monkeypatch.setattr(bilibili, "get_header", lambda: {})
-    monkeypatch.setattr(bilibili, "get_cookies", lambda: {})
+    monkeypatch.setattr(bilibili, "get_cookies", AsyncMock(return_value={}))
     monkeypatch.setattr(
         bilibili,
         "request_api",
