@@ -22,8 +22,8 @@
 | `email` / `email_verified` | `user_identity(provider='email').subject / .verified` | subject 统一小写 |
 | `qq_openid` | `user_identity(provider='qq').subject` | |
 | `thbwiki_uid` | `user_identity(provider='thbwiki').subject` | |
-| `password_hashed` | `user.password_hash` | 只存 Argon2 |
-| `salt` | **删除** | 无旧用户导入,bcrypt+salt 路径已移除 |
+| `password_hashed` | `user.password_hash` | 新账号只存 Argon2；老库导入可保留 bcrypt |
+| `salt` | `user.legacy_salt` | 2026-10-20 导入恢复；bcrypt 首登成功后清空并升级 Argon2id |
 | `created_at` | `user.register_date` | |
 | `signup_ip` | `user.register_ip_address` | 另有每身份 `created_ip` |
 | `nickname` / `pfp` | `user.nickname` / `user.pfp` | |
@@ -290,8 +290,8 @@ Rust 返回给前端的用户结构:
 
 ## 六、风险与注意事项
 
-1. **数据迁移**: 若需从 MongoDB 迁移历史用户数据到 PostgreSQL，需编写迁移脚本处理 ObjectId → UUID 映射 — 仍是 follow-up（spec §九 F4）
-2. **密码兼容**: Python 已实现 bcrypt→Argon2 升级路径，与 Rust 一致，迁移后可正常登录 — 已落地，单测覆盖
+1. **数据迁移**: 一次性导入器 `scripts/import_legacy_voters.py` 已落地（2026-10-20），旧 `_id` 记录在 `legacy_user_mapping`；旧选票本次不导
+2. **密码兼容**: bcrypt+salt 路径已随导入恢复（2026-10-20），首登升级 Argon2id；Argon2i 老哈希直接可验 — 单测/集成覆盖
 3. **验证码服务依赖**: SMS 已迁至阿里云 PNVS（个人开发者免资质）；邮件改用阿里云 DM SMTP；不再依赖 Rust 内部 SMS / Email 微服务
 4. **vote_token 时间窗口**: `VOTE_START_ISO` / `VOTE_END_ISO` 配置就位，登录响应判定窗口；submit 模块尚未真校验 vote_token，参见 spec §九 F2
 5. **CHECK 约束变更**: `at_least_one_identifier` 已放宽支持软删除，需 `alembic upgrade head` 应用

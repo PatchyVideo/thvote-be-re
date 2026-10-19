@@ -12,6 +12,7 @@ from .work import Work
 from .character import Character
 from .cp import Cp
 from .dojin_nomination import DojinNomination
+from .legacy_user_mapping import LegacyUserMapping
 from .music import Music
 from .questionnaire import Questionnaire
 from .questionnaire_def import (
@@ -45,6 +46,7 @@ __all__ = [
     "Character",
     "Cp",
     "DojinNomination",
+    "LegacyUserMapping",
     "Music",
     "OptionDef",
     "PaperAnswer",

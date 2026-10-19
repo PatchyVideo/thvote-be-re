@@ -5,6 +5,33 @@
 > 创建日期：2026-04-27
 > **2026-08-31 整理**：合并 9 组重复条目、按日期倒序重排；**2026-07-01 之前**的条目已迁至 [CHANGELOG-archive-2026H1.md](./CHANGELOG-archive-2026H1.md)。
 
+## [2026-10-20] 老 Mongo 用户导入：bcrypt 兼容 + 旧 id 映射（migration 0020）
+
+> 为把 `thvote_users/voters.bson`（121,957 条）导入测试库，恢复 0018 删掉的
+> bcrypt+salt 校验，并新增旧 `_id` 到新 UUID 账号的桥表。旧选票不导（D3-A）。
+
+### Added
+- **migration 0020/0021**：`user.legacy_salt`、`legacy_user_mapping(legacy_object_id, user_id, role, batch_id, imported_at)`；0021 把 `role` 放宽到 VARCHAR(32)（`conflict_existing` 长 17，0020 的 16 不够）。
+- **`src/db_model/legacy_user_mapping.py`**：映射模型（role ∈ primary/duplicate/conflict_existing）。
+- **`scripts/import_legacy_voters.py`**：流式解析、按 `voter_logs` 最后活动去重、测试账号/坏邮箱过滤、分批写入、preflight/commit 双模式。
+- **`scripts/rollback_legacy_user_import.py`**：按 batch 回滚，带投票/日志引用保护。
+- **`scripts/backup_user_tables.py`**：无 `pg_dump` 依赖的 CSV 轻量备份。
+- 测试：`test_legacy_password.py`、`test_legacy_voter_import.py`、`test_legacy_login_compat.py`。
+
+### Changed
+- **`src/common/security/password.py`**：新增 `verify_legacy_password` / `verify_any_password`；`AuthProvider` 暴露同名方法。
+- **`src/apps/user/service.py`**：登录、改密、注销改用 `verify_any_password`；bcrypt 登录成功后升级 Argon2id 并清空 `legacy_salt`。
+- **`pyproject.toml`**：加回 `bcrypt>=4.0.0`；`sqlalchemy` 改为 `sqlalchemy[asyncio]`，显式拉 `greenlet`（SQLAlchemy 2.1 起不再自动安装，Python 3.14 CI 的 alembic 因此失败）。
+
+### 兼容性
+- Argon2i 老哈希无需改动即可验证并自动升级；bcrypt 老哈希保留原密码。
+- 新注册账号行为不变（始终 Argon2id，`legacy_salt` 为 NULL）。
+- 对外接口 shape 不变。
+
+### Tests
+- 新增 16 个单元用例 + 5 个登录兼容集成用例；相关 user/auth 回归 38 passed。
+- 真实 dump 只读 preflight 计数：winners 80,053 / users 80,050 / mappings 121,951 / conflicts 3。
+
 ## [2026-09-17] 公共读接口 Redis 缓存 + 管理台手动刷缓存
 
 > `vote-objects`/问卷结构/自动补全/公开提名列表此前每次直查数据库；项目 Redis 一直存在
