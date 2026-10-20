@@ -21,6 +21,10 @@ from src.db_model.base import Base
 from src.main import create_app
 
 
+# A non-empty legacy paper payload: the gate now rejects "{}" (R-03).
+_PAPER_OK = json.dumps([{"id": 1, "answer": [1]}])
+
+
 def _make_vote_token(user_id: str = "user-test-001") -> str:
     now = datetime.now(timezone.utc)
     return create_vote_token(user_id, now - timedelta(hours=1), now + timedelta(days=30))
@@ -83,7 +87,7 @@ async def test_submit_character_ok(client):
     token = _make_vote_token()
     # vote gate: must complete questionnaire first
     await client.post("/api/v1/paper/", json={
-        "papers_json": "{}",
+        "papers_json": _PAPER_OK,
         "meta": {"vote_token": token}
     })
     resp = await client.post("/api/v1/character/", json={
@@ -116,11 +120,26 @@ async def test_submit_paper_invalid_json(client):
 
 
 @pytest.mark.asyncio
+async def test_submit_empty_paper_rejected(client):
+    """R-03: "{}" 曾是「已完成问卷」的合法前提,现在提交期即拒绝。
+
+    读侧门禁(历史存量行)见 tests/integration/test_paper_v2_validation.py。
+    """
+    token = _make_vote_token("user-paper-empty")
+    resp = await client.post("/api/v1/paper/", json={
+        "papers_json": "{}",
+        "meta": {"vote_token": token}
+    })
+    assert resp.status_code == 422
+    assert "为空" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_voting_status_after_submit(client):
     token = _make_vote_token("user-status-001")
     # vote gate: complete questionnaire first
     await client.post("/api/v1/paper/", json={
-        "papers_json": "{}",
+        "papers_json": _PAPER_OK,
         "meta": {"vote_token": token}
     })
     # Submit character
@@ -168,7 +187,7 @@ async def test_readback_is_scoped_to_token_user(client):
     owner = _make_vote_token("user-owner-001")
     other = _make_vote_token("user-other-001")
     await client.post("/api/v1/paper/", json={
-        "papers_json": "{}", "meta": {"vote_token": owner}
+        "papers_json": _PAPER_OK, "meta": {"vote_token": owner}
     })
     await client.post("/api/v1/character/", json={
         "characters": [{"id": "博丽灵梦"}], "meta": {"vote_token": owner}
@@ -198,7 +217,7 @@ async def test_submit_binds_vote_id_to_token_not_client_value(client):
     attacker = _make_vote_token("user-attacker-001")
     victim = _make_vote_token("user-victim-001")
     await client.post("/api/v1/paper/", json={
-        "papers_json": "{}",
+        "papers_json": _PAPER_OK,
         "meta": {"vote_token": attacker, "vote_id": "user-victim-001"},
     })
     resp = await client.post("/api/v1/character/", json={

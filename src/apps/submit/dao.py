@@ -249,14 +249,25 @@ class SubmitDAO:
 
     # ── nomination (dojin review) + questionnaire gate ──────────────────────
 
-    async def has_paper(self, vote_id: str) -> bool:
-        """True if the user submitted any questionnaire (weak gate)."""
+    async def latest_paper_json(self, vote_id: str) -> str | None:
+        """Latest **non-voided** legacy ``raw_paper`` payload for this voter.
+
+        The row must also carry real content — the caller decides that with
+        ``SubmitValidator.is_paper_meaningful``; here we only skip rows the
+        admin voided (R-03: voided / empty legacy papers must not keep
+        unlocking voting).  ``raw_paper`` has no ``vote_year`` column, so
+        cross-year filtering is not possible without a schema change.
+        """
         stmt = (
-            select(RawPaperSubmit.id)
-            .where(RawPaperSubmit.vote_id == vote_id)
+            select(RawPaperSubmit.papers_json)
+            .where(
+                RawPaperSubmit.vote_id == vote_id,
+                RawPaperSubmit.invalidated.is_(False),
+            )
+            .order_by(RawPaperSubmit.created_at.desc(), RawPaperSubmit.id.desc())
             .limit(1)
         )
-        return (await self.session.execute(stmt)).scalar_one_or_none() is not None
+        return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def nomination_exists(self, vote_id: str, udid: str) -> bool:
         from src.db_model.dojin_nomination import DojinNomination
