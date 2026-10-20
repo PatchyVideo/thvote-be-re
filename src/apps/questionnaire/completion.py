@@ -57,7 +57,10 @@ def _rows_by_group(answers: list[dict]) -> dict[tuple, list[dict]]:
 
 
 def _groups_of(questionnaire: dict) -> list[dict]:
-    return [g for g in (questionnaire.get("questionGroups") or []) if isinstance(g, dict)]
+    return [
+        g for g in (questionnaire.get("questionGroups") or [])
+        if isinstance(g, dict)
+    ]
 
 
 def _visible_group_ids(
@@ -79,7 +82,10 @@ def _visible_group_ids(
         for group_id in list(visible):
             for row in rows.get((qn_id, group_id), []):
                 question_id = _int_or_none(row.get("active_question_id"))
-                if question_id is None or index.question_group.get(question_id) != group_id:
+                if (
+                    question_id is None
+                    or index.question_group.get(question_id) != group_id
+                ):
                     continue
                 options = index.question_options.get(question_id, {})
                 for raw_option in row.get("selected_option_ids") or []:

@@ -146,7 +146,10 @@ class SubmitValidator:
                 )
             # 2 人组合允许 A×A（PRD「可选取两个相同的角色」）；
             # 3 人组合不允许任何重复成员（A,A,B / A,A,A 拒绝）。
-            if len(members) == self.CP_MAX_MEMBERS and len(set(members)) != len(members):
+            if (
+                len(members) == self.CP_MAX_MEMBERS
+                and len(set(members)) != len(members)
+            ):
                 raise ValueError(f"第{idx}个组合存在相同角色")
 
             key = tuple(sorted(members))
@@ -268,7 +271,9 @@ class SubmitService:
         )
         if not whitelist.entries:
             return
-        unknown = sorted({token for token in tokens if token and token not in whitelist})
+        unknown = sorted(
+            {token for token in tokens if token and token not in whitelist}
+        )
         if unknown:
             raise InvalidCandidateError(f"候选{unknown[0]}不存在")
 
