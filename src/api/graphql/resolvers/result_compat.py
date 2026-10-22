@@ -15,6 +15,7 @@ advanced_search/service.py(Task 4)。输出类型全部来自
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Optional
 
 import strawberry
@@ -35,6 +36,7 @@ from src.api.graphql.types import (
     RankingEntry,
     RankingGlobal,
     ResultGlobalStats,
+    ResultTimeline,
     Trends,
     VotingTrendItem,
 )
@@ -514,6 +516,23 @@ async def _query_questionnaire_trend_entries(
 @strawberry.type
 class ResultCompatQuery:
     """前端(旧 Rust gateway)result 契约桥：排名/单条/趋势/统计/问卷。"""
+
+    @strawberry.field
+    async def query_result_timeline(
+        self, vote_year: Optional[int] = None,
+    ) -> Optional[ResultTimeline]:
+        """Dates belong to the computed snapshot, not today's configuration."""
+        async with map_app_errors(service=_SERVICE):
+            svc = await _get_result_service()
+            dao = svc.result_dao
+            year = await _resolve_vote_year(dao, vote_year, dao.settings)
+            data = await dao.get_timeline(year)
+            if data is None:
+                return None
+            return ResultTimeline(**{
+                key: datetime.fromisoformat(value) for key, value in data.items()
+            })
+        raise RuntimeError("unreachable")  # pragma: no cover
 
     @strawberry.field
     async def query_character_ranking(
