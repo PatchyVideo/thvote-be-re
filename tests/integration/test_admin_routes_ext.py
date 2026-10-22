@@ -7,6 +7,7 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from src.common.redis import get_redis as _ORIGINAL_GET_REDIS
 from src.db_model.base import Base
 from tests.helpers.users import make_user
 
@@ -28,7 +29,7 @@ async def db_session(engine) -> AsyncSession:
 
 
 @pytest_asyncio.fixture
-async def app(engine):
+async def app(engine, patch_redis):
     """Create FastAPI app with in-memory SQLite overriding DB + Redis deps."""
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -42,13 +43,42 @@ async def app(engine):
         async with maker() as s:
             yield s
 
+    # 复用 conftest autouse patch_redis 的 FakeRedis（同一次测试内共享）。
     async def _override_get_redis():
-        import fakeredis
-        return fakeredis.aioredis.FakeRedis(decode_responses=True)
+        return patch_redis
 
     a = create_app()
     a.dependency_overrides[get_db_session] = _override_get_db
-    a.dependency_overrides[get_redis] = _override_get_redis
+    # 覆盖所有 router 在 import 时捕获的 get_redis 函数对象。
+    # conftest 的 autouse patch_redis 只 monkeypatch 模块属性，而
+    # `Depends(get_redis)` 在 import 时已绑定对象，故必须逐个覆盖。
+    import importlib
+
+    import src.common.redis as redis_module
+
+    override_targets = {redis_module.get_redis, _ORIGINAL_GET_REDIS}
+    for modname in (
+        "src.apps.vote_objects.router",
+        "src.apps.admin.router",
+        "src.apps.admin.monitor.router",
+        "src.apps.autocomplete.router",
+        "src.apps.questionnaire.router",
+        "src.apps.questionnaire.admin_router",
+        "src.apps.result.router",
+        "src.apps.submit.router",
+        "src.apps.user.router",
+        "src.apps.user.deps",
+        "src.common.middleware.rate_limit",
+    ):
+        try:
+            mod = importlib.import_module(modname)
+        except Exception:
+            continue
+        dep = getattr(mod, "get_redis", None)
+        if dep is not None:
+            override_targets.add(dep)
+    for dep in override_targets:
+        a.dependency_overrides[dep] = _override_get_redis
     yield a
 
 

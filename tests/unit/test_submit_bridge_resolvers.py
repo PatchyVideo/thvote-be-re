@@ -319,3 +319,50 @@ async def test_all_mutations_map_value_error(fake_env, call):
     ext = ei.value.extensions
     assert ext["error_kind"] == "INVALID_CONTENT"
     assert ext["human_readable_message"] == "数量0不在范围内[1,8]"
+
+
+# ── R-04 未知候选 / R-06 提名校验的 GraphQL 错误码 ─────────────────────
+
+
+@pytest.mark.asyncio
+async def test_unknown_candidate_maps_to_invalid_candidate(fake_env):
+    from src.apps.submit.service import InvalidCandidateError
+
+    async def _raise(body):
+        raise InvalidCandidateError("候选999999不存在")
+
+    fake_env["service"].submit_character = _raise
+    with pytest.raises(GraphQLError) as ei:
+        await bridge.SubmitBridgeMutation().submit_character_vote(
+            info=_Info(), content=_character_content(_token())
+        )
+    ext = ei.value.extensions
+    assert ext["error_kind"] == "INVALID_CANDIDATE"
+    assert ext["human_readable_message"] == "候选999999不存在"
+
+
+@pytest.mark.asyncio
+async def test_dojin_nomination_value_error_maps_to_invalid_content(fake_env):
+    """R-06: the GraphQL nomination path now runs validate_dojin; its ValueError
+    must surface as INVALID_CONTENT, not INTERNAL_ERROR."""
+
+    async def _raise(body, settings, scraper, now=None):
+        raise ValueError("数量6不在范围内[1,5]")
+
+    fake_env["service"].submit_dojin_nominations = _raise
+    with pytest.raises(GraphQLError) as ei:
+        await bridge.SubmitBridgeMutation().submit_dojin(
+            info=_Info(),
+            content=bridge.DojinSubmitGQL(
+                vote_token=_token(),
+                dojins=[
+                    bridge.DojinSubmitItemGQL(
+                        title="t", author="a", url="https://x", reason="r",
+                        dojin_type=bridge.DojinType.MUSIC,
+                    )
+                ],
+            ),
+        )
+    ext = ei.value.extensions
+    assert ext["error_kind"] == "INVALID_CONTENT"
+    assert ext["human_readable_message"] == "数量6不在范围内[1,5]"

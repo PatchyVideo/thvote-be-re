@@ -21,6 +21,9 @@ class User(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
 
     password_hash: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # 老 Mongo 用户导入的 bcrypt 需要这份 8 位盐做 bcrypt(password + salt)。
+    # 首次密码登录成功后置空并升级为 Argon2;新注册账号始终为 NULL。
+    legacy_salt: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     nickname: Mapped[str | None] = mapped_column(String(64), nullable=True)
     pfp: Mapped[str | None] = mapped_column(String(512), nullable=True)

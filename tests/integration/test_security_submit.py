@@ -60,13 +60,47 @@ async def test_character_gate_passes_with_paper(session):
     dao = SubmitDAO(session)
     svc = SubmitService(dao)
     await svc.submit_paper(
-        PaperSubmitRest(papers_json="{}", meta=SubmitMetadata(vote_id="u2"))
+        PaperSubmitRest(
+            papers_json='[{"id": 1, "answer": [1]}]',
+            meta=SubmitMetadata(vote_id="u2"),
+        )
     )
     data = CharacterSubmitRest(
         characters=[CharacterSubmit(id="c1")],
         meta=SubmitMetadata(vote_id="u2"),
     )
     assert await svc.submit_character(data) > 0
+
+
+@pytest.mark.asyncio
+async def test_empty_paper_does_not_unlock_gate(session):
+    """R-03: a stored ``"{}"`` row (or a voided one) must not pass the gate.
+
+    The write path rejects it now, so the row is inserted directly — that is
+    exactly the "historical rows already in the DB" case the read side guards.
+    """
+    from src.apps.submit.dao import SubmitDAO
+    from src.apps.submit.service import (
+        QuestionnaireNotCompletedError,
+        SubmitService,
+    )
+    from src.db_model.raw_submit import RawPaperSubmit
+
+    session.add(RawPaperSubmit(
+        vote_id="u-legacy-empty", papers_json="{}", invalidated=False,
+    ))
+    session.add(RawPaperSubmit(
+        vote_id="u-legacy-voided", papers_json='{"q": 1}', invalidated=True,
+    ))
+    await session.commit()
+
+    svc = SubmitService(SubmitDAO(session))
+    for vote_id in ("u-legacy-empty", "u-legacy-voided"):
+        with pytest.raises(QuestionnaireNotCompletedError):
+            await svc.submit_character(CharacterSubmitRest(
+                characters=[CharacterSubmit(id="c1")],
+                meta=SubmitMetadata(vote_id=vote_id),
+            ))
 
 
 # ── nomination orchestration ───────────────────────────────────────────────
@@ -206,3 +240,44 @@ async def test_nomination_not_configured(session):
         await svc.submit_dojin_nominations(
             data, s, _scraper_returning("u", "2026-01-01"), now=now
         )
+
+
+# ── R-06: the GraphQL nomination path now runs validate_dojin ─────────────
+
+@pytest.mark.asyncio
+async def test_nomination_more_than_five_rejected_before_write(session):
+    """PRD 2.6: only 5 nomination slots. Validation must run *before* the
+    archival raw_dojin write, so a rejected batch leaves no trace."""
+    from src.apps.submit.dao import SubmitDAO
+    from src.apps.submit.service import SubmitService
+
+    svc = SubmitService(SubmitDAO(session))
+    now = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    data = DojinSubmitRest(
+        dojins=[_dojin(f"https://bilibili.com/v/{i}") for i in range(6)],
+        meta=SubmitMetadata(vote_id="n7"),
+    )
+    with pytest.raises(ValueError, match=r"\[1,5\]"):
+        await svc.submit_dojin_nominations(
+            data, _settings(), _scraper_returning("u", "2026-01-01"), now=now
+        )
+    assert (await svc.get_dojin_submit("n7")).dojins == []
+
+
+@pytest.mark.asyncio
+async def test_nomination_overlong_title_rejected(session):
+    """title/author are VARCHAR(512) on PG; PRD caps them lower (256/128)."""
+    from src.apps.submit.dao import SubmitDAO
+    from src.apps.submit.service import SubmitService
+
+    svc = SubmitService(SubmitDAO(session))
+    now = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    data = DojinSubmitRest(
+        dojins=[_dojin("https://bilibili.com/v/1", title="x" * 257)],
+        meta=SubmitMetadata(vote_id="n8"),
+    )
+    with pytest.raises(ValueError, match="作品名过长"):
+        await svc.submit_dojin_nominations(
+            data, _settings(), _scraper_returning("u", "2026-01-01"), now=now
+        )
+    assert (await svc.get_dojin_submit("n8")).dojins == []

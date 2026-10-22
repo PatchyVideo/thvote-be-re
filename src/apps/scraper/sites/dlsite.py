@@ -55,7 +55,9 @@ async def dlsitedata(rjid: str, udid: str | None = None) -> RespBody:
         title_el = page.xpath('//*[@id="work_name"]')
         if not title_el:
             return RespBody(status="parsererr", msg="dlsite: work_name not found")
-        title = title_el[0].text_content().strip()
+        # lxml elements have no BeautifulSoup-style text_content(); join their
+        # text nodes explicitly (the title may contain nested <span>).
+        title = "".join(title_el[0].itertext()).strip()
         media: list[str] = []
         cover = None
         for image in page.xpath('//div[@class="product-slider-data"]/div'):

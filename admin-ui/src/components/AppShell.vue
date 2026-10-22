@@ -12,6 +12,7 @@ const nav = [
   { to: '/monitor/votes', label: '投票浏览器' },
   { to: '/users', label: '用户' },
   { to: '/candidates', label: '候选项' },
+  { to: '/voteable-resources', label: '投票对象资源' },
   { to: '/nominations', label: '提名审核' },
   { to: '/questionnaires', label: '问卷配置' },
   { to: '/sync', label: '数据同步' },

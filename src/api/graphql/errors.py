@@ -42,6 +42,9 @@ _HUMAN_READABLE_MESSAGES: dict[str, str] = {
     "CAPTCHA_UNAVAILABLE": "人机验证服务暂不可用，请稍后再试",
     "INTERNAL_ERROR": "服务器开小差了，请稍后重试",
     "SUBMIT_LOCKED": "提交处理中，请稍后再试",
+    "INVALID_PAPER_ANSWER": "问卷作答数据无效，请刷新页面后重试",
+    "INVALID_CANDIDATE": "提交的作品/角色不在本届可选范围内，请刷新页面后重试",
+    "QUESTIONNAIRE_NOT_COMPLETED": "请先完成问卷，再参与投票",
 }
 
 

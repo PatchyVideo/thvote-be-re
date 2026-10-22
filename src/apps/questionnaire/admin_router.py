@@ -4,6 +4,7 @@ from __future__ import annotations
 import secrets
 from typing import Optional
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,8 +17,10 @@ from src.apps.questionnaire.admin_service import (
 )
 from src.apps.questionnaire.dao import QuestionnaireDAO
 from src.apps.questionnaire.service import QuestionnaireService
+from src.common.cache import invalidate_prefix
 from src.common.config import Settings, get_settings
 from src.common.database import get_db_session
+from src.common.redis import get_redis
 
 router = APIRouter(
     prefix="/admin",
@@ -72,12 +75,15 @@ async def create_questionnaire(
     x_admin_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
+    await invalidate_prefix(redis, "questionnaire:")
     try:
         new_id = await (await _svc(session)).create_questionnaire(body)
     except KeyConflictError:
         raise HTTPException(status_code=409, detail="QUESTIONNAIRE_KEY_CONFLICT")
+    await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True, "id": new_id}
 
 
@@ -88,14 +94,17 @@ async def update_questionnaire(
     x_admin_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
+    await invalidate_prefix(redis, "questionnaire:")
     try:
         ok = await (await _svc(session)).update_questionnaire(qid, body)
     except KeyConflictError:
         raise HTTPException(status_code=409, detail="QUESTIONNAIRE_KEY_CONFLICT")
     if not ok:
         raise HTTPException(status_code=404, detail="NOT_FOUND")
+    await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True}
 
 
@@ -105,10 +114,13 @@ async def delete_questionnaire(
     x_admin_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
+    await invalidate_prefix(redis, "questionnaire:")
     if not await (await _svc(session)).delete_questionnaire(qid):
         raise HTTPException(status_code=404, detail="NOT_FOUND")
+    await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True}
 
 
@@ -121,12 +133,15 @@ async def create_question_group(
     x_admin_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
+    await invalidate_prefix(redis, "questionnaire:")
     try:
         new_id = await (await _svc(session)).create_group(body)
     except ParentNotFoundError:
         raise HTTPException(status_code=404, detail="PARENT_NOT_FOUND")
+    await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True, "id": new_id}
 
 
@@ -137,10 +152,13 @@ async def update_question_group(
     x_admin_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
+    await invalidate_prefix(redis, "questionnaire:")
     if not await (await _svc(session)).update_group(gid, body):
         raise HTTPException(status_code=404, detail="NOT_FOUND")
+    await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True}
 
 
@@ -150,10 +168,13 @@ async def delete_question_group(
     x_admin_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
+    await invalidate_prefix(redis, "questionnaire:")
     if not await (await _svc(session)).delete_group(gid):
         raise HTTPException(status_code=404, detail="NOT_FOUND")
+    await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True}
 
 
@@ -166,12 +187,15 @@ async def create_question(
     x_admin_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
+    await invalidate_prefix(redis, "questionnaire:")
     try:
         new_id = await (await _svc(session)).create_question(body)
     except ParentNotFoundError:
         raise HTTPException(status_code=404, detail="PARENT_NOT_FOUND")
+    await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True, "id": new_id}
 
 
@@ -182,10 +206,13 @@ async def update_question(
     x_admin_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
+    await invalidate_prefix(redis, "questionnaire:")
     if not await (await _svc(session)).update_question(qid, body):
         raise HTTPException(status_code=404, detail="NOT_FOUND")
+    await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True}
 
 
@@ -195,10 +222,13 @@ async def delete_question(
     x_admin_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
+    await invalidate_prefix(redis, "questionnaire:")
     if not await (await _svc(session)).delete_question(qid):
         raise HTTPException(status_code=404, detail="NOT_FOUND")
+    await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True}
 
 
@@ -211,12 +241,15 @@ async def create_option(
     x_admin_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
+    await invalidate_prefix(redis, "questionnaire:")
     try:
         new_id = await (await _svc(session)).create_option(body)
     except ParentNotFoundError:
         raise HTTPException(status_code=404, detail="PARENT_NOT_FOUND")
+    await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True, "id": new_id}
 
 
@@ -227,10 +260,13 @@ async def update_option(
     x_admin_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
+    await invalidate_prefix(redis, "questionnaire:")
     if not await (await _svc(session)).update_option(oid, body):
         raise HTTPException(status_code=404, detail="NOT_FOUND")
+    await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True}
 
 
@@ -240,10 +276,13 @@ async def delete_option(
     x_admin_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
+    await invalidate_prefix(redis, "questionnaire:")
     if not await (await _svc(session)).delete_option(oid):
         raise HTTPException(status_code=404, detail="NOT_FOUND")
+    await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True}
 
 
@@ -256,12 +295,15 @@ async def import_structure(
     x_admin_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_db_session),
     settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     """Replace the whole questionnaire structure from a tree.
 
     Body is a ``{"questionnaires":[...]}`` array tree.
     """
     _check_admin_secret(settings, x_admin_secret)
+    await invalidate_prefix(redis, "questionnaire:")
     svc = QuestionnaireService(QuestionnaireDAO(session))
     count = await svc.import_structure(body)
+    await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True, "imported_questionnaires": count}

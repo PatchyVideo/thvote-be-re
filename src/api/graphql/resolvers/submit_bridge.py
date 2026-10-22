@@ -45,6 +45,7 @@ from src.apps.submit.schemas import (
     SubmitMetadata,
 )
 from src.apps.submit.service import (
+    InvalidCandidateError,
     NominationClosedError,
     NominationNotConfiguredError,
     QuestionnaireNotCompletedError,
@@ -266,8 +267,8 @@ async def _submit_lock(user_id: str) -> AsyncIterator[None]:
 
 
 async def _run_submit(body, service_method_name: str) -> bool:
-    """统一的 service 调用:ValueError → INVALID_CONTENT(中文原文透传);
-    问卷门禁未过 → QUESTIONNAIRE_NOT_COMPLETED。"""
+    """统一的 service 调用:未知候选 → INVALID_CANDIDATE;ValueError →
+    INVALID_CONTENT(中文原文透传);问卷门禁未过 → QUESTIONNAIRE_NOT_COMPLETED。"""
     async for db in get_db_session():
         service = SubmitService(SubmitDAO(db))
         try:
@@ -275,6 +276,12 @@ async def _run_submit(body, service_method_name: str) -> bool:
         except QuestionnaireNotCompletedError as exc:
             raise ValidationError(
                 "QUESTIONNAIRE_NOT_COMPLETED", details=422
+            ) from exc
+        except InvalidCandidateError as exc:
+            raise ValidationError(
+                "INVALID_CANDIDATE",
+                details=422,
+                human_readable_message=str(exc),
             ) from exc
         except ValueError as exc:
             raise ValidationError(
@@ -286,7 +293,8 @@ async def _run_submit(body, service_method_name: str) -> bool:
 
 async def _run_dojin_nominations(body) -> "DojinSubmitResultGQL":
     """二创提名:校验+审核队列。
-    NominationClosed → NOMINATION_CLOSED(422);未配置 → NOMINATION_NOT_CONFIGURED(503)。
+    NominationClosed → NOMINATION_CLOSED(422);未配置 → NOMINATION_NOT_CONFIGURED(503);
+    条数/字段长度不合规 → INVALID_CONTENT(422,与 REST 同源校验)。
     """
     settings = get_settings()
     scraper = ScraperService()
@@ -300,6 +308,10 @@ async def _run_dojin_nominations(body) -> "DojinSubmitResultGQL":
             ) from exc
         except NominationClosedError as exc:
             raise ValidationError("NOMINATION_CLOSED", details=422) from exc
+        except ValueError as exc:
+            raise ValidationError(
+                "INVALID_CONTENT", details=422, human_readable_message=str(exc)
+            ) from exc
         return DojinSubmitResultGQL(
             accepted=result.accepted,
             rejected=[

@@ -8,6 +8,7 @@ import SyncView from '@/views/SyncView.vue'
 import LogsView from '@/views/LogsView.vue'
 import ExportView from '@/views/ExportView.vue'
 import WorksView from '@/views/WorksView.vue'
+import VoteableResourcesView from '@/views/VoteableResourcesView.vue'
 import OverviewView from '@/views/monitor/OverviewView.vue'
 import ClustersView from '@/views/monitor/ClustersView.vue'
 import SuspectsView from '@/views/monitor/SuspectsView.vue'
@@ -25,6 +26,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/logs', component: LogsView },
   { path: '/export', component: ExportView },
   { path: '/works', component: WorksView },
+  { path: '/voteable-resources', component: VoteableResourcesView },
   { path: '/monitor/overview', component: OverviewView },
   { path: '/monitor/clusters', component: ClustersView },
   { path: '/monitor/suspects', component: SuspectsView },

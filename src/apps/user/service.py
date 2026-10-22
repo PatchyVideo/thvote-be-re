@@ -165,7 +165,9 @@ class UserService:
         if user is None or not user.password_hash:
             raise ValidationError("INCORRECT_PASSWORD", details=400)
 
-        result = self.auth.verify_password(request.password, user.password_hash)
+        result = self.auth.verify_any_password(
+            request.password, user.password_hash, user.legacy_salt
+        )
         if not result.valid:
             raise ValidationError("INCORRECT_PASSWORD", details=400)
         if user.removed:
@@ -173,7 +175,10 @@ class UserService:
         if result.needs_rehash and result.upgraded_hash:
             # 显式落库：不要指望下面的 touch_login 顺手 save——它在
             # identity 缺失时会提前 return，那条写入就无声丢了。
+            # legacy_salt 必须一并清掉：升级后的哈希是纯 Argon2，若保留盐，
+            # 下次登录会被 verify_any_password 误路由到 bcrypt 分支。
             user.password_hash = result.upgraded_hash
+            user.legacy_salt = None
             await self.user_dao.save(user)
 
         await self.identities.touch_login(user, IdentityProvider.EMAIL)
@@ -298,13 +303,14 @@ class UserService:
         if user.password_hash:
             if not request.old_password:
                 raise ValidationError("OLD_PASSWORD_REQUIRED", details=400)
-            verification = self.auth.verify_password(
-                request.old_password, user.password_hash
+            verification = self.auth.verify_any_password(
+                request.old_password, user.password_hash, user.legacy_salt
             )
             if not verification.valid:
                 raise ValidationError("INCORRECT_PASSWORD", details=400)
 
         user.password_hash = self.auth.hash_password(request.new_password)
+        user.legacy_salt = None
         await self.user_dao.save(user)
         await self._safe_log(
             event_type="update_password",
@@ -326,8 +332,8 @@ class UserService:
         user = await self._authenticate(request.user_token)
 
         if user.password_hash and request.old_password:
-            verification = self.auth.verify_password(
-                request.old_password, user.password_hash
+            verification = self.auth.verify_any_password(
+                request.old_password, user.password_hash, user.legacy_salt
             )
             if not verification.valid:
                 raise ValidationError("INCORRECT_PASSWORD", details=400)
@@ -337,6 +343,7 @@ class UserService:
         # The account row stays as a tombstone for vote-record linkage.
         user.removed = True
         user.password_hash = None
+        user.legacy_salt = None
         await self.identities.unbind_all(user)
         await self._safe_log(
             event_type="remove_voter",

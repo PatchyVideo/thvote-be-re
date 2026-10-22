@@ -5,6 +5,112 @@
 > 创建日期：2026-04-27
 > **2026-08-31 整理**：合并 9 组重复条目、按日期倒序重排；**2026-07-01 之前**的条目已迁至 [CHANGELOG-archive-2026H1.md](./CHANGELOG-archive-2026H1.md)。
 
+## [2026-10-20] Scraper 测试补齐 + DLsite 解析修复（B-063）
+
+> 前端作品提名页的“自动获取信息”此前只有 URL 路由/限流测试；本轮补全
+> 站点路由与关键解析器单测，并用 Playwright 从真实前端页面验证。
+
+### Added
+- **`tests/unit/test_scraper_sites.py`**（22 例）：Steam/THBWiki/Bilibili/DLsite/Dizzylab/Melon 的成功解析；Pixiv/YouTube/Twitter 缺凭据 fail-closed；AcFun/Nico/贴吧/微博 结构缺失时返回结构化 `parsererr`；`process.get_data` 对未知 URL 与解析异常的处理。
+- **URL 路由全量用例**：Bilibili（BV/AV/CV/移动端）、Twitter/X、Pixiv 图/小说、Nico 动画/静画、YouTube、微博、贴吧、PatchyVideo、Steam、DLsite、Melonbooks、Dizzylab、AcFun 视频/文章，共 28 个链接形态。
+- **`scripts/e2e/scraper_frontend.js` + `docs/testing/scraper-e2e.md`**：Playwright 从前端登录/提名页发起的真实 E2E 脚本与运行手册。
+
+### Fixed
+- **DLsite 解析**：`title_el[0].text_content()` 是 BeautifulSoup API，lxml 元素没有该方法，真实页面会直接 `parsererr`；改为 `"".join(itertext())`。
+- **Bilibili 无账号抓取**：不再只发随机 `buvid3`。`get_cookies()` 先读 env 覆盖，再查 12h 缓存，最后调用 `/x/frontend/finger/spi` 获取访客 `buvid3/buvid4` + 当前 `b_nut`；无需 `SESSDATA`，Redis 故障也不阻断。**注**：测试机出口 IP 仍被 B 站风控返回 HTML，本机同代码实测 code=0；该机需代理或 SESSDATA 才能真实抓取。
+
+### Tests
+- Scraper 相关 51 例全过；`apps/scraper` 行覆盖 **22.1% → 55%**（Steam/THBWiki/DLsite/Dizzylab/Melon 均 69%+）。
+- Playwright 前端 E2E：手机号 `19900000001` + 固定码 `888888` 登录，提名页实测 THBWiki/Steam 自动填充成功，Bilibili 当前失败与非法域名均按预期报错。
+
+## [2026-10-20] 老 Mongo 用户导入：bcrypt 兼容 + 旧 id 映射（migration 0020）
+
+> 为把 `thvote_users/voters.bson`（121,957 条）导入测试库，恢复 0018 删掉的
+> bcrypt+salt 校验，并新增旧 `_id` 到新 UUID 账号的桥表。旧选票不导（D3-A）。
+
+### Added
+- **migration 0020/0021**：`user.legacy_salt`、`legacy_user_mapping(legacy_object_id, user_id, role, batch_id, imported_at)`；0021 把 `role` 放宽到 VARCHAR(32)（`conflict_existing` 长 17，0020 的 16 不够）。
+- **`src/db_model/legacy_user_mapping.py`**：映射模型（role ∈ primary/duplicate/conflict_existing）。
+- **`scripts/import_legacy_voters.py`**：流式解析、按 `voter_logs` 最后活动去重、测试账号/坏邮箱过滤、分批写入、preflight/commit 双模式。
+- **`scripts/rollback_legacy_user_import.py`**：按 batch 回滚，带投票/日志引用保护。
+- **`scripts/backup_user_tables.py`**：无 `pg_dump` 依赖的 CSV 轻量备份。
+- 测试：`test_legacy_password.py`、`test_legacy_voter_import.py`、`test_legacy_login_compat.py`。
+
+### Changed
+- **`src/common/security/password.py`**：新增 `verify_legacy_password` / `verify_any_password`；`AuthProvider` 暴露同名方法。
+- **`src/apps/user/service.py`**：登录、改密、注销改用 `verify_any_password`；bcrypt 登录成功后升级 Argon2id 并清空 `legacy_salt`。
+- **`pyproject.toml`**：加回 `bcrypt>=4.0.0`；`sqlalchemy` 改为 `sqlalchemy[asyncio]`，显式拉 `greenlet`（SQLAlchemy 2.1 起不再自动安装，Python 3.14 CI 的 alembic 因此失败）。
+
+### 兼容性
+- Argon2i 老哈希无需改动即可验证并自动升级；bcrypt 老哈希保留原密码。
+- 新注册账号行为不变（始终 Argon2id，`legacy_salt` 为 NULL）。
+- 对外接口 shape 不变。
+
+### Tests
+- 新增 16 个单元用例 + 5 个登录兼容集成用例；相关 user/auth 回归 38 passed。
+- 真实 dump 只读 preflight 计数：winners 80,053 / users 80,050 / mappings 121,951 / conflicts 3。
+
+## [2026-09-17] 公共读接口 Redis 缓存 + 管理台手动刷缓存
+
+> `vote-objects`/问卷结构/自动补全/公开提名列表此前每次直查数据库；项目 Redis 一直存在
+> 却只用于限流/会话/计票锁。本次接入缓存（写入即失效 + TTL 兜底），并给管理台加刷缓存入口。
+
+### Added
+- **`src/common/cache.py`**：JSON/原始文本读写 + `invalidate_prefix`（**SCAN 游标**删除，替代 `KEYS`）；全部 fail-open（Redis 故障不影响请求）。
+- **vote-objects 缓存**（`src/apps/vote_objects/router.py`）：列表 `vote_objects:{year}:{category}`、详情 `vote_objects:detail:{category}:{id}`，TTL 600s；命中直接返回缓存字节，`GZipMiddleware` 仍压缩。
+- **问卷结构缓存**：`questionnaire:structure:{year}`，TTL 1800s。
+- **自动补全缓存**：`autocomplete:{year}:{limit}:{q}`，TTL 60s。
+- **公开提名列表缓存**：`nominations:approved:{page}:{size}`，TTL 60s。
+- **管理端刷缓存**（`src/apps/admin/router.py`）：`GET /admin/cache/stats`（各 scope 键数）、`POST /admin/cache/flush`（scope 白名单 `all|vote_objects|questionnaire|autocomplete|nominations`，未知 → 422）。管理台 Dashboard 新增「缓存」卡片（计数 + 单项/一键刷新）。
+
+### Changed
+- 失效逻辑补齐：`_clear_vote_objects_cache` 改为 SCAN 并同时清 `autocomplete:`；候选导入/改/删/合并/拆分、提名 approve/reject、问卷 admin 全部 13 个写端点都接上对应前缀失效（此前候选变更根本不失效）。
+
+### 兼容性
+- 无接口 shape 变化（vote-objects 响应不变，只是更快）。
+- 明确**不缓存**带 `vote_token`/用户身份的读接口与所有写端点。
+- `result:*` 仍是计票产物，由 `POST /admin/compute-results` 重建，不纳入手动刷缓存。
+
+### Tests
+- 新增 `tests/unit/test_cache.py`（往返/前缀失效/fail-open）。
+- `test_vote_objects.py` 增缓存写入断言；`test_admin_voteables.py` 增 stats/flush/scope 校验/鉴权。
+- 全量 `666 passed, 4 skipped`。
+
+## [2026-09-16] 投票对象资源 URL 后端化（0019）
+
+> 角色立绘 / 曲目封面 / 试听 URL 原存在前端 `packages/shared/data/{character,music}.ts`，
+> 由前端**按 `name`** 匹配挂到后端候选上，管理台无法配置、改名即失效。本次迁到后端
+> 与 voteable 1:1 绑定，公共接口下发，管理台可编辑，前端静态表与匹配逻辑整体删除。
+
+### Added
+- **迁移 `0019_voteable_resources`**（`alembic/versions/0019_voteable_resources.py`）：`voteable_character.image_url`、`voteable_music.image_url`、`voteable_music.music_url`、`voteable_music.include`（JSON，默认 `[]`）。Postgres-only 幂等；`aliases` 列已存在仅回填。
+- **公共接口下发资源**（`src/apps/vote_objects/dao.py`）：`GET /api/v1/vote-objects/{characters|music}` 与 `/{category}/{id}` 的 item 新增 `imageUrl`、`aliases`（音乐另加 `musicUrl`、`include`）。
+- **管理端资源配置**：`GET /admin/voteables` 补资源字段；新增 `PUT /admin/voteables/{id}/resources`（部分更新、空串清空、URL 仅 http(s) 且 ≤2048、写后清缓存）。复用路由级 `require_admin`。
+- **迁移工具**：`scripts/voteable_resources.json`（一次性数据工件，含来源 commit）+ `scripts/import_voteable_resources.py`（按 name 导入，默认 dry-run/只填空值，`--apply --yes` 写入，`--overwrite` 覆盖）。
+- 管理台新页「投票对象资源」（`admin-ui/src/views/VoteableResourcesView.vue` + `api/voteables.ts`），产物已重建提交到 `src/admin_ui/`。
+- 前端统一加载层 `packages/shared/api/voteObjects.ts`；结果页资源索引 `packages/result/src/lib/voteObjectResources.ts`。
+
+### Changed
+- 投票页 `voteObjectsDataSource` 不再按 name 匹配静态表，直接映射后端字段；sessionStorage 缓存加 5 分钟 TTL（后端资源可被管理台修改）。
+- class 定义抽到 `packages/shared/model/{character,music}.ts`。
+
+### Removed
+- 删除 `packages/shared/data/character.ts`、`music.ts`（Touhou-Vote 仓库）及按 name 取 URL 的老逻辑；连带清理死代码 `vote/common/lib/getNickName.ts`、`result/lib/getIDtoName.ts`、`result/pages/Test.vue`。
+
+### Fixed（顺带）
+- 修复 `admin-ui/src/views/WorksView.vue`：此前对不上现有 `useAsync`/`usePagination`/`DataTable` API，`vue-tsc` 直接失败，admin-ui 无法构建。
+
+### Performance（同日后补：修复投票列表页变慢）
+- **后端加 `GZipMiddleware`**（`src/main.py`）：vote-objects JSON 实测角色 `100KB→23KB`、曲目 `255KB→32KB`（4~8×）。此前仅 vote 的 nginx 配了 gzip，result 的 `/res-be` 与 dev 代理都未压缩。
+- **前端投票页按类别懒加载**：`VoteCharacter.vue` 只调 `loadCharacterVoteObjects()`、`VoteMusic.vue` 只调 `loadMusicVoteObjects()`（原都调 `loadVoteObjects()` 一次拉两个列表）。角色列表页不再为曲目付 32KB + 一次 DB 查询。
+- **缓存改「先渲染、后台 revalidate」**：sessionStorage 命中即同步渲染并立即返回，TTL 只决定何时在后台刷新，不再阻塞页面。原来 5 分钟 TTL 会让已缓存的列表页重新等待网络（测试机 TTFB 0.3~1.3s），这是"变慢"的主因。
+- 量化：静态表删除使 JS 少 **371KB(min)/50KB(gzip)**；API 增 ~38KB(gzip)。首次加载净约 −12KB，命中缓存后不再有阻塞请求。
+
+### 兼容性
+- 只增列/只增字段，旧前端与旧调用方不受影响；但**新前端强依赖新字段 → 必须后端先发布、再发布前端**。
+- 数据迁移为一次性人工步骤（测试库已执行：角色 image 164、aliases 175；曲目 image 605、music 612、include 231）。
+- 无 GraphQL schema 变更；`color`/`title` 不建列（源数据分别为全表常量和全空），前端用常量/空串。
+
 ## [2026-09-15] 修正音乐候选「我的女仆，我甜美的女仆」的错误数据
 
 > 稀翁玉曲目 `My Maid, Sweet Maid` 在早期导入时被英文逗号拆坏，后端白名单快照和测试库里存成了 `name="My Maid"`、`name_jp=" Sweet Maid"`、旧 id `d60777dd`。前端 `packages/shared/data/music.ts` 早已改正（id `462e28a2`）。投票页按曲名把后端候选对到前端静态表取封面和试听音频，名字对不上，这首歌在投票页没有封面、也放不了。

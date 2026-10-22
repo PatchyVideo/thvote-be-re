@@ -4,7 +4,7 @@ These tables hold the canonical identity for voteable items.
 candidate_* tables reference these via voteable_id.
 """
 
-from sqlalchemy import JSON, Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import JSON, Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.sql import func
 
 from .base import Base
@@ -21,6 +21,8 @@ class VoteableCharacter(Base):
     work_id = Column(Integer, ForeignKey("work.id"), nullable=True)
     aliases = Column(JSON, nullable=False, server_default="[]")
     old_id = Column(String(64), nullable=True)
+    # 资源类 URL：立绘/头像（由管理台维护，公共 vote-objects 接口下发）
+    image_url = Column(Text, nullable=True)
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -37,6 +39,10 @@ class VoteableMusic(Base):
     work_id = Column(Integer, ForeignKey("work.id"), nullable=True)
     aliases = Column(JSON, nullable=False, server_default="[]")
     old_id = Column(String(64), nullable=True)
+    # 资源类 URL：封面 + 试听；include = 收录专辑（用于专辑筛选/展示）
+    image_url = Column(Text, nullable=True)
+    music_url = Column(Text, nullable=True)
+    include = Column(JSON, nullable=False, server_default="[]")
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -12,6 +12,7 @@ from src.common.security.jwt import (
 from src.common.security.password import (
     PasswordVerificationResult,
     hash_password,
+    verify_legacy_password,
     verify_password,
 )
 
@@ -35,6 +36,21 @@ class AuthProvider:
     ) -> PasswordVerificationResult:
         """Verify an Argon2 password hash."""
         return verify_password(password, password_hashed)
+
+    @staticmethod
+    def verify_any_password(
+        password: str,
+        password_hashed: str,
+        legacy_salt: str | None = None,
+    ) -> PasswordVerificationResult:
+        """Verify an Argon2 hash or a legacy bcrypt+salt hash.
+
+        The no-salt branch goes through ``AuthProvider.verify_password`` so
+        existing tests (and callers) that patch that method keep working.
+        """
+        if legacy_salt:
+            return verify_legacy_password(password, password_hashed, legacy_salt)
+        return AuthProvider.verify_password(password, password_hashed)
 
     @staticmethod
     def create_session_token(user_id: str) -> str:

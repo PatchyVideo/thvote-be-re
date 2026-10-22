@@ -53,7 +53,10 @@ jobs:
       - name: 设置 Python
         uses: actions/setup-python@v5
         with:
-          python-version-file: 'pyproject.toml'
+          # 固定 3.12：与 Dockerfile 一致。setup-python 读 pyproject 的
+          # requires-python>=3.12 会选最新稳定版(曾漂到 3.14/3.15)，
+          # 而 redisvl 等依赖并不总有对应 wheel。
+          python-version: '3.12'
 
       - name: 安装工具
         run: |
@@ -103,7 +106,10 @@ jobs:
       - name: 设置 Python
         uses: actions/setup-python@v5
         with:
-          python-version-file: 'pyproject.toml'
+          # 固定 3.12：与 Dockerfile 一致。setup-python 读 pyproject 的
+          # requires-python>=3.12 会选最新稳定版(曾漂到 3.14/3.15)，
+          # 而 redisvl 等依赖并不总有对应 wheel。
+          python-version: '3.12'
 
       - name: 安装依赖
         run: |

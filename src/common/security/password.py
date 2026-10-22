@@ -1,12 +1,14 @@
-"""Password hashing (Argon2 only).
+"""Password hashing and legacy password compatibility.
 
-The bcrypt+salt path for accounts imported from the legacy Mongo store was
-removed on 2026-09-06: the new deployment starts from an empty user table,
-so no such hash can exist (identity-model spec §6).
+New accounts always store Argon2 hashes.  Accounts imported from the old Mongo
+user store may still carry a legacy ``bcrypt(password + salt)`` hash; those are
+verified only while ``legacy_salt`` is present and are upgraded to Argon2 on
+the first successful password login (same behaviour as the Rust user-manager).
 """
 
 from dataclasses import dataclass
 
+import bcrypt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 
@@ -39,3 +41,47 @@ def verify_password(password: str, password_hashed: str) -> PasswordVerification
         needs_rehash=needs_rehash,
         upgraded_hash=hash_password(password) if needs_rehash else None,
     )
+
+
+def verify_legacy_password(
+    password: str,
+    password_hashed: str,
+    legacy_salt: str,
+) -> PasswordVerificationResult:
+    """Verify a legacy ``bcrypt(password + salt)`` hash.
+
+    Mirrors the Rust user-manager's legacy path: the 8-character salt is
+    concatenated to the plaintext (the bcrypt salt is already inside the hash),
+    and a successful match always schedules an Argon2 upgrade.
+    """
+    try:
+        valid = bcrypt.checkpw(
+            f"{password}{legacy_salt}".encode("utf-8"),
+            password_hashed.encode("utf-8"),
+        )
+    except (ValueError, TypeError):
+        # Malformed hash/salt: fail closed, never surface a 500 to the login
+        # endpoint because of one bad imported row.
+        return PasswordVerificationResult(valid=False)
+    if not valid:
+        return PasswordVerificationResult(valid=False)
+    return PasswordVerificationResult(
+        valid=True,
+        needs_rehash=True,
+        upgraded_hash=hash_password(password),
+    )
+
+
+def verify_any_password(
+    password: str,
+    password_hashed: str,
+    legacy_salt: str | None = None,
+) -> PasswordVerificationResult:
+    """Verify either a legacy bcrypt+salt hash or an Argon2 hash.
+
+    ``legacy_salt`` is the routing signal, exactly like the old Rust backend:
+    present -> bcrypt path; absent -> Argon2 path.
+    """
+    if legacy_salt:
+        return verify_legacy_password(password, password_hashed, legacy_salt)
+    return verify_password(password, password_hashed)

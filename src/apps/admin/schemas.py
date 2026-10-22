@@ -218,3 +218,19 @@ class NominationListResponse(BaseModel):
 
 class NominationRejectRequest(BaseModel):
     reason: str = ""
+
+
+# ── Voteable 资源编辑（image / audio / 收录专辑 / 别名）───────────────────────
+
+class VoteableResourceUpdate(BaseModel):
+    """PUT /admin/voteables/{id}/resources 请求体（部分更新）。
+
+    只处理显式提供的字段（``exclude_unset``），未提供的保持不变。
+    ``category`` 决定 music_url/include 是否可用（character 会忽略这两个字段）。
+    """
+
+    category: Literal["character", "music"]
+    image_url: Optional[str] = None
+    music_url: Optional[str] = None
+    include: Optional[list[str]] = None
+    aliases: Optional[list[str]] = None
