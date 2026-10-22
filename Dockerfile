@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # ---- Dependencies Stage ----
@@ -24,8 +25,9 @@ FROM base AS deps
 
 # Install Python dependencies
 COPY pyproject.toml .
-RUN pip install --no-cache-dir --upgrade pip wheel && \
-    pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir --upgrade pip==26.2.2 wheel && \
+    pip install --no-cache-dir -e . && \
+    python -c "import certifi; assert tuple(map(int, certifi.__version__.split('.')[:2])) >= (2026, 10), certifi.__version__"
 
 # ---- Builder Stage (for production optimization) ----
 FROM base AS builder
@@ -39,6 +41,11 @@ FROM base AS development
 # Copy virtual environment from deps
 COPY --from=deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=deps /usr/local/bin /usr/local/bin
+
+# eMudhra/emSign: force all Python SSL clients (httpx/aiohttp/asyncpg/urllib)
+# onto the certifi bundle rather than the container's system CA store.
+ENV SSL_CERT_FILE=/usr/local/lib/python3.12/site-packages/certifi/cacert.pem \
+    REQUESTS_CA_BUNDLE=/usr/local/lib/python3.12/site-packages/certifi/cacert.pem
 
 # Install dev dependencies
 RUN pip install --no-cache-dir uvicorn[standard] httpx
@@ -67,6 +74,10 @@ FROM base AS production
 # Copy virtual environment from deps
 COPY --from=deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=deps /usr/local/bin /usr/local/bin
+
+# eMudhra/emSign: force all Python SSL clients onto certifi >= 2026.10.19.
+ENV SSL_CERT_FILE=/usr/local/lib/python3.12/site-packages/certifi/cacert.pem \
+    REQUESTS_CA_BUNDLE=/usr/local/lib/python3.12/site-packages/certifi/cacert.pem
 
 # Install curl for health check (required for non-root user)
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
