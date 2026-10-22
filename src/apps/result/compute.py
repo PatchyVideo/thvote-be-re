@@ -298,7 +298,7 @@ def compute_ranking(
     global_stats = {
         "total_unique_items": len(all_ids),
         "total_first": total_first,
-        "total_votes": total_votes,
+        "total_votes": total_voters,  # 部门有效票数，一张提交含多个票位。
         "average_votes_per_item": total_votes / len(all_ids) if all_ids else 0.0,
         "median_votes_per_item": _median(list(vote_count.values())),
         "dropped": {k: dropped.get(k, 0) for k in _DROPPED_KEYS},
@@ -509,7 +509,7 @@ def compute_cp_ranking(
     global_stats = {
         "total_unique_items": len(all_keys),
         "total_first": total_first_cp,
-        "total_votes": total_votes,
+        "total_votes": total_voters,  # 单票组合虽不展示，提交仍是有效票。
         "average_votes_per_item": total_votes / len(all_keys) if all_keys else 0.0,
         "median_votes_per_item": _median([vote_count[k] for k in all_keys]),
         "dropped": {k: dropped.get(k, 0) for k in _DROPPED_KEYS},
@@ -552,34 +552,24 @@ def compute_global_stats(
 
 
 def compute_completion_rates(
-    char_votes: list[tuple[str, datetime, list[dict]]],
-    music_votes: list[tuple[str, datetime, list[dict]]],
-    cp_votes: list[tuple[str, datetime, list[dict]]],
-    questionnaire_votes: list[tuple[str, list[dict]]],
+    completed_by_questionnaire: dict[str, set[str]],
     all_voters: set[str],
 ) -> dict[str, dict]:
-    """各分类的完成率，附带分子/分母（供 CompletionRateItem 直接消费）。
+    """Per-questionnaire completion within the current (possibly filtered) cohort.
 
-    返回 {category: {"rate": float, "num_complete": int, "total": int}}。
-    ``total`` 对所有分类相同（都是 all_voters 的规模），分子是该分类投票者
-    与 all_voters 的交集大小。
+    Keys are actual QuestionnaireDef keys. The same voter may complete several
+    questionnaires; each rate has the cohort size as its denominator.
     """
     total = len(all_voters)
-
-    def _item(voters: set[str]) -> dict:
-        num_complete = len(voters & all_voters)
-        return {
-            "rate": (num_complete / total) if total else 0.0,
+    rates: dict[str, dict] = {}
+    for key, completed_voters in completed_by_questionnaire.items():
+        num_complete = len(completed_voters & all_voters)
+        rates[key] = {
+            "rate": num_complete / total if total else 0.0,
             "num_complete": num_complete,
             "total": total,
         }
-
-    return {
-        "character": _item({uid for uid, _, _ in char_votes}),
-        "music": _item({uid for uid, _, _ in music_votes}),
-        "cp": _item({uid for uid, _, _ in cp_votes}),
-        "questionnaire": _item({uid for uid, _ in questionnaire_votes}),
-    }
+    return rates
 
 
 # ── Paper (Questionnaire) Results ─────────────────────────────────────

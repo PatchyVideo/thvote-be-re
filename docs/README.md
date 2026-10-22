@@ -17,6 +17,9 @@
 | **知道最近发生了什么** | [`CHANGELOG.md`](./CHANGELOG.md) —— 2026-07 起；更早见 [`CHANGELOG-archive-2026H1.md`](./CHANGELOG-archive-2026H1.md) |
 | **了解投票业务本身要什么** | [`requirements/`](./requirements/) —— VoileLabs 官方需求文档，**权威口径来源** |
 | **对接后端接口** | [`api/voteable-api-contract.md`](./api/voteable-api-contract.md) |
+| **维护结果趋势时间轴** | [`api/result-timeline.md`](./api/result-timeline.md) —— 快照日期、GraphQL 字段及前后端发布顺序 |
+| **核对结果统计口径** | [`api/result-statistics.md`](./api/result-statistics.md) —— 部门有效票与逐问卷完成情况 |
+| **维护详情页人群筛选** | [`api/result-detail-filters.md`](./api/result-detail-filters.md) —— 原约束、目标交集及组合 DSL |
 
 ---
 

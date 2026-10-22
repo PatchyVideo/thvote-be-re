@@ -33,7 +33,9 @@ from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeService
 from src.apps.result.whitelist import load_whitelist_db
 from src.common.config import Settings
-from src.db_model.questionnaire_def import OptionDef, PaperAnswer, QuestionDef
+from src.db_model.questionnaire_def import (
+    OptionDef, PaperAnswer, QuestionDef, QuestionnaireDef, QuestionGroupDef,
+)
 from src.db_model.raw_submit import RawCharacterSubmit, RawCPSubmit
 
 QUERY_CHARACTER_RANKING = """
@@ -156,6 +158,10 @@ async def _seed_and_compute(session: AsyncSession, fake_redis, settings) -> None
             }],
         ),
     ])
+    session.add_all([
+        QuestionnaireDef(id=1, key="main_required", title="基本问卷"),
+        QuestionGroupDef(id=1, questionnaire_id=1, order=1),
+    ])
     gender_q = QuestionDef(group_id=1, type="Single", content="性别", code="11011")
     session.add(gender_q)
     await session.flush()
@@ -194,6 +200,26 @@ async def gql_schema_uncomputed(monkeypatch, fake_redis, settings):
     确实没算过——不是 seed 阶段的疏漏)。"""
     _patch_result_service(monkeypatch, fake_redis, settings)
     return schema
+
+
+@pytest.mark.asyncio
+async def test_result_timeline_reads_snapshot_and_accepts_legacy(gql_schema, fake_redis):
+    query = """{ queryResultTimeline(voteYear:2026) {
+        voteStart voteEnd statisticsEnd generatedAt
+    } }"""
+    result = await gql_schema.execute(query)
+    assert result.errors is None
+    timeline = result.data["queryResultTimeline"]
+    assert datetime.fromisoformat(timeline["voteStart"]) == datetime(
+        2026, 1, 1, tzinfo=timezone.utc
+    )
+    assert datetime.fromisoformat(timeline["statisticsEnd"]) <= datetime.fromisoformat(
+        timeline["voteEnd"]
+    )
+    await fake_redis.delete("result:2026:timeline")
+    result = await gql_schema.execute(query)
+    assert result.errors is None
+    assert result.data["queryResultTimeline"] is None
 
 
 @pytest.mark.asyncio

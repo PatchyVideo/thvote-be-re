@@ -21,8 +21,52 @@ from src.db_model.questionnaire_def import (
     PaperAnswer,
     QuestionDef,
     QuestionnaireDef,
+    QuestionGroupDef,
 )
 from src.db_model.raw_submit import RawCharacterSubmit
+
+
+@pytest.mark.asyncio
+async def test_questionnaire_completion_latest_batch_and_visible_groups(session):
+    session.add_all([
+        QuestionnaireDef(id=1, key="main", title="主问卷"),
+        QuestionnaireDef(id=2, key="extra", title="选填问卷"),
+        QuestionnaireDef(id=3, key="unconfigured", title="未配题问卷"),
+        QuestionGroupDef(id=10, questionnaire_id=1, order=1),
+        QuestionGroupDef(id=11, questionnaire_id=1, order=2, hidden_by_default=True),
+        QuestionGroupDef(id=20, questionnaire_id=2, order=1),
+        QuestionDef(id=100, group_id=10, type="Single"),
+        QuestionDef(id=110, group_id=11, type="Single"),
+        QuestionDef(id=200, group_id=20, type="Input"),
+        OptionDef(id=1000, question_id=100, related_question_ids=[110]),
+        OptionDef(id=1001, question_id=100),
+        OptionDef(id=1100, question_id=110),
+    ])
+
+    def answer(user, attempt, qn, group, question, options=None, text=None, year=12):
+        return PaperAnswer(
+            vote_id=user, vote_year=year, attempt=attempt,
+            questionnaire_id=qn, group_id=group, active_question_id=question,
+            selected_option_ids=options or [], input_text=text,
+        )
+
+    session.add_all([
+        answer("u1", 1, 1, 10, 100, [1000]),
+        answer("u1", 1, 1, 11, 110, [1100]),
+        answer("u1", 1, 2, 20, 200, text="旧批次填完"),
+        # New batch omits the triggered group and extra questionnaire.
+        answer("u1", 2, 1, 10, 100, [1000]),
+        # Hidden group is not required when its option wasn't selected.
+        answer("u2", 1, 1, 10, 100, [1001]),
+        answer("u2", 1, 2, 20, 200, text="  "),
+        answer("u3", 1, 1, 10, 100, [1001], year=11),
+        answer("u4", 1, 2, 20, 200, text="填写完成"),
+    ])
+    await session.commit()
+    # No semantic codes are configured: completion still uses real structure.
+    assert await ComputeDAO(session).load_questionnaire_completion(12) == {
+        "main": {"u2"}, "extra": {"u4"}, "unconfigured": set(),
+    }
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")

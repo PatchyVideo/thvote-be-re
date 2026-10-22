@@ -8,11 +8,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from itertools import permutations
 
 from src.apps.result.advanced_search.dsl import (
     And,
     CharAny,
     CharFirst,
+    CPExact,
     MusicAny,
     MusicFirst,
     Node,
@@ -34,6 +36,7 @@ class VoteFacts:
     char_first: dict[str, set[str]]
     music_ids: dict[str, set[str]]
     music_first: dict[str, set[str]]
+    cp_members: dict[str, set[tuple[str, ...]]]
     q_answers: dict[str, dict[str, set[str]]]
     all_vote_ids: set[str]
 
@@ -66,6 +69,13 @@ def build_facts(
             _canon(music_wl, it.get("id", "")) for it in items if it.get("first")
         }
     q_answers: dict[str, dict[str, set[str]]] = {}
+    cp_members: dict[str, set[tuple[str, ...]]] = {}
+    for vid, _dt, items in cp_votes:
+        cp_members[vid] = {
+            tuple(sorted(_canon(char_wl, it[key]) for key in
+                         ("id_a", "id_b", "id_c") if it.get(key)))
+            for it in items
+        }
     for vid, entries in q_votes:
         per_question: dict[str, set[str]] = {}
         for entry in entries:
@@ -80,6 +90,7 @@ def build_facts(
     return VoteFacts(
         char_ids=char_ids, char_first=char_first,
         music_ids=music_ids, music_first=music_first,
+        cp_members=cp_members,
         q_answers=q_answers, all_vote_ids=all_vote_ids,
     )
 
@@ -111,8 +122,8 @@ def resolve_names(
             for child in n.children:
                 visit(child)
             return
-        if isinstance(n, (CharAny, CharFirst)):
-            names = n.names if isinstance(n, CharAny) else (n.name,)
+        if isinstance(n, (CharAny, CharFirst, CPExact)):
+            names = n.names if isinstance(n, (CharAny, CPExact)) else (n.name,)
             for name in names:
                 ids = char_idx.get(name)
                 if ids:
@@ -165,6 +176,16 @@ def evaluate_subset(
         if isinstance(n, MusicFirst):
             return bool(
                 resolved[("music", n.name)] & facts.music_first.get(vid, set())
+            )
+        if isinstance(n, CPExact):
+            # Exact multiset: A×B differs from A×A and A×B×C. Member order
+            # and active role are irrelevant, just as in the CP ranking.
+            return any(
+                all(mid in resolved[("character", name)]
+                    for mid, name in zip(members, names))
+                for members in facts.cp_members.get(vid, set())
+                if len(members) == len(n.names)
+                for names in permutations(n.names)
             )
         raise TypeError(f"unknown AST node: {n!r}")
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from datetime import datetime, timezone
 
@@ -65,13 +66,19 @@ class ComputeService:
                 vote_start = vote_start.replace(tzinfo=timezone.utc)
             if vote_end.tzinfo is None:
                 vote_end = vote_end.replace(tzinfo=timezone.utc)
-            total_hours = max(1, int((vote_end - vote_start).total_seconds() / 3600))
+            statistics_end = max(
+                vote_start, min(vote_end, datetime.now(timezone.utc))
+            )
+            total_hours = max(1, math.ceil(
+                (statistics_end - vote_start).total_seconds() / 3600
+            ))
 
             # Load all data
             char_votes = await self.dao.load_char_votes()
             music_votes = await self.dao.load_music_votes()
             cp_votes = await self.dao.load_cp_votes()
             q_votes = await self.dao.load_questionnaire_votes(vote_year)
+            q_completion = await self.dao.load_questionnaire_completion(vote_year)
             # 全提交历史(append-only,B-050-后补2):trend 真实净增量的数据源。
             char_history = await self.dao.load_char_history()
             music_history = await self.dao.load_music_history()
@@ -129,7 +136,7 @@ class ComputeService:
                 char_votes, music_votes, cp_votes, q_votes, segment_map
             )
             completion_rates = compute_completion_rates(
-                char_votes, music_votes, cp_votes, q_votes, all_voters
+                q_completion, all_voters
             )
             paper_results = compute_paper_results(
                 q_votes, segment_map, vote_start=vote_start, total_hours=total_hours,
@@ -140,6 +147,12 @@ class ComputeService:
 
             # Bulk write to Redis
             pipe = self.redis.pipeline()
+            pipe.set(self._key(vote_year, "timeline"), json.dumps({
+                "vote_start": vote_start.isoformat(),
+                "vote_end": vote_end.isoformat(),
+                "statistics_end": statistics_end.isoformat(),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+            }))
             pipe.set(self._key(vote_year, "chars", "ranking"), json.dumps(char_ranking))
             pipe.set(self._key(vote_year, "chars", "global"), json.dumps(char_global))
             pipe.set(

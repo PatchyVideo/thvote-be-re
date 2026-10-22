@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import uuid
 from datetime import datetime, timezone
 
@@ -30,6 +31,7 @@ from src.apps.result.compute import (
     compute_ranking,
 )
 from src.apps.result.compute_dao import ComputeDAO
+from src.apps.result.dao import ResultDAO
 from src.apps.result.whitelist import load_whitelist_db
 from src.common.config import Settings
 from src.common.database import get_session_maker
@@ -184,7 +186,7 @@ async def _compute_filtered(
 
     与 ComputeService.compute_all 的差异只有:输入按子集过滤、不算
     covote(需求无消费方)、写 key 带 infix 和 TTL。窗口参数与
-    compute_all 同源(settings),子集 trend 分桶口径一致。
+    compute_all 同源(主榜快照时间),子集 trend 分桶口径一致。
     """
     s = settings
     vote_start = datetime.fromisoformat(s.vote_start_iso.replace("Z", "+00:00"))
@@ -193,7 +195,13 @@ async def _compute_filtered(
         vote_start = vote_start.replace(tzinfo=timezone.utc)
     if vote_end.tzinfo is None:
         vote_end = vote_end.replace(tzinfo=timezone.utc)
-    total_hours = max(1, int((vote_end - vote_start).total_seconds() / 3600))
+    timeline = await ResultDAO(redis, settings).get_timeline(vote_year)
+    if timeline is not None:
+        vote_start = datetime.fromisoformat(timeline["vote_start"])
+        vote_end = datetime.fromisoformat(timeline["statistics_end"])
+    total_hours = max(1, math.ceil(
+        (vote_end - vote_start).total_seconds() / 3600
+    ))
 
     session_maker = get_session_maker()
     async with session_maker() as session:
@@ -208,6 +216,7 @@ async def _compute_filtered(
         music_votes = await dao.load_music_votes()
         cp_votes = await dao.load_cp_votes()
         q_votes = await dao.load_questionnaire_votes(vote_year)
+        q_completion = await dao.load_questionnaire_completion(vote_year)
         # 全提交历史:子集 trend 也走真实净增量(与 compute_all 同口径)。
         char_history = await dao.load_char_history()
         music_history = await dao.load_music_history()
@@ -252,8 +261,7 @@ async def _compute_filtered(
     )
     global_stats = compute_global_stats(
         char_votes, music_votes, cp_votes, q_votes, segment_map)
-    completion_rates = compute_completion_rates(
-        char_votes, music_votes, cp_votes, q_votes, all_voters)
+    completion_rates = compute_completion_rates(q_completion, all_voters)
     paper_results = compute_paper_results(
         q_votes, segment_map, vote_start=vote_start, total_hours=total_hours,
         history=q_history)
