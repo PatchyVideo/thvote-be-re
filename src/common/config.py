@@ -287,11 +287,36 @@ class Settings(BaseSettings):
 
     # 安全配置
     cors_allowed_origins: list[str] = Field(default_factory=lambda: ["*"])
-    trusted_proxy_ips: list[str] = Field(default_factory=list)
+    # 下面两个 IP 列表同样要容忍 Nacos 里的各种写法。NoDecode 关掉 env source
+    # 的 JSON 预解析，否则写成 "" / "10.0.0.1" 会在 source 层抛 SettingsError，
+    # 整个进程起不来（2026-10-29 生产首次部署即因此失败）。
+    trusted_proxy_ips: Annotated[list[str], NoDecode] = Field(default_factory=list)
     # 管理端 IP 白名单(B-049)。Nacos 里写 JSON 数组字符串,
     # 如 "ADMIN_ALLOWED_IPS": "[\"1.2.3.4\", \"10.0.0.0/8\"]"。
-    # 空 = 不限 IP(仍需 X-Admin-Secret);pydantic-settings 自动 JSON 解码 list[str]。
-    admin_allowed_ips: list[str] = Field(default_factory=list)
+    # 空 = 不限 IP(仍需 X-Admin-Secret)。
+    admin_allowed_ips: Annotated[list[str], NoDecode] = Field(default_factory=list)
+
+    @field_validator("trusted_proxy_ips", "admin_allowed_ips", mode="before")
+    @classmethod
+    def _parse_ip_lists(cls, value):
+        """接受 ``""``、JSON 数组、逗号分隔三种写法；空值 = 空列表。"""
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if not text:
+            return []
+        if text[0] in "[{":
+            import json
+
+            try:
+                parsed = json.loads(text)
+            except ValueError:
+                parsed = None
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed]
+            logger.error("IP 白名单配置 %r 不是合法的 JSON 数组,按空列表处理", value)
+            return []
+        return [part.strip() for part in text.split(",") if part.strip()]
     # 拦裸脚本(B-048):对变更类请求(GraphQL mutation + REST 提交/登录/发码)要求
     # 带浏览器自动附加的 Origin/Referer 头;curl/python 默认不带→403。默认关,
     # 经 Nacos 灰度开启(REQUIRE_BROWSER_ORIGIN=true)。不拦 query(codegen 免受影响)。

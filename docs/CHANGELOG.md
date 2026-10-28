@@ -10,6 +10,7 @@
 - **Added**：`Settings.expose_api_docs`（`EXPOSE_API_DOCS`，默认 `false`）。`src/main.py` 按开关传 `docs_url`/`redoc_url`/`openapi_url`，并给 `AppGraphQLRouter` 传 `graphql_ide`——关闭时 `/docs`、`/redoc`、`/openapi.json`、浏览器打开 `/graphql` 均 404，`POST /graphql` 不受影响。回归用例 `tests/unit/test_expose_api_docs.py`（8 例）。
 - **Removed**：测试登录旁路整体删除（P-4）：`src/common/verification/test_bypass.py`、`sms_code.py`/`email_code.py` 两个 `consume` 短路、`Settings` 两个字段、`tests/unit/test_test_login_bypass.py`。测试/生产 Nacos 同步删键；`grep -r TEST_LOGIN_BYPASS src` 为空。设计稿与操作文档标记为已移除，`scripts/e2e/scraper_frontend.js` 改为需真实验证码。
 - **Added**：`.github/workflows/deploy-test.yml` 新增 `deploy_prod` 手动触发开关与 `deploy-prod` job（`needs: [build-backend, deploy-test]`，复用同一 digest 部署到生产机 `/opt/thvote/prod`）；compose 未变，依赖（redis/nacos）由生产目录的 `docker-compose.deps.yml` 单独维护。
+- **Fixed**：`TRUSTED_PROXY_IPS` / `ADMIN_ALLOWED_IPS` 改为 `NoDecode` + 宽容解析，接受 `""`、JSON 数组、逗号分隔三种写法。此前把这两个键按文档写成空串会让 `Settings()` 在 import 期抛 `SettingsError`、进程起不来（生产首次部署实测踩中）。用例 `tests/unit/test_config_ip_lists.py`。
 - **兼容性影响**：生产环境 graphQL 文档/调试界面不可用属预期；调用方若依赖 `/openapi.json` 生成客户端，需在测试环境用 `EXPOSE_API_DOCS=true`。
 - **数据迁移 / 配置变更**：生产 Nacos 新建 namespace `thvote-prod` + dataId `thvote_be`；`ADMIN_ALLOWED_IPS`/`TRUSTED_PROXY_IPS` 留空、`EXPOSE_API_DOCS=false`。未导入用户数据、未改前端仓库。
 
