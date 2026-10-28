@@ -2,16 +2,17 @@
 /**
  * Frontend-driven scraper E2E (Playwright).
  *
- * Logs in through the real login modal with the test-bypass phone/code,
- * opens the doujin nomination editor and clicks “自动获取信息” for each URL.
+ * Logs in through the real login modal, opens the doujin nomination editor and
+ * clicks “自动获取信息” for each URL.
  *
  * Prereqs:
  *   npm i playwright && npx playwright install chromium
- *   Test env must have TEST_LOGIN_BYPASS_ACCOUNTS/CODE configured.
+ *   2026-10-29 起测试登录旁路已删除(P-4):必须真人触发发码并把收到的验证码
+ *   通过 CODE= 传入,固定码 888888 不再可用。
  *
  * Usage:
  *   FRONTEND_BASE=http://154.37.215.62:8082/v11 \
- *   PHONE=19900000001 CODE=888888 \
+ *   PHONE=19900000001 CODE=<real code> \
  *   node scripts/e2e/scraper_frontend.js
  */
 

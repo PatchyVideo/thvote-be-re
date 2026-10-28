@@ -1,10 +1,10 @@
 # 测试登录旁路(白名单固定验证码)设计
 
-> **状态**：已实施 —— 已于 2026-08-14 实现并上线（`TEST_LOGIN_BYPASS_ACCOUNTS`/`TEST_LOGIN_BYPASS_CODE`，见 [CHANGELOG 2026-08-14](../../CHANGELOG.md)）。
-> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+> **状态**：❌ **已于 2026-10-29 整体移除**（P-4，公开上线前清理）。移除内容：`src/common/verification/test_bypass.py`、`sms_code.py`/`email_code.py` 两个 `consume` 短路、`Settings` 两个字段、单测 `tests/unit/test_test_login_bypass.py`、测试/生产 Nacos 两个键。现在 `grep -r TEST_LOGIN_BYPASS src` 为空，本文件仅作历史存档。
+> 原始实施：2026-08-14 实现并上线（见 [CHANGELOG 2026-08-14](../../CHANGELOG.md)）。
 
 > 日期:2026-08-14
-> ⚠️ **临时测试设施——公开上线前必须整体移除**,全量定位方式:`grep -r TEST_LOGIN_BYPASS`
+> ⚠️ **临时测试设施——公开上线前必须整体移除**（已于 2026-10-29 完成）
 
 ## 一、目的
 

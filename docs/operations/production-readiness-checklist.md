@@ -8,10 +8,10 @@
 
 | # | 项 | 现状（2026-09-13） | 要做什么 | 怎么验证 |
 |---|---|---|---|---|
-| P-1 | **关闭 `/docs`、`/redoc`、`/openapi.json` 和 GraphiQL** | `src/main.py` 创建 `FastAPI(...)` 时没传 `docs_url=None` 等；`AppGraphQLRouter(graphql_schema)` 没传 `graphql_ide=None`，Strawberry 默认开 GraphiQL。测试机实测四个地址都 200，`openapi.json` 110KB 含全部 admin 端点定义，经 nginx `/v12-be/` 公网可达 | 加一个配置开关（建议 `EXPOSE_API_DOCS`，默认 `false`），生产关、测试机可开。改 `src/main.py` 两处 | `curl -o /dev/null -w '%{http_code}' https://<prod>/v12-be/docs` 与 `/openapi.json`、`GET /graphql`（`Accept: text/html`）都应为 404 |
+| P-1 | **关闭 `/docs`、`/redoc`、`/openapi.json` 和 GraphiQL** | ✅ **2026-10-29 已做**：`Settings.expose_api_docs`（`EXPOSE_API_DOCS`）默认 `false`，`src/main.py` 按开关传 `docs_url`/`redoc_url`/`openapi_url` 与 `graphql_ide`；生产 Nacos 显式写 `EXPOSE_API_DOCS=false`，测试机可开 `true` | 已加开关；回归用例 `tests/unit/test_expose_api_docs.py` | 生产实测 `/docs`、`/redoc`、`/openapi.json`、`GET /graphql`（`Accept: text/html`）均 404，`POST /graphql` 仍 200 |
 | P-2 | **admin IP 白名单必须配置** | `require_admin` 的 IP 检查在 `ADMIN_ALLOWED_IPS` 为空时**放行任意 IP**（`src/apps/admin/deps.py` `_ip_allowed`，设计上的逃生舱）。测试机当前为空，只靠 `X-Admin-Secret` 一道门 | Nacos `thvote_be` 配 `ADMIN_ALLOWED_IPS`（运营出口 IP / VPN 网段，CIDR 可用）。同时 `TRUSTED_PROXY_IPS` 必须填 nginx 容器/主机地址，否则后端看到的永远是代理 IP，白名单形同虚设 | 白名单外 IP 带正确密钥访问 `/api/v1/admin/users` 应 403；白名单内 200 |
 | P-3 | **`ADMIN_SECRET` 换强值** | 测试机为弱值 `abc123`（B-042） | 生成 ≥32 字节随机串写入 Nacos；admin-ui 登录框重新输入 | 旧值 403 |
-| P-4 | **移除测试登录旁路** | `TEST_LOGIN_BYPASS_*` 代码与配置仍在（`grep -r TEST_LOGIN_BYPASS src`）。默认配置为空时不生效，但公开前应整体删除，不留"配错即开门"的可能 | 删代码 + Nacos 删键；见 `docs/superpowers/specs/2026-08-14-test-login-bypass-design.md` 移除条件 | `grep -r TEST_LOGIN_BYPASS src` 为空；假号 19900000001 + 888888 登录失败 |
+| P-4 | **移除测试登录旁路** | ✅ **2026-10-29 已做**：`src/common/verification/test_bypass.py`、两个 `consume` 短路、`Settings` 两个字段、单测全部删除；生产 Nacos 不含旧键（`grep -r TEST_LOGIN_BYPASS src` 为空） | 已删；设计稿归档为已移除 | `grep -r TEST_LOGIN_BYPASS src` 为空；假号 19900000001 + 888888 登录失败 |
 | P-5 | **CORS 收紧** | `CORS_ALLOWED_ORIGINS` 默认 `["*"]` 且 `allow_credentials=True`。当前无 cookie 所以无害；一旦引入 cookie 会变成任意源带凭据 | 生产填前端真实域名列表 | 预检请求带陌生 `Origin` 不应返回 `Access-Control-Allow-Origin` |
 | P-6 | **前端截止时间改回** | Touhou-Vote `shared/data/time.ts` 的 `deadline` 临时改成 2099（见 `docs/migration/api-contract-audit-2026-07-14.md`） | 改回真实截止时间，或切到后端 `/voting-status/`（现需 `vote_token`） | 前端在截止后拒绝提交 |
 

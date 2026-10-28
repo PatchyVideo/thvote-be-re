@@ -5,6 +5,14 @@
 > 创建日期：2026-04-27
 > **2026-08-31 整理**：合并 9 组重复条目、按日期倒序重排；**2026-07-01 之前**的条目已迁至 [CHANGELOG-archive-2026H1.md](./CHANGELOG-archive-2026H1.md)。
 
+## [2026-10-29] 生产上线前加固：关闭 API 文档 + 移除测试登录旁路 + deploy-prod 流水线
+
+- **Added**：`Settings.expose_api_docs`（`EXPOSE_API_DOCS`，默认 `false`）。`src/main.py` 按开关传 `docs_url`/`redoc_url`/`openapi_url`，并给 `AppGraphQLRouter` 传 `graphql_ide`——关闭时 `/docs`、`/redoc`、`/openapi.json`、浏览器打开 `/graphql` 均 404，`POST /graphql` 不受影响。回归用例 `tests/unit/test_expose_api_docs.py`（8 例）。
+- **Removed**：测试登录旁路整体删除（P-4）：`src/common/verification/test_bypass.py`、`sms_code.py`/`email_code.py` 两个 `consume` 短路、`Settings` 两个字段、`tests/unit/test_test_login_bypass.py`。测试/生产 Nacos 同步删键；`grep -r TEST_LOGIN_BYPASS src` 为空。设计稿与操作文档标记为已移除，`scripts/e2e/scraper_frontend.js` 改为需真实验证码。
+- **Added**：`.github/workflows/deploy-test.yml` 新增 `deploy_prod` 手动触发开关与 `deploy-prod` job（`needs: [build-backend, deploy-test]`，复用同一 digest 部署到生产机 `/opt/thvote/prod`）；compose 未变，依赖（redis/nacos）由生产目录的 `docker-compose.deps.yml` 单独维护。
+- **兼容性影响**：生产环境 graphQL 文档/调试界面不可用属预期；调用方若依赖 `/openapi.json` 生成客户端，需在测试环境用 `EXPOSE_API_DOCS=true`。
+- **数据迁移 / 配置变更**：生产 Nacos 新建 namespace `thvote-prod` + dataId `thvote_be`；`ADMIN_ALLOWED_IPS`/`TRUSTED_PROXY_IPS` 留空、`EXPOSE_API_DOCS=false`。未导入用户数据、未改前端仓库。
+
 ## [2026-10-22] 详情问卷保留筛选条件与组合目标
 
 - **Fixed**：角色/音乐/组合详情问卷将原约束与目标对象通过 AND 合并，保留 OR 分组；三个本届榜单的指令模式详情链接也携带原约束。沿用已有压缩 URL 参数并兼容旧链接。
