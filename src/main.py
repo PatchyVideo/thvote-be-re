@@ -109,6 +109,10 @@ def create_app() -> FastAPI:
         title="THVote FastAPI Backend",
         version="0.2.1",
         lifespan=lifespan,
+        # P-1: 生产不暴露 OpenAPI schema / Swagger / ReDoc（EXPOSE_API_DOCS=false）。
+        docs_url="/docs" if settings.expose_api_docs else None,
+        redoc_url="/redoc" if settings.expose_api_docs else None,
+        openapi_url="/openapi.json" if settings.expose_api_docs else None,
     )
 
     # Logging middleware
@@ -299,7 +303,11 @@ def create_app() -> FastAPI:
 
     # GraphQL endpoint (Strawberry).  AppGraphQLRouter guarantees every error
     # carries an `extensions` block (see api/graphql/http.py).
-    graphql_app = AppGraphQLRouter(graphql_schema)
+    # P-1: EXPOSE_API_DOCS=false 时同时关掉 GraphiQL IDE，只保留 POST /graphql。
+    graphql_app = AppGraphQLRouter(
+        graphql_schema,
+        graphql_ide="graphiql" if settings.expose_api_docs else None,
+    )
     app.include_router(graphql_app, prefix="/graphql")
 
     # Admin UI static files (optional — only if directory exists).

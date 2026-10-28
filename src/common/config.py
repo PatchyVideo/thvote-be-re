@@ -298,6 +298,10 @@ class Settings(BaseSettings):
     require_browser_origin: bool = Field(
         False, validation_alias="REQUIRE_BROWSER_ORIGIN"
     )
+    # 公开 API 文档(P-1)。false = /docs、/redoc、/openapi.json 全部 404,
+    # GraphQL IDE(/graphql 的 GraphiQL 页面)也一并关闭;只保留纯 GraphQL POST。
+    # 默认关:生产不暴露 schema 与调试界面,测试环境经 Nacos 显式打开。
+    expose_api_docs: bool = Field(False, validation_alias="EXPOSE_API_DOCS")
 
     # SSO 配置（通过 Nacos 下发，与 ALIYUN_* 字段同等对待）
     qq_app_id: Optional[str] = Field(None, validation_alias="QQ_APP_ID")
@@ -411,11 +415,9 @@ class Settings(BaseSettings):
         "closed", validation_alias="ALIYUN_CAPTCHA_FAIL_MODE"
     )
 
-    # TEST_LOGIN_BYPASS——测试登录旁路(⚠️ 临时测试设施,公开上线前整体移除,
-    # grep TEST_LOGIN_BYPASS 全量定位)。两者同时非空才激活;生产 Nacos 永不配置。
-    # 见 docs/superpowers/specs/2026-08-14-test-login-bypass-design.md
-    test_login_bypass_accounts: list[str] = Field(default_factory=list)
-    test_login_bypass_code: str = Field("")
+    # 测试登录旁路(白名单固定验证码)已于 P-4 公开上线前整体移除,两个配置字段
+    # 随之删除;配置里再出现旧键会被忽略(extra="ignore")。设计稿与历史见
+    # docs/superpowers/specs/2026-08-14-test-login-bypass-design.md。
 
     @property
     def database_url(self) -> str:
