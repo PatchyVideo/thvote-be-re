@@ -12,6 +12,8 @@ dependencies = [
     "asyncpg>=0.29.0",
     "asyncmy>=0.2.0",
     "aiosqlite>=0.20.0",
+    # 运维脚本 scripts/import_legacy_voters.py 读 bson，需要 pymongo 的 bson 模块
+    "pymongo>=4.0",
     "redis>=5.0.0",
     "aioredis>=2.0.0",
     "redis-om>=0.4.0",
