@@ -48,12 +48,12 @@ async def test_first_login_creates_account_and_identity_with_same_meta(
     await _login_email(user_service, patch_redis, "new@example.com", nickname="n")
 
     user = await user_service.identities.resolve(IdentityProvider.EMAIL, "new@example.com")
-    assert user.register_ip_address == "203.0.113.7"
+    assert user.register_ip_plain == "203.0.113.7"
     assert user.register_device_id == "device-A"
     [identity] = user.identities
-    assert (identity.provider, identity.subject) == ("email", "new@example.com")
+    assert (identity.provider, identity.subject_plain) == ("email", "new@example.com")
     assert identity.verified is True and identity.verified_at is not None
-    assert identity.created_ip == "203.0.113.7"
+    assert identity.created_ip_plain == "203.0.113.7"
     assert identity.created_device_id == "device-A"
     assert identity.last_login_at is not None
 
@@ -83,7 +83,7 @@ async def test_email_subject_is_case_insensitive(user_service, patch_redis):
 
     user = await user_service.identities.resolve(IdentityProvider.EMAIL, "Mixed@EXAMPLE.COM")
     assert user is not None
-    assert user.identity("email").subject == "mixed@example.com"
+    assert user.identity("email").subject_plain == "mixed@example.com"
 
 
 @pytest.mark.asyncio
@@ -99,8 +99,8 @@ async def test_rebind_phone_replaces_row_with_new_meta(user_service, patch_redis
     )
 
     rows = (await session.execute(select(UserIdentity))).scalars().all()
-    assert [(r.provider, r.subject) for r in rows] == [("phone", "13800000002")]
-    assert rows[0].created_ip == "198.51.100.9"
+    assert [(r.provider, r.subject_plain) for r in rows] == [("phone", "13800000002")]
+    assert rows[0].created_ip_plain == "198.51.100.9"
     assert rows[0].created_device_id == "device-B"
     assert await user_service.identities.resolve(IdentityProvider.PHONE, "13800000001") is None
 

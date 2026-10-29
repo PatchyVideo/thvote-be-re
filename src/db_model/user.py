@@ -8,8 +8,10 @@ see ``user_identity.py`` and the 2026-09-06 identity-model spec.
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, DateTime, Index, String, func
+from sqlalchemy import Boolean, DateTime, Index, LargeBinary, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from src.common.crypto import aad_for, decrypt
 
 from .base import Base
 from .user_identity import UserIdentity
@@ -33,9 +35,11 @@ class User(Base):
     register_date: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    register_ip_address: Mapped[str] = mapped_column(
-        String(64), nullable=False, default=""
-    )
+    # Plaintext IP stays NULL for new writes (encrypted into register_ip_enc);
+    # migration 0023 drops this column after import is verified.
+    register_ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    register_ip_enc: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    register_ip_prefix: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # 注册时的客户端设备指纹(localStorage UUID),反刷票取证用(B-044)。
     register_device_id: Mapped[str] = mapped_column(
         String(128), nullable=False, default="", server_default=""
@@ -48,6 +52,16 @@ class User(Base):
         lazy="selectin",
         cascade="all, delete-orphan",
     )
+
+    @property
+    def register_ip_plain(self) -> str:
+        """Decrypted registration IP, falling back to the legacy column."""
+        if self.register_ip_enc is not None:
+            value = decrypt(
+                self.register_ip_enc, aad_for("user", "register_ip", self.id)
+            )
+            return value or ""
+        return self.register_ip_address or ""
 
     def identity(self, provider: str) -> UserIdentity | None:
         """Return this account's identity for *provider*, if any."""

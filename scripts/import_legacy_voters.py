@@ -48,6 +48,13 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 from src.common.config import get_settings  # noqa: E402
+from src.common.crypto import (  # noqa: E402
+    aad_for,
+    blind_index,
+    encrypt,
+    fingerprint,
+    ip_prefix,
+)
 from src.common.database import normalize_async_database_url  # noqa: E402
 from src.db_model.legacy_user_mapping import LegacyUserMapping  # noqa: E402
 from src.db_model.user import User  # noqa: E402
@@ -308,11 +315,17 @@ def _identity_rows(voter: LegacyVoter, user_id: str) -> list[dict[str, Any]]:
             {
                 "user_id": user_id,
                 "provider": provider,
-                "subject": subject,
+                "subject_enc": encrypt(
+                    subject, aad_for("user_identity", "subject", user_id)
+                ),
+                "subject_idx": blind_index(provider, subject),
                 "verified": bool(verified),
                 "verified_at": voter.created_at if verified else None,
                 "created_at": voter.created_at,
-                "created_ip": voter.signup_ip,
+                "created_ip_enc": encrypt(
+                    voter.signup_ip or None,
+                    aad_for("user_identity", "created_ip", user_id),
+                ),
                 "created_device_id": "",
                 "last_login_at": None,
             }
@@ -329,41 +342,44 @@ def _user_row(voter: LegacyVoter, user_id: str) -> dict[str, Any]:
         "legacy_salt": voter.legacy_salt if voter.is_bcrypt else None,
         "removed": voter.removed,
         "register_date": voter.created_at,
-        "register_ip_address": voter.signup_ip,
+        "register_ip_enc": encrypt(
+            voter.signup_ip or None, aad_for("user", "register_ip", user_id)
+        ),
+        "register_ip_prefix": ip_prefix(voter.signup_ip),
         "register_device_id": "",
     }
 
 
 async def _existing_identities(session, voters: list[LegacyVoter]) -> dict:
-    emails = [v.email for v in voters if v.email]
-    phones = [v.phone for v in voters if v.phone]
-    found: dict[tuple[str, str], str] = {}
-    if emails:
+    email_idx = [blind_index("email", v.email) for v in voters if v.email]
+    phone_idx = [blind_index("phone", v.phone) for v in voters if v.phone]
+    found: dict[tuple[str, bytes], str] = {}
+    if email_idx:
         result = await session.execute(
             select(
                 UserIdentity.provider,
-                UserIdentity.subject,
+                UserIdentity.subject_idx,
                 UserIdentity.user_id,
             ).where(
                 UserIdentity.provider == "email",
-                UserIdentity.subject.in_(emails),
+                UserIdentity.subject_idx.in_(email_idx),
             )
         )
-        for provider, subject, user_id in result:
-            found[(provider, subject)] = user_id
-    if phones:
+        for provider, subject_idx, user_id in result:
+            found[(provider, subject_idx)] = user_id
+    if phone_idx:
         result = await session.execute(
             select(
                 UserIdentity.provider,
-                UserIdentity.subject,
+                UserIdentity.subject_idx,
                 UserIdentity.user_id,
             ).where(
                 UserIdentity.provider == "phone",
-                UserIdentity.subject.in_(phones),
+                UserIdentity.subject_idx.in_(phone_idx),
             )
         )
-        for provider, subject, user_id in result:
-            found[(provider, subject)] = user_id
+        for provider, subject_idx, user_id in result:
+            found[(provider, subject_idx)] = user_id
     return found
 
 
@@ -387,16 +403,16 @@ async def _load_mapped(session, *, commit: bool) -> set[str]:
 
 
 def _classify(
-    voter: LegacyVoter, existing: dict[tuple[str, str], str]
+    voter: LegacyVoter, existing: dict[tuple[str, bytes], str]
 ) -> tuple[str, str | None]:
     """Return (kind, owner_user_id).  kind ∈ create / conflict / multi."""
     owners: dict[str, str] = {}
     if voter.email:
-        owner = existing.get(("email", voter.email))
+        owner = existing.get(("email", blind_index("email", voter.email)))
         if owner:
             owners[owner] = "email"
     if voter.phone:
-        owner = existing.get(("phone", voter.phone))
+        owner = existing.get(("phone", blind_index("phone", voter.phone)))
         if owner:
             owners[owner] = "phone"
     if not owners:
@@ -410,7 +426,7 @@ async def _process_batch(
     session,
     winners: list[LegacyVoter],
     plan: ImportPlan,
-    existing: dict[tuple[str, str], str],
+    existing: dict[tuple[str, bytes], str],
     mapped: set[str],
     batch_id: str,
     stats: Stats,
@@ -614,6 +630,7 @@ async def run(
     dump_dir: Path,
     *,
     include_test_accounts: bool,
+    only_test_accounts: bool,
     commit: bool,
     batch_id: str,
     report_dir: Path,
@@ -621,11 +638,14 @@ async def run(
     limit: int | None,
 ) -> Stats:
     started = datetime.now(UTC)
+    logger.info("PII DEK loaded: fp=%s", fingerprint())
     voters: list[LegacyVoter] = []
     for index, doc in enumerate(iter_voters(dump_dir / "voters.bson")):
         if limit is not None and index >= limit:
             break
         voters.append(normalize_voter(doc))
+    if only_test_accounts:
+        voters = [v for v in voters if v.email in TEST_ACCOUNT_EMAILS]
     last_activity = load_last_activity(dump_dir / "voter_logs.bson")
     plan = plan_import(
         voters,
@@ -728,6 +748,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Import votetester1..5@touhou.ai (test DB only)",
     )
     parser.add_argument(
+        "--only-test-accounts",
+        action="store_true",
+        help="Import ONLY votetester1..5@touhou.ai (smoke test)",
+    )
+    parser.add_argument(
         "--preflight",
         action="store_true",
         help="Read-only planning/report mode (default)",
@@ -759,11 +784,14 @@ def main(argv: list[str] | None = None) -> int:
 
     batch_id = args.batch_id or str(uuid.uuid4())
     mode = "commit" if args.commit else "preflight"
+    if args.only_test_accounts:
+        args.include_test_accounts = True
     logger.info("batch_id=%s mode=%s", batch_id, mode)
     stats = asyncio.run(
         run(
             dump_dir,
             include_test_accounts=args.include_test_accounts,
+            only_test_accounts=args.only_test_accounts,
             commit=args.commit,
             batch_id=batch_id,
             report_dir=Path(args.report_dir),

@@ -35,6 +35,7 @@ from .common.config import (
     nacos_config_change_callback,
     reload_settings,
 )
+from .common.crypto import fingerprint as pii_dek_fingerprint
 from .common.database import get_db_session, get_session_maker, reload_engine
 from .common.middleware.logging import LoggingMiddleware
 from .apps.user.service import get_audit_log_failures
@@ -45,6 +46,10 @@ from .common.redis import close_redis
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
+    # Fail fast if the PII DEK is missing — encrypted columns cannot be read
+    # without it, so a missing DEK must never degrade into a running service.
+    logger.info("PII DEK loaded: fp=%s", pii_dek_fingerprint())
+
     # Verify DB connectivity — fail fast rather than silently running with no schema
     try:
         async with get_session_maker()() as session:

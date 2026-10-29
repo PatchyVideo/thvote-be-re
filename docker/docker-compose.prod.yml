@@ -32,10 +32,17 @@ services:
       NACOS_PASSWORD: "${NACOS_PASSWORD}"
       APP_HOST: "0.0.0.0"
       APP_PORT: "8000"
+      PII_DEK_PATH: "/run/secrets/pii_dek"
     ports:
       - "18000:8000"
     volumes:
       - ./logs:/app/logs
+    secrets:
+      - source: pii_dek
+        target: pii_dek
+        uid: "1000"
+        gid: "1000"
+        mode: "0400"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
@@ -50,3 +57,7 @@ networks:
 
 volumes:
   redis-data:
+
+secrets:
+  pii_dek:
+    file: /opt/thvote/prod/secrets/pii_dek
