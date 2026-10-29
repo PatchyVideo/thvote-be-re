@@ -5,14 +5,15 @@
 > 对应 B-063 的自动化缺口：单测见 `tests/unit/test_scraper_sites.py`、URL 路由见
 > `tests/unit/test_scraper_parse_url.py`。
 >
-> ⚠️ 2026-10-29 起测试登录旁路已删除（P-4），本脚本不再能自动过验证码：
-> 需要真人先触发发码、把手机/邮箱收到的验证码通过 `CODE=` 传进来。
+> ⚠️ 2026-10-29 起测试登录旁路已删除（P-4）；2026-10-30 起本脚本改用
+> **邮箱+密码登录**（`loginEmailPassword`），不再依赖验证码/短信/旁路。
 
 ## 前置
 
-1. 测试环境（或本地）能收到真实验证码；`CODE` 由真人现场提供
-   （旧的白名单固定码 `888888` 已失效）。
-2. `19900000001` 已完成问卷（测试库该账号已有 year=12 的答案，可直接进提名页）。
+1. 测试库存在测试账号 `votetester1@touhou.ai`（带密码哈希，密码见
+   `thvote-fe/test_accounts.md`）。
+2. 该账号需已过投票问卷门禁（提名页 `/doujin` 才可进）；若被门禁挡，
+   先人工把 `year=12` 问卷走完，或改用已过问卷的测试账号。
 3. 本机有 Node 与 Playwright：
 
 ```bash
@@ -25,7 +26,7 @@ npx playwright install chromium
 ```bash
 cd thvote-be-re
 FRONTEND_BASE=http://154.37.215.62:8082/v11 \
-PHONE=19900000001 CODE=<真人收到的6位验证码> \
+EMAIL=votetester1@touhou.ai PASSWORD=<test_accounts.md 里的密码> \
 node scripts/e2e/scraper_frontend.js
 ```
 
