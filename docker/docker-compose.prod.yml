@@ -37,12 +37,9 @@ services:
       - "18000:8000"
     volumes:
       - ./logs:/app/logs
-    secrets:
-      - source: pii_dek
-        target: pii_dek
-        uid: "1000"
-        gid: "1000"
-        mode: "0400"
+      # DEK 用相对路径挂载：测试机解析到 /opt/thvote/test/secrets/，生产到
+      # /opt/thvote/prod/secrets/。宿主文件权限(0400/uid1000)随 bind mount 保留。
+      - ./secrets/pii_dek:/run/secrets/pii_dek:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
@@ -57,7 +54,3 @@ networks:
 
 volumes:
   redis-data:
-
-secrets:
-  pii_dek:
-    file: /opt/thvote/prod/secrets/pii_dek
