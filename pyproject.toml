@@ -21,6 +21,8 @@ dependencies = [
     "httpx>=0.27.0",
     # eMudhra/emSign 事件：certifi 2026.10.19 移除受影响根；显式下限防回退
     "certifi>=2026.10.19",
+    # PII 字段级加密（AES-256-GCM + HKDF + HMAC 盲索引）——此前仅传递依赖，必须显式声明
+    "cryptography>=42.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "strawberry-graphql[fastapi]>=0.219.0",

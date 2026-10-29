@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 from src.apps.user.dao import UserDAO, UserIdentityDAO
 from src.apps.user.identity import IdentityProvider, normalize_subject
 from src.apps.user.schemas import Meta, generate_user_id
+from src.common.crypto import aad_for, blind_index, encrypt, ip_prefix
 from src.common.exceptions import UnauthorizedError, ValidationError
 from src.db_model.user import User
 from src.db_model.user_identity import UserIdentity
@@ -81,14 +82,20 @@ class IdentityService:
         """
         subject = normalize_subject(provider, raw_subject)
         now = datetime.now(UTC)
+        user_id = generate_user_id()
         user = User(
-            id=generate_user_id(),
+            id=user_id,
             nickname=nickname,
-            register_ip_address=meta.user_ip or "",
+            register_ip_enc=encrypt(
+                meta.user_ip or None, aad_for("user", "register_ip", user_id)
+            ),
+            register_ip_prefix=ip_prefix(meta.user_ip or ""),
             register_device_id=meta.additional_fingureprint or "",
         )
         user.identities.append(
-            _new_identity(provider, subject, meta, now, last_login_at=now)
+            _new_identity(
+                provider, subject, meta, now, user_id=user_id, last_login_at=now
+            )
         )
         return await self.user_dao.create(user)
 
@@ -122,13 +129,15 @@ class IdentityService:
             return BindResult(identity=existing, replaced_subject=None, changed=False)
 
         current = user.identity(provider.value)
-        replaced = current.subject if current is not None else None
+        replaced = current.subject_plain if current is not None else None
         if current is not None:
             # Flush the DELETE before the INSERT: the unit of work would
             # otherwise emit INSERT first and trip uq_user_identity_user_provider.
             user.identities.remove(current)
             await self.identity_dao.session.flush()
-        identity = _new_identity(provider, subject, meta, datetime.now(UTC))
+        identity = _new_identity(
+            provider, subject, meta, datetime.now(UTC), user_id=user.id
+        )
         user.identities.append(identity)
         await self.user_dao.save(user)
         return BindResult(identity=identity, replaced_subject=replaced, changed=True)
@@ -168,6 +177,7 @@ def _new_identity(
     meta: Meta,
     now: datetime,
     *,
+    user_id: str,
     last_login_at: datetime | None = None,
 ) -> UserIdentity:
     # Every creation path today runs after verification (code / OAuth), so
@@ -175,11 +185,14 @@ def _new_identity(
     # "record first, verify later" flows (spec §3.4).
     return UserIdentity(
         provider=provider.value,
-        subject=subject,
+        subject_enc=encrypt(subject, aad_for("user_identity", "subject", user_id)),
+        subject_idx=blind_index(provider.value, subject),
         verified=True,
         verified_at=now,
         created_at=now,
-        created_ip=meta.user_ip or "",
+        created_ip_enc=encrypt(
+            meta.user_ip or None, aad_for("user_identity", "created_ip", user_id)
+        ),
         created_device_id=meta.additional_fingureprint or "",
         last_login_at=last_login_at,
     )

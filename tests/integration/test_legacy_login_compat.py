@@ -21,6 +21,7 @@ from src.apps.user.schemas import (
     UpdatePasswordRequest,
 )
 from src.common.exceptions import ValidationError
+from src.common.crypto import aad_for, blind_index, encrypt, ip_prefix
 from src.common.security.password import verify_password
 from src.db_model.user import User
 from src.db_model.user_identity import UserIdentity
@@ -55,24 +56,32 @@ async def _make_user(
     salt: str | None = None,
 ) -> User:
     now = datetime.now(UTC)
+    user_id = f"legacy-{email.split('@')[0]}"
+    ip = "198.51.100.9"
     user = User(
-        id=f"legacy-{email.split('@')[0]}",
+        id=user_id,
         nickname="legacy",
         password_hash=password_hash,
         legacy_salt=salt,
         removed=False,
         register_date=now,
-        register_ip_address="198.51.100.9",
+        register_ip_enc=encrypt(ip, aad_for("user", "register_ip", user_id)),
+        register_ip_prefix=ip_prefix(ip),
         register_device_id="",
     )
     user.identities.append(
         UserIdentity(
             provider="email",
-            subject=email,
+            subject_enc=encrypt(
+                email, aad_for("user_identity", "subject", user_id)
+            ),
+            subject_idx=blind_index("email", email),
             verified=True,
             verified_at=now,
             created_at=now,
-            created_ip="198.51.100.9",
+            created_ip_enc=encrypt(
+                ip, aad_for("user_identity", "created_ip", user_id)
+            ),
             created_device_id="",
         )
     )

@@ -41,13 +41,13 @@ async def test_bind_sso_creates_qq_identity(session, session_maker, patch_redis)
     row = (
         await session.execute(
             select(UserIdentity).where(
-                UserIdentity.provider == "qq", UserIdentity.subject == "test-openid-123"
+                UserIdentity.provider == "qq", UserIdentity.user_id == user.id
             )
         )
     ).scalar_one()
     assert row.user_id == user.id
     assert row.verified is True
-    assert row.created_ip == "9.9.9.9"
+    assert row.created_ip_plain == "9.9.9.9"
     assert row.created_device_id == "dev-1"
 
 
@@ -114,7 +114,7 @@ async def test_login_merges_pending_sso_session(user_service, patch_redis):
     from src.apps.user.identity import IdentityProvider
 
     user = await user_service.identities.resolve(IdentityProvider.EMAIL, "m@example.com")
-    assert user.identity("qq").subject == "from-oauth"
+    assert user.identity("qq").subject_plain == "from-oauth"
     assert await patch_redis.get(f"sso-session:{sid}") is None, "sid must be one-shot"
 
 

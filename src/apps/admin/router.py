@@ -141,8 +141,8 @@ def _user_to_item(u) -> dict:
     return {
         "id": u.id,
         "nickname": u.nickname,
-        "email": email.subject if email is not None else None,
-        "phone": phone.subject if phone is not None else None,
+        "email": email.subject_plain if email is not None else None,
+        "phone": phone.subject_plain if phone is not None else None,
         "email_verified": bool(email is not None and email.verified),
         "phone_verified": bool(phone is not None and phone.verified),
         "register_date": u.register_date.isoformat() if u.register_date else None,

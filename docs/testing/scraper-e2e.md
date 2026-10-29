@@ -1,15 +1,19 @@
 # 前端发起的 Scraper E2E
 
 > 目的：从真实前端“作品提名 → 自动获取信息”链路验证各站点爬虫，而不是只测
-> 后端 `/api/v1/scraper/scrape`。登录使用测试旁路账号，不需要真实短信。
+> 后端 `/api/v1/scraper/scrape`。
 > 对应 B-063 的自动化缺口：单测见 `tests/unit/test_scraper_sites.py`、URL 路由见
 > `tests/unit/test_scraper_parse_url.py`。
+>
+> ⚠️ 2026-10-29 起测试登录旁路已删除（P-4）；2026-10-30 起本脚本改用
+> **邮箱+密码登录**（`loginEmailPassword`），不再依赖验证码/短信/旁路。
 
 ## 前置
 
-1. 测试环境已配置 `TEST_LOGIN_BYPASS_ACCOUNTS` 包含 `19900000001`，
-   `TEST_LOGIN_BYPASS_CODE=888888`（当前测试 Nacos 已配置）。
-2. `19900000001` 已完成问卷（测试库该账号已有 year=12 的答案，可直接进提名页）。
+1. 测试库存在测试账号 `votetester1@touhou.ai`（带密码哈希，密码见
+   `thvote-fe/test_accounts.md`）。
+2. 该账号需已过投票问卷门禁（提名页 `/doujin` 才可进）；若被门禁挡，
+   先人工把 `year=12` 问卷走完，或改用已过问卷的测试账号。
 3. 本机有 Node 与 Playwright：
 
 ```bash
@@ -22,7 +26,7 @@ npx playwright install chromium
 ```bash
 cd thvote-be-re
 FRONTEND_BASE=http://154.37.215.62:8082/v11 \
-PHONE=19900000001 CODE=888888 \
+EMAIL=votetester1@touhou.ai PASSWORD=<test_accounts.md 里的密码> \
 node scripts/e2e/scraper_frontend.js
 ```
 

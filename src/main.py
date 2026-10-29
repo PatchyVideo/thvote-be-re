@@ -35,6 +35,7 @@ from .common.config import (
     nacos_config_change_callback,
     reload_settings,
 )
+from .common.crypto import fingerprint as pii_dek_fingerprint
 from .common.database import get_db_session, get_session_maker, reload_engine
 from .common.middleware.logging import LoggingMiddleware
 from .apps.user.service import get_audit_log_failures
@@ -45,6 +46,10 @@ from .common.redis import close_redis
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
+    # Fail fast if the PII DEK is missing — encrypted columns cannot be read
+    # without it, so a missing DEK must never degrade into a running service.
+    logger.info("PII DEK loaded: fp=%s", pii_dek_fingerprint())
+
     # Verify DB connectivity — fail fast rather than silently running with no schema
     try:
         async with get_session_maker()() as session:
@@ -109,6 +114,10 @@ def create_app() -> FastAPI:
         title="THVote FastAPI Backend",
         version="0.2.1",
         lifespan=lifespan,
+        # P-1: 生产不暴露 OpenAPI schema / Swagger / ReDoc（EXPOSE_API_DOCS=false）。
+        docs_url="/docs" if settings.expose_api_docs else None,
+        redoc_url="/redoc" if settings.expose_api_docs else None,
+        openapi_url="/openapi.json" if settings.expose_api_docs else None,
     )
 
     # Logging middleware
@@ -299,7 +308,11 @@ def create_app() -> FastAPI:
 
     # GraphQL endpoint (Strawberry).  AppGraphQLRouter guarantees every error
     # carries an `extensions` block (see api/graphql/http.py).
-    graphql_app = AppGraphQLRouter(graphql_schema)
+    # P-1: EXPOSE_API_DOCS=false 时同时关掉 GraphiQL IDE，只保留 POST /graphql。
+    graphql_app = AppGraphQLRouter(
+        graphql_schema,
+        graphql_ide="graphiql" if settings.expose_api_docs else None,
+    )
     app.include_router(graphql_app, prefix="/graphql")
 
     # Admin UI static files (optional — only if directory exists).

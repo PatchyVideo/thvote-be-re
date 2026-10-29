@@ -138,7 +138,7 @@
 | [`2026-07-17-submit-timing-signal-design.md`](./superpowers/specs/2026-07-17-submit-timing-signal-design.md) | 提交耗时 + 服务端改票计数（B-045/B-046，`fill_duration_ms` + `attempt`；改票假阳性由 attempt 兜底） |
 | [`2026-07-17-block-scripts-design.md`](./superpowers/specs/2026-07-17-block-scripts-design.md) | 拦脚本（B-048，Origin/Referer 校验；只拦变更、query 放行；**默认关灰度**） |
 | [`2026-06-08-security-backend-design.md`](./superpowers/specs/2026-06-08-security-backend-design.md) | 安全块后端（B-037）：二创提名校验 + 人工审核队列 + 提名时间窗 + 投票问卷门禁 |
-| [`2026-08-14-test-login-bypass-design.md`](./superpowers/specs/2026-08-14-test-login-bypass-design.md) | ⚠️ 测试登录旁路（白名单固定验证码）。**临时测试设施，公开上线前必须整体移除**：`grep -r TEST_LOGIN_BYPASS` |
+| [`2026-08-14-test-login-bypass-design.md`](./superpowers/specs/2026-08-14-test-login-bypass-design.md) | ❌ 已移除（P-4，2026-10-29）测试登录旁路（白名单固定验证码）历史存档；代码与 Nacos 键均已删除 |
 
 ### 管理端
 
