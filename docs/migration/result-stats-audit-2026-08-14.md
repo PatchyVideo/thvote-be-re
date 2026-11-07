@@ -1,5 +1,8 @@
 # 结果统计层三方审计:前端需求 × Python 后端 × legacy Rust
 
+> 当前核对补记：2026-11-08：DSL、数据库白名单、append-only 净增量趋势已实现；result 已统一年份、读取后端 timeline，旧 /test 路由已无。connect 在本文 §六已确认为无需求，不补页；Doujin 示例数据与 CP 页面范围按需决定。上届对比仍未接线，当前历史数据／旧 API 未核验。下面保留 08-14 时点观察，后续修正优先。 见 [证据记录](backlog-audit-2026-11-08.md)。
+
+
 > 日期:2026-08-14
 > 方法:三份并行代码审计(Python `src/apps/result` + GraphQL 契约层 / Touhou-Vote `packages/result` origin/zfq_dev_fe / legacy `thvote-be/result-query` Rust),交叉核实。
 > 目的:定位"结果统计/展示层"(区别于计票 compute)从 Rust 迁到 Python 的完整性缺口,及与前端页面需求的匹配度。

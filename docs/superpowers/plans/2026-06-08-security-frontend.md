@@ -1,5 +1,9 @@
 # Block 1 安全 — 前端(thvote-fe)Implementation Plan
 
+> 当前状态（2026-11-08 源码核对）：主要前端接入已有实现；逐条 index 提示仍有展示差异，可选已通过列表仍需产品决定。部署／真人验收本次未核验。
+> 本文后续为原始设计／实施记录；旧状态与 checkbox 不代表当前待办。证据见 [BACKLOG 核对记录](../../migration/backlog-audit-2026-11-08.md)。
+
+
 > **For agentic workers:** 前端为 Vue 3 monorepo,以手工验收为主。本计划描述改动点与验收清单,代码以仓库现有 `.vue` 模式为准。
 > 仓库：`D:\personal\thvote-fe`，包：`packages/vote`
 > 配套：后端 plan `2026-06-08-security-backend.md` 必须**先合并**(前端依赖新 SDL + 错误码)。

@@ -1,7 +1,7 @@
 # Work 表 + 前后端统一设计
 
-> **状态**：部分实施 —— 后端主体（work 表+种子/voteable 重构/新 vote-objects 契约/admin works CRUD+WorksView/前端 Task 6-7）已于 2026-07-23 合入 main；原文所记 `GET /admin/voteables`(404) 缺口已由 [B-057①](../../BACKLOG.md) 于 2026-08-22 补齐，提交侧切 candidateId 已于 2026-08-14 完成端到端验证；仍开放：B-057②(import 按 name 匹配自动建 work)、B-057③(上届 final_ranking(year=11) 导入)、前端 Task 8/9(B-057④，见 [BACKLOG](../../BACKLOG.md))。
-> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+> **状态（2026-11-08）**：代码收口已具备。管理列表／归属编辑、导入按名称查找／创建 work、前端 Task6–9 与 candidateId 已接入；CP 元数据收口为前端 edeaeea。B-057 实现部分结项，历史榜单数据／接线并入 B-050-后补3，当前线上数据未核验。
+> 本文其余内容保留设计时记录，不以旧 checkbox 或过期接口描述重新执行迁移。见 [核对记录](../../migration/backlog-audit-2026-11-08.md)。
 
 > 创建日期：2026-07-21
 > 最后更新：2026-07-21

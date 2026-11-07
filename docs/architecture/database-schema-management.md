@@ -1,5 +1,8 @@
 # 数据库 Schema 管理 — 现状与演进路线图
 
+> 当前核对补记：2026-11-08：当前 CI 已在 Postgres 上应用 Alembic 迁移；PR 模板／model 差异／alembic check 为尚未采用的治理建议，不是新的强制需求。本地静态迁移图 head=0022，云端状态未查；不要使用旧文档中的“下一编号”。 见 [证据记录](../migration/backlog-audit-2026-11-08.md)。
+
+
 > 创建日期：2026-04-27
 > 最后更新：2026-05-31（§四 加 `_maybe_baseline_existing_schema` 待删除告警 → B-032）
 >
