@@ -5,6 +5,7 @@
 
 | 编号 | 主题 | 严重度/状态 | 可并行做？ | 源文档 |
 |---|---|---|---|---|
+| **B-062** | `AutocompleteDAO.search_cps()` 恒返回 `[]`（`src/apps/autocomplete/dao.py:78`）——CP 自动补全端点 `POST /autocomplete/search` 的 CP 分类**永远为空**。角色/音乐走 `candidate_character`/`candidate_music` 表 ILIKE 已实现，CP 无现成候选表，需从已提交的 `cp.cp_list` JSON 抽唯一 CP 名做模糊匹配（**2026-08-31 文档整理时从 `REFACTOR_TODO.md` 迁入，代码侧已复核仍成立**） | ✅ 已废弃（2026-11-08，本地未部署）：旧建议链路及空 CP 方法随统一候选搜索移除；CP 成员使用 character 搜索，未新增 CP 组合推荐 | — | `src/apps/autocomplete/dao.py:77-78`；原始记录见 [archive/2026-05-30-refactor-todo](./archive/2026-05-30-refactor-todo.md) §六 |
 | **B-008** | ~~MongoDB → PostgreSQL 历史用户数据回填脚本~~ | ✅ 已废弃 (2026-09-06)：上线即空库，不再从旧 Mongo 导入用户；`map_voter`/voters 同步项随身份模型归一化删除，见 CHANGELOG 2026-09-06 | — | [medium-priority-backlog-design](./superpowers/specs/2026-05-16-medium-priority-backlog-design.md) |
 | **B-011** | ~~SSO 落地后移除 `User.at_least_one_identifier` CHECK 约束（约束仍在 `src/db_model/user.py:49` + migration 0001）~~ | ✅ 已完成 (2026-09-06)：CHECK 约束随 migration 0018（`user_identity`）一并删除 | — | [design §九 F7](./superpowers/specs/2026-04-27-user-auth-design.md) |
 | **B-064** | ~~迁移 0018 回填把「管理员封禁」当成「自助注销」,`WHERE removed = FALSE` 把封禁账号一并排除,其邮箱/手机被释放、解封后无身份可登录~~ | ✅ 已完成 (2026-09-12)：**并非 GDPR 与封禁二选一** —— 旧 `remove_voter` 把 email/phone/password 全部置空而 `ban_user` 一个不动,两者可区分。回填范围改用 `_BACKFILL_SCOPE`(`removed = FALSE OR email IS NOT NULL OR phone_number IS NOT NULL`),封禁账号完整回填、自助注销账号一条不回填(含旧实现漏清的 qq/thbwiki)。真 PG 四形态验证通过 | — | [design §七](./superpowers/specs/2026-09-06-user-identity-model-design.md) |

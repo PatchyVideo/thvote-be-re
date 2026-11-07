@@ -191,6 +191,7 @@
 | [`2026-06-08-questionnaire-admin-frontend.md`](./superpowers/plans/2026-06-08-questionnaire-admin-frontend.md) | 待实施（B-041 投票前端） |
 | [`2026-07-21-work-table-unified.md`](./superpowers/plans/2026-07-21-work-table-unified.md) | **部分实施**：后端主体已合入 main，收尾清单见 BACKLOG **B-057** |
 | [`2026-11-08-pinyin-candidate-search.md`](./superpowers/plans/2026-11-08-pinyin-candidate-search.md) | **已本地实现、未部署**：匹配器 → 后端 API 与缓存 → 前端请求状态 → 三入口替换和依赖清理 |
+| [`2026-11-08-autocomplete-search-consolidation.md`](./superpowers/plans/2026-11-08-autocomplete-search-consolidation.md) | **已确认、第二阶段**：统一 `/autocomplete/search`、移除旧建议实现，前端输入框改名 |
 
 ---
 

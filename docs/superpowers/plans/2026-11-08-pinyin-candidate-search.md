@@ -1,6 +1,6 @@
 # 拼音候选搜索后端化实施计划
 
-> 状态：2026-11-08 用户已确认；四项任务已本地实现并通过相关检查及最终只读审阅。未发布或部署。
+> 状态：第一阶段已提交（后端 `77f43cf`、前端 `26f79df`），未发布或部署。本文保留该阶段的历史契约；当前接口以 [第二阶段收敛计划](2026-11-08-autocomplete-search-consolidation.md) 及设计/API 文档为准。
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans when implementing inline; use superpowers:subagent-driven-development only when the user chooses delegated execution. Steps use checkbox (`- [x]`) syntax. Project AGENTS.md and current user authorization take precedence.
 
 **Goal:** 将角色、音乐与 CP 成员选择中的拼音搜索迁到 Python 后端，保留原文、简拼、混输和已配置的模糊音。

@@ -5,6 +5,14 @@
 > 创建日期：2026-04-27
 > **2026-08-31 整理**：合并 9 组重复条目、按日期倒序重排；**2026-07-01 之前**的条目已迁至 [CHANGELOG-archive-2026H1.md](./CHANGELOG-archive-2026H1.md)。
 
+## [2026-11-08] 统一 autocomplete 搜索入口（第二阶段）
+
+- **Changed**：唯一公开入口收敛到 `POST /api/v1/autocomplete/search`，采用分类／关键词／年度输入及完整 candidate IDs 输出；候选服务归入 `service.py`，DAO 年度参数只在查询时传入。
+- **Removed**：旧 suggestions 请求响应模型、限量 ILIKE 查询、空 `search_cps()`、临时 `/autocomplete/candidates/search` 路由及重复服务文件；旧行为测试随对应功能移除，保留真实候选与缓存测试。
+- **Changed**：配套前端调用统一路由，公共输入框更名为 `CandidateSearchInput.vue`；拼音算法、两层 Redis 缓存和筛选排序行为不变。
+- **兼容性影响**：明确替换原 `/search` 的 suggestions 契约，临时候选路径不保留兼容别名；仓库内未发现旧建议业务调用方。前后端须使用同一阶段的配套版本，回滚亦同。B-062 旧 CP 空实现随功能移除，不代表新增 CP 组合搜索。
+- **数据迁移 / 配置变更**：无数据库迁移、依赖或配置变化；沿用现有 autocomplete 缓存失效，新语料／结果 namespace 不变。未推送或部署。
+
 ## [2026-11-08] 拼音候选搜索迁至 Python 后端
 
 - **Added**：`pypinyin==0.55.0` 与项目内纯匹配器，支持原文、全拼、声母简拼、多音字、混输和原有模糊音；新增 `POST /api/v1/autocomplete/candidates/search`，按分类与年度返回全部匹配 candidate IDs。
