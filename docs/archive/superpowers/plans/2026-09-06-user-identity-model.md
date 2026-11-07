@@ -1,7 +1,10 @@
 # 用户身份模型归一化 实施计划
 
+> 归档日期：2026-11-08。已执行或被后续方案取代；剩余实际事项以当前 BACKLOG 为准。
+> 下文保留原设计／实施过程，仅调整相对链接；不要按旧步骤再次执行迁移、导入或部署。当前入口见 [文档索引](../../../README.md)。
+
 > **状态**:已实施(2026-09-06)。
-> Spec:[`../specs/2026-09-06-user-identity-model-design.md`](../specs/2026-09-06-user-identity-model-design.md)。本计划只列任务切分与关键决定,细节以 spec 为准。
+> Spec:[`../specs/2026-09-06-user-identity-model-design.md`](../../../superpowers/specs/2026-09-06-user-identity-model-design.md)。本计划只列任务切分与关键决定,细节以 spec 为准。
 
 **目标**:`user` 只留账号,`user_identity` 一行一个认证来源;登录/绑定/改绑/注销收敛到一条按 `(provider, subject)` 查身份的路径;迁移 0018,无兼容期。
 

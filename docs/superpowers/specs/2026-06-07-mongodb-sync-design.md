@@ -287,6 +287,6 @@ python scripts/sync_from_mongodb.py --dry-run --collections raw_character
 
 ## 十、关联文档
 
-- B-008 原始方案：[`docs/superpowers/plans/2026-05-16-mongodb-migration.md`](../plans/2026-05-16-mongodb-migration.md)（用户表映射细节）
-- 管理端设计：[`docs/superpowers/specs/2026-06-07-admin-panel-design.md`](./2026-06-07-admin-panel-design.md)
+- B-008 原始方案：[`已废弃的 B-008 原方案`](../../archive/superpowers/plans/2026-05-16-mongodb-migration.md)（用户表映射细节）
+- 管理端设计：[`docs/superpowers/specs/2026-06-07-admin-panel-design.md`](../../archive/superpowers/specs/2026-06-07-admin-panel-design.md)
 - BACKLOG 追踪：[B-008](../../BACKLOG.md)

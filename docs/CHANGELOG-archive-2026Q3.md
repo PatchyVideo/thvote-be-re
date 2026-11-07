@@ -1,0 +1,753 @@
+# CHANGELOG 归档：2026 年第三季度
+
+> 2026-11-08 从主 CHANGELOG 按完整条目迁出，保留历史正文及日期，仅修正已归档文档的链接。这里不代表当前部署、数据或需求状态。
+> 最近变更见 [CHANGELOG](CHANGELOG.md)，仍开放事项见 [BACKLOG](BACKLOG.md)。
+
+## [2026-09-17] 公共读接口 Redis 缓存 + 管理台手动刷缓存
+
+> `vote-objects`/问卷结构/自动补全/公开提名列表此前每次直查数据库；项目 Redis 一直存在
+> 却只用于限流/会话/计票锁。本次接入缓存（写入即失效 + TTL 兜底），并给管理台加刷缓存入口。
+
+### Added
+- **`src/common/cache.py`**：JSON/原始文本读写 + `invalidate_prefix`（**SCAN 游标**删除，替代 `KEYS`）；全部 fail-open（Redis 故障不影响请求）。
+- **vote-objects 缓存**（`src/apps/vote_objects/router.py`）：列表 `vote_objects:{year}:{category}`、详情 `vote_objects:detail:{category}:{id}`，TTL 600s；命中直接返回缓存字节，`GZipMiddleware` 仍压缩。
+- **问卷结构缓存**：`questionnaire:structure:{year}`，TTL 1800s。
+- **自动补全缓存**：`autocomplete:{year}:{limit}:{q}`，TTL 60s。
+- **公开提名列表缓存**：`nominations:approved:{page}:{size}`，TTL 60s。
+- **管理端刷缓存**（`src/apps/admin/router.py`）：`GET /admin/cache/stats`（各 scope 键数）、`POST /admin/cache/flush`（scope 白名单 `all|vote_objects|questionnaire|autocomplete|nominations`，未知 → 422）。管理台 Dashboard 新增「缓存」卡片（计数 + 单项/一键刷新）。
+
+### Changed
+- 失效逻辑补齐：`_clear_vote_objects_cache` 改为 SCAN 并同时清 `autocomplete:`；候选导入/改/删/合并/拆分、提名 approve/reject、问卷 admin 全部 13 个写端点都接上对应前缀失效（此前候选变更根本不失效）。
+
+### 兼容性
+- 无接口 shape 变化（vote-objects 响应不变，只是更快）。
+- 明确**不缓存**带 `vote_token`/用户身份的读接口与所有写端点。
+- `result:*` 仍是计票产物，由 `POST /admin/compute-results` 重建，不纳入手动刷缓存。
+
+### Tests
+- 新增 `tests/unit/test_cache.py`（往返/前缀失效/fail-open）。
+- `test_vote_objects.py` 增缓存写入断言；`test_admin_voteables.py` 增 stats/flush/scope 校验/鉴权。
+- 全量 `666 passed, 4 skipped`。
+
+## [2026-09-16] 投票对象资源 URL 后端化（0019）
+
+> 角色立绘 / 曲目封面 / 试听 URL 原存在前端 `packages/shared/data/{character,music}.ts`，
+> 由前端**按 `name`** 匹配挂到后端候选上，管理台无法配置、改名即失效。本次迁到后端
+> 与 voteable 1:1 绑定，公共接口下发，管理台可编辑，前端静态表与匹配逻辑整体删除。
+
+### Added
+- **迁移 `0019_voteable_resources`**（`alembic/versions/0019_voteable_resources.py`）：`voteable_character.image_url`、`voteable_music.image_url`、`voteable_music.music_url`、`voteable_music.include`（JSON，默认 `[]`）。Postgres-only 幂等；`aliases` 列已存在仅回填。
+- **公共接口下发资源**（`src/apps/vote_objects/dao.py`）：`GET /api/v1/vote-objects/{characters|music}` 与 `/{category}/{id}` 的 item 新增 `imageUrl`、`aliases`（音乐另加 `musicUrl`、`include`）。
+- **管理端资源配置**：`GET /admin/voteables` 补资源字段；新增 `PUT /admin/voteables/{id}/resources`（部分更新、空串清空、URL 仅 http(s) 且 ≤2048、写后清缓存）。复用路由级 `require_admin`。
+- **迁移工具**：`scripts/voteable_resources.json`（一次性数据工件，含来源 commit）+ `scripts/import_voteable_resources.py`（按 name 导入，默认 dry-run/只填空值，`--apply --yes` 写入，`--overwrite` 覆盖）。
+- 管理台新页「投票对象资源」（`admin-ui/src/views/VoteableResourcesView.vue` + `api/voteables.ts`），产物已重建提交到 `src/admin_ui/`。
+- 前端统一加载层 `packages/shared/api/voteObjects.ts`；结果页资源索引 `packages/result/src/lib/voteObjectResources.ts`。
+
+### Changed
+- 投票页 `voteObjectsDataSource` 不再按 name 匹配静态表，直接映射后端字段；sessionStorage 缓存加 5 分钟 TTL（后端资源可被管理台修改）。
+- class 定义抽到 `packages/shared/model/{character,music}.ts`。
+
+### Removed
+- 删除 `packages/shared/data/character.ts`、`music.ts`（Touhou-Vote 仓库）及按 name 取 URL 的老逻辑；连带清理死代码 `vote/common/lib/getNickName.ts`、`result/lib/getIDtoName.ts`、`result/pages/Test.vue`。
+
+### Fixed（顺带）
+- 修复 `admin-ui/src/views/WorksView.vue`：此前对不上现有 `useAsync`/`usePagination`/`DataTable` API，`vue-tsc` 直接失败，admin-ui 无法构建。
+
+### Performance（同日后补：修复投票列表页变慢）
+- **后端加 `GZipMiddleware`**（`src/main.py`）：vote-objects JSON 实测角色 `100KB→23KB`、曲目 `255KB→32KB`（4~8×）。此前仅 vote 的 nginx 配了 gzip，result 的 `/res-be` 与 dev 代理都未压缩。
+- **前端投票页按类别懒加载**：`VoteCharacter.vue` 只调 `loadCharacterVoteObjects()`、`VoteMusic.vue` 只调 `loadMusicVoteObjects()`（原都调 `loadVoteObjects()` 一次拉两个列表）。角色列表页不再为曲目付 32KB + 一次 DB 查询。
+- **缓存改「先渲染、后台 revalidate」**：sessionStorage 命中即同步渲染并立即返回，TTL 只决定何时在后台刷新，不再阻塞页面。原来 5 分钟 TTL 会让已缓存的列表页重新等待网络（测试机 TTFB 0.3~1.3s），这是"变慢"的主因。
+- 量化：静态表删除使 JS 少 **371KB(min)/50KB(gzip)**；API 增 ~38KB(gzip)。首次加载净约 −12KB，命中缓存后不再有阻塞请求。
+
+### 兼容性
+- 只增列/只增字段，旧前端与旧调用方不受影响；但**新前端强依赖新字段 → 必须后端先发布、再发布前端**。
+- 数据迁移为一次性人工步骤（测试库已执行：角色 image 164、aliases 175；曲目 image 605、music 612、include 231）。
+- 无 GraphQL schema 变更；`color`/`title` 不建列（源数据分别为全表常量和全空），前端用常量/空串。
+
+## [2026-09-15] 修正音乐候选「我的女仆，我甜美的女仆」的错误数据
+
+> 稀翁玉曲目 `My Maid, Sweet Maid` 在早期导入时被英文逗号拆坏，后端白名单快照和测试库里存成了 `name="My Maid"`、`name_jp=" Sweet Maid"`、旧 id `d60777dd`。前端 `packages/shared/data/music.ts` 早已改正（id `462e28a2`）。投票页按曲名把后端候选对到前端静态表取封面和试听音频，名字对不上，这首歌在投票页没有封面、也放不了。
+
+### Fixed
+- `src/apps/result/data/whitelist_music.json`：用 `scripts/extract_whitelist.mjs` 从前端重新提取，diff 只有这一条（id `d60777dd`→`462e28a2`，name/name_jp 改正），其余 611 条和 244 条角色不变。
+- 测试库 `voteable_music` id=417：`name` 改为 `我的女仆，我甜美的女仆`，`name_jp` 改为 `My Maid, Sweet Maid`（直接 SQL，带原值条件，`UPDATE 1`；admin 没有改 voteable 名称的接口）。改完用 `POST /api/v1/admin/compute-results?vote_year=12` 重跑了计票。
+
+### 兼容性
+- 计票已改读 DB（`load_whitelist_db`），JSON 快照只是 `scripts/whitelist_to_import.py` 的导入数据源，id 变化不影响计票。`candidate_music` id=601、voteable id=417 不变，已有投票（按整数 candidateId 存）不受影响；`old_id` 全表为 NULL，未改。
+- 结果计算的 `historical` 目前固定为 `{}`，按名字查历史的路径没有数据，改名不断链。
+- 无接口 shape、schema、migration、配置变更。生产环境仍是老 Rust 服务，不涉及。
+
+## [2026-09-13] B-066 全站权限扫描：scraper 限流 + 邮箱验证码错 5 次作废
+
+> B-065 之后对登录/token 签发、admin、投票侧数据端点、中间件与配置做了一轮只读扫描（4 个并行审计 + 人工复核）。结论：没有第二个越权洞；本条目落地两处加固，其余结论收进新文档 `docs/operations/production-readiness-checklist.md`。
+
+### Fixed
+- **`POST /api/v1/scraper/scrape` 增加 per-IP 限流**（`src/apps/scraper/router.py`）：10 次/60 秒，超出 `429 REQUEST_TOO_FREQUENT`。此前公开、无鉴权、无限流，任何人都能驱动服务器用自己的 Pixiv 凭据去刷第三方站点。出站目标本就被各站点正则锁死在固定域名，不是任意 SSRF。
+- **邮箱验证码错 5 次作废**（`src/common/verification/email_code.py`，新增 `MAX_WRONG_ATTEMPTS`、`email-verify-attempts-{email}` 计数键，TTL 与码同为 3600s）：此前 6 位码有效 1 小时，唯一防线是登录接口 per-IP 5 次/分钟，多 IP 可撞。旧 Rust 也没有次数限制，属新增防线。发新码时计数清零；成功消费时一并删除。错误码保持 `INCORRECT_VERIFY_CODE`，客户端契约不变。短信码由阿里云 PNVS 校验，其自身有次数控制，不在本条范围。
+
+### Added
+- `docs/operations/production-readiness-checklist.md`：生产上线待办清单。硬性项：关 `/docs`/`/openapi.json`/GraphiQL（测试机实测公网 200）、`ADMIN_ALLOWED_IPS`+`TRUSTED_PROXY_IPS` 必配、`ADMIN_SECRET` 换强值、删测试登录旁路、CORS 收紧、前端截止时间改回。建议项含 SSO `state`/`sid` 未校验（当前路径不可达）等。
+- 测试：`tests/unit/test_email_code_service.py` +3 例（第 5 次错作废、第 4 次错后正确码仍可用、发新码清零）；`tests/integration/test_scraper_rate_limit.py` +1 例（第 11 次 429）。
+
+### 兼容性
+- 无接口 shape 变化、无 schema/migration/配置变更。scraper 限流阈值对正常填表用户（粘几个链接）不可感知。
+- 邮箱码连错 5 次后即使输对也报 `INCORRECT_VERIFY_CODE`，用户需重新发码（受 120s 发码守卫约束）。
+
+## [2026-09-13] B-065 REST 提交/回读接口按 vote_token 绑定身份（安全修复）
+
+> 外部 review 指出 6 个 REST 回读接口零鉴权；复核后确认，且写入路径有同源问题。根因：Rust 里 `/v1/get-*`、`/v1/voting-status/` 是 `submit-handler` 的**内网**路由，gateway 从 token 解出 vote_id 再转发；Python 重写把它们原样挂到公网 `/api/v1`，测试机 nginx `/v12-be/` 兜底可直达。`vote_id` 即 user_id（uuid4），会出现在 vote_token 载荷、管理端与导出数据里，不算秘密。
+
+### Fixed
+- **回读接口不再接受裸 `vote_id`**（`src/apps/submit/router.py`）：`POST /get-character/`、`/get-music/`、`/get-cp/`、`/get-paper/`、`/get-dojin/`、`/voting-status/` 改为从请求体 `vote_token` 解出 user_id 再查，只返回调用者自己的提交。缺 token → `401 VOTE_TOKEN_REQUIRED`，伪造/过期 → `401` + 校验错误码。与 GraphQL 桥接 `getSubmit*Vote` / `getVotingStatus` 和 legacy `/user-token-status` 语义对齐。
+- **提交接口的 `vote_id` 改为强制取 token 的 user_id**（新增 `_bind_submit_identity`）：此前 5 个 `POST /character/` 等端点只校验 token，`meta.vote_id` 仍原样落库，任何持有效 token 的用户都能以他人 vote_id 写入或改票。现与 Rust gateway `generate_submit_metadata`、GraphQL 桥接 `_make_meta` 一致，客户端传值被覆盖。
+- `docs/api/voteable-api-contract.md` §3.3 原文写"需要 userToken 鉴权"但实现没有，文档与代码已同步；2026-05-13 提交完成度设计稿中"get-* 不需要鉴权"一句加勘正注。
+
+### Added
+- `tests/integration/test_submit.py` 新增 15 例：6 路由 × 无 token 401、6 路由 × 伪造 token 401、跨用户 token 读不到他人提交、客户端伪造 `meta.vote_id` 不生效。
+
+### 兼容性
+- **REST 回读请求体变更**：`{"vote_id"}` → `{"vote_token"}`。仓内排查：前端 Touhou-Vote、admin-ui 均不调用这 6 个 REST 接口（前端回读走 GraphQL），唯一调用方是本仓集成测试，已随改。`QuerySubmitRequest.vote_id` 暂留为可选并忽略，让旧请求得到 `401` 而非 `422`；**移除条件**：确认无调用方再发 `vote_id`。
+- 提交接口请求体 shape 不变；行为变化仅"客户端 `meta.vote_id` 不再生效"，正常客户端本就不该传（Rust 时代前端从不控制该字段）。
+- 无 schema / migration / 配置变更；GraphQL 契约不变。
+
+## [2026-09-12] #29 归一化的登录链路复核：六处修复 + 迁移回填前置检查
+
+> 对 #29（`user` + `user_identity` 归一化）做的独立复核。七条候选问题逐条在真环境验证：六条确认并修复，一条确认为潜伏（加护栏）。
+
+### Fixed
+- **验证码登录不再漏掉「提升为已验证」**（`identity_service.touch_login(proven=True)` / `bind()` 已绑分支）。`_new_identity` 只在创建时写 `verified=True`，`src/` 里**没有任何地方**事后赋值 `verified`；而迁移 0018 是从 legacy `email_verified`/`phone_verified` 回填的，可能为 `false`。这类账号能正常登录，但 `_maybe_sign_vote_token` 里的 `identity.verified` 永远为假 → **静默拿不到 vote_token、投不了票，且任何地方都不报错**。#29 之前的实现有 `if not user.email_verified: user.email_verified = True`，归一化时丢了。
+- **密码登录不再在校验口令前泄露封禁状态**（`service.login_with_email_password` 改用新增的 `IdentityService.find_owner`）。`resolve()` 对封禁账号抛 `USER_REMOVED`/403，且跑在 `verify_password` 之前，未认证调用方因此能区分「该邮箱属于封禁账号」与「查无此邮箱」。改为先验口令，口令正确才告知 `USER_REMOVED`。
+- **登录顺带的 SSO 合并不再顶掉已有绑定**（`_merge_sso_session`）。它调的 `bind()` 语义是**替换**，被顶掉的 openid 随之释放、可被他人认领，且该路径此前**完全没有审计记录**（`_rebind_contact` 是有的）。现在已有绑定且 subject 不同则跳过并告警，真正新增绑定时补写 `bind_sso` 审计。换绑仍走 `update_*` / `bind_sso` 显式入口。> 注：设计稿 §一 已载明该路径在生产链路上暂不可达（GraphQL 桥接不传 redis/sid），属防御性修复。
+- **`VOTE_ELIGIBLE_PROVIDERS` 写错不再让进程起不来**（`config.Settings`）。`nacos.py` 把配置原样塞进 `os.environ`（全是字符串），pydantic-settings 对 `list[str]` 默认按 JSON 解析，写成 `phone` 或 `email,phone`（旁边字符串型键就长这样）会在 **source 层**抛 `SettingsError`——比字段校验器更早，所以 `mode="before"` 的校验器拦不住。改用 `Annotated[list[str], NoDecode]` 关掉预解析 + 校验器宽容解析（JSON 数组／逗号分隔／单个名字），看着像 JSON 却解不出数组时记错误日志并回默认值。
+- **Argon2 rehash 显式落库**（`login_with_email_password`）。此前只靠 `touch_login` 顺手 `save()`，而它在 `user.identity(provider) is None` 时会提前 return——今天不可达，但让一次写入依赖无关方法的内部实现是隐患。
+
+### Added
+- `alembic/versions/0018_user_identity.py`：`_assert_no_backfill_collisions()`，在**建表之前**拒绝会撞 `uq_user_identity_provider_subject` 的回填。旧 partial unique index 建在原始列上且大小写敏感，`Foo@Example.com` 与 `foo@example.com` 可合法共存，回填的 `lower(trim(...))` 会让两者塌成同一 subject（`trim(phone_number)` 同理）。真 PG 16 复现：原实现跑到一半抛 `UniqueViolation` 整体回滚；现在开工前报错并点名冲突账号，`alembic_version` 不动、`user_identity` 不建、`user` 列不删。
+- 回归测试 `tests/integration/test_identity_login_regressions.py`（6 例）与 `tests/unit/test_vote_eligible_providers_config.py`（7 例）。前者含两个对照用例（口令正确时正常报封禁、空位时正常补绑），确保修复不是「把功能关掉」。
+
+### 兼容性
+- **无破坏性**：无 schema / migration 版本变化（0018 仍是 0018）、无 GraphQL 契约变化、无需数据迁移或配置变更。
+- ⚠️ 0018 的**回填范围**有变（B-064）。现有环境不受影响：测试机的 0018 已在近乎空库上跑完，新环境是空 `user` 表上跑 0018（回填为空操作），且设计稿 §9 已定「上线即空库」、`COLLECTION_CONFIG` 里没有 user 映射 —— 不存在 legacy 用户导入通道。改动只在「拿 0018 之前的存量库重放迁移」时生效，那正是它要修的场景。
+- 行为变化仅三处，都是修正：① 回填出的未验证身份在验证码登录后变为已验证（此前永久投不了票）；② 封禁账号 + 错误口令改报 `INCORRECT_PASSWORD`（此前报 `USER_REMOVED`）；③ 登录路径不再改绑已有 SSO 身份。
+- `VOTE_ELIGIBLE_PROVIDERS` 现在多接受两种写法，原 JSON 数组写法不受影响。
+
+### Fixed（续）— B-064：0018 回填不再把「管理员封禁」当成「自助注销」
+- 原回填用 `WHERE removed = FALSE` 一刀切，把 `ban_user` 封禁的账号也排除了。而 `IdentityService.resolve` 正是靠身份行对封禁 subject 抛 `USER_REMOVED` 来阻止对方拿同一邮箱/手机改头换面重新注册 —— 没有身份行，**封禁形同虚设，解封出来的账号又没有任何登录方式**。真 PG 已复现：封禁账号回填得 0 条 identity。
+- **这不是「GDPR 抹除」与「封禁可执行」的二选一**——复核时查实两者可区分（此前误判为不可区分）：旧 `remove_voter` 在同一次提交里把 `email` / `phone_number` / `password_hash` **全部置空**，而 `ban_user`（`UserDAO.set_removed`）一个都不动；旧 CHECK `at_least_one_identifier` 又保证活跃账号必有 email 或 phone，封禁前是活跃的，故必有其一。
+- 回填范围改用 `_BACKFILL_SCOPE = (removed = FALSE OR email IS NOT NULL OR phone_number IS NOT NULL)`，前置检查复用同一条件（否则查不到新纳入的封禁账号之间的冲突）。两个目标同时成立：封禁账号身份行完整回填；自助注销账号一条都不回填 —— **包括旧 `remove_voter` 漏清的 `qq_openid` / `thbwiki_uid`**（设计稿 §一.2 记的缺陷），不借回填把用户要求抹除的标识搬进新表。
+- 真 PG 16 上四种形态逐一验证：活跃账号 3 条身份；封禁账号 3 条（封禁可执行、解封可登录）；只有手机号的封禁账号 1 条（判别式靠 phone 兜住）；自助注销账号 0 条（含其残留的 qq_openid）。并复验前置检查在新范围下能拦住「活跃账号 vs 封禁账号」的大小写冲突。
+
+## [2026-09-11] 回退 `UserDAO.save()` 的 `session.merge()`，改为显式拒绝 detached 实例（B-024 / U-18）
+
+> 承接 #30。#30 把 `save()` 改走 `session.merge()` 以「防 detached 静默 no-op」，但该前提不成立、且引入三条静默数据损坏路径，故回退并改为硬约束。
+
+### Fixed
+- `UserDAO.save()` 不再 `session.merge()`（`src/apps/user/dao.py`）。`merge()` 会按传入的陈旧副本重建 `User.identities`，而该关系是 `delete-orphan` —— **DB 里有、副本里没有的绑定会被 DELETE**。同一次盲写还会把 `removed` 覆盖回 `False`（**解封已封禁账号**）、把已硬删的行重新 INSERT（**复活账号**）。三者均已用探针在 sqlite 上复现。
+- `save()` 改为显式 `_reject_detached()`：非本 session 托管的实例直接抛 `InvalidRequestError` 并给出补救指引。此前 `refresh()` 也会抛同名异常，但属偶然行为；现在是写明的契约。
+- 更正 #30 的立论：`save()` 对 detached 实例**从未**静默 no-op —— 合入前的实现在 `refresh()` 处就抛 `InvalidRequestError`，调用方立刻知情。
+
+### Changed
+- 回归测试 `tests/integration/test_user_dao_save.py` 重写为 4 例：托管实例正常落库、detached 实例被拒、**不得删掉别处新建的绑定**、**不得解封或复活**。后三例在 `merge()` 版下会红（已验证），不是永远绿的测试。
+- `tests/integration/conftest.py` 按 B-023 本意收口为单行 `import fakeredis.aioredis`（必须带子模块名），删除 #30 留下的注释掉的旧代码、裸 `except:`（会吞 `BaseException`，且兜底换成的是**同步** FakeRedis，交给 `await` 会在无关模块炸 `TypeError`）与未被引用的 `FakeRedis` 死变量。
+- BACKLOG 复位：#30 把已归档的 **B-022 / B-024** 重新加回开放表（陈旧 rebase 产物），**B-023** 一度同时列在开放表与归档中。现统一以归档为准，开放表不再残留这三项。
+
+### 兼容性
+- **无破坏性**：无 schema / migration / 配置 / GraphQL 契约变化，无需数据迁移。
+- 行为面：现网 5 个 `save()` 调用方（`identity_service.py:115,123,128`、`service.py:277,300`）全部持有同一 session 的托管实例，走的是正常路径，**行为不变**。只有传 detached 实例才会拿到报错，而这在合入前同样是报错。
+
+## [2026-09-06] 用户身份模型归一化：`user` + `user_identity`（migration 0018，破坏性，无兼容期）
+
+> 设计：[user-identity-model-design](./superpowers/specs/2026-09-06-user-identity-model-design.md)。系统尚未公开上线，用户库允许重建。
+
+### Changed
+- **`user` 表只留账号属性**（id / nickname / pfp / password_hash / removed / register_*）；邮箱、手机、QQ openid、THBWiki uid 各成一行进入新表 **`user_identity`**（`provider` / `subject` / `verified` / `verified_at` / `created_at` / `created_ip` / `created_device_id` / `last_login_at`）。唯一约束 `(provider, subject)` 与 `(user_id, provider)`，`provider` 有 CHECK。每条身份自带绑定时间、绑定 IP 与设备指纹，供反刷聚类使用。
+- **登录 / 改绑 / SSO 绑定 / 注销收敛为一条路径**：`src/apps/user/identity_service.py`（`resolve` / `register` / `bind` / `unbind_all`），provider 规则集中在 `src/apps/user/identity.py`。加一个认证来源只需加枚举值 + 放宽 CHECK。
+- **投票 token 资格可配置**：新配置项 `VOTE_ELIGIBLE_PROVIDERS`（JSON 数组，默认 `["email","phone"]`，与旧 Rust 规则一致）。是否收紧为仅手机号，上线前另行决定。
+- `remove_voter` 改为删除全部身份行 + 清密码；账号行留作 tombstone。
+- 管理端 `/admin/users` 的 `email` / `phone` / `email_verified` / `phone_verified` 改由身份行推导，**响应形状不变**；搜索改为 join 身份表。
+- `VoterFE` / GraphQL `LoginResult` **形状不变**：`thbwiki` = 是否绑定 THBWiki 身份。
+
+### Fixed
+- 注销后 QQ / THBWiki 身份不再被永久占用（此前 `remove_voter` 不清 SSO 列，且查找不过滤 `removed`，他人再绑报 `SSO_ID_ALREADY_BOUND`）。
+- 登录时合并 Redis SSO 会话撞到他人的 openid：此前 `IntegrityError` → 500 且 sid 已被消费；现记 warning 跳过，不阻断登录。
+- 被管理端封禁的邮箱/手机再登录：此前撞 partial unique index → 500；现返回 `USER_REMOVED`（403），且该标识不能被新账号注册。
+
+### Removed
+- legacy bcrypt+salt 密码路径（`legacy_salt` 列、`verify_legacy_password` / `verify_any_password`、`bcrypt` 依赖）。
+- 旧 Mongo `voters` 集合同步（`map_voter`、`COLLECTION_CONFIG` 项、`scripts/bson_to_sql.py` / `scripts/import_mongo_dump.py` 的 voters 注册）。其余集合同步不变。
+- `UserDAO.get_by_email` / `get_by_phone` / `find_by_thbwiki_uid` / `find_by_qq_openid`；`User.at_least_one_identifier` CHECK 与四个 partial unique index。
+
+### 测试
+- 新增 `tests/helpers/users.py::make_user/build_user`；`tests/integration/test_identity_binding.py`（注册元数据、改绑替换、409、注销重注册、封禁、大小写归一、资格配置）；`test_identity_pg_constraints.py`（PG-only，非 PG 自动 skip）；`test_sso_flows.py` 重写。全量 614 passed（sqlite）。
+
+### 兼容性 / 迁移
+- **需要数据迁移**：`alembic upgrade head`（0018：建表 → 从旧列回填 → 删旧列）。回填近似：每身份 `created_*` 取账号 `register_*`；`removed=TRUE` 账号不回填身份。**无兼容期**；`downgrade` 反向回填可回滚。
+- **配置**：可选新增 Nacos key `VOTE_ELIGIBLE_PROVIDERS`；不配即默认。
+- **对外接口形状无变化**（REST `VoterFE`、GraphQL、admin 用户列表）。新增错误码 `USER_REMOVED`（403）。
+- 关闭 BACKLOG B-008（废弃）、B-011、B-022、B-024。
+
+## [2026-08-31] 文档树大扫除：归档过程产物、重建索引、整理 CHANGELOG（docs，无代码变更）
+
+> 文档累积到 131 份约 1.75 MB，过程产物占七成；索引停更在 2026-06-08，07–08 月新增的约 25 份文档从未进索引；
+> 多份设计稿的 `状态` 行已与事实不符。本次只动文档，**不涉及任何代码、接口、schema、配置或部署**。
+
+### Changed
+- **30 份过程产物迁入 `docs/archive/superpowers/`**：25 份已执行完/已废弃的 plans、4 份已废弃或属事后记录的 specs、1 份一次性 handoff。每份头部插入归档状态块（状态 + 证据 + 落地去向 + 「不代表当前实现」）。判定依据是 BACKLOG / BACKLOG-archive / CHANGELOG 三者交叉核对**加代码复核**——plans 里的 `- [ ]` checkbox 从未被维护（B-057⑤），不可作为完成度依据。
+- **36 份现役设计稿统一补 `状态` 块**（已实施 14 / 部分实施 15 / 已实施（部分被取代）6 / 待实施 1）。其中**修正 7 份与事实不符的旧状态行**，例如：`2026-08-14-advanced-search-dsl-design` 仍写「待实施」而功能当天即上线；`2026-07-21-work-table-unified-design` 仍称 `GET /admin/voteables` 未实现而该缺口已于 2026-08-22 由 B-057① 补齐；`2026-07-23-tally-db-truth-source-design` 仍写「待实施」而 Phase 1 已随 #26 于 2026-08-13 上线。
+- **本文件**：合并 9 组重复条目（均为「孤儿标题紧跟真正条目」的合并残留）、按日期倒序重排（修正 2026-08-22 错位于 08-14 之前）、2026-07-01 之前的 15 条切至 `CHANGELOG-archive-2026H1.md`。**正文逐行比对确认零丢失**，条目数 59 → 50。
+- **`docs/README.md` 全量重写**：补齐此前缺失的约 25 份文档，设计稿按主题分组（用户认证 / GraphQL 契约 / 计票结果 / 候选项 / 安全 / 管理端 / 前端侧），并新增「归档」与「维护规则」两节。
+
+### Added
+- `docs/archive/README.md` —— 归档索引与**归档规则**（什么该归档、归档时必须做什么、判定状态时不要凭印象）。
+- `docs/CHANGELOG-archive-2026H1.md` —— 2026 上半年变更记录归档。
+- `docs/requirements/` —— VoileLabs 官方需求文档（投票系统 / 投票结果页面，md + docx 原件）从 `docs/` 根迁入。
+- BACKLOG **B-062**：`AutocompleteDAO.search_cps()` 恒返回 `[]`（`src/apps/autocomplete/dao.py:78`），CP 自动补全永远为空。
+- BACKLOG **B-063**：`apps/scraper` 模块无任何测试。
+  > 两条均从 `REFACTOR_TODO.md` 迁出，**迁出前经代码复核确认仍成立**。
+
+### Removed
+- `REFACTOR_TODO.md`（子项目根目录，违反 CLAUDE.md §2，且内容已过期——其中 `vote_data ✅` 所指模块已于 2026-07-17 作为死代码删除）→ 归档至 `docs/archive/2026-05-30-refactor-todo.md`。
+- `.github/PR_DRAFT_user_and_verify.md`（2026-05-30 的 PR 草稿，对应 PR 早已合入 main）。
+
+### 兼容性 / 迁移
+- **无兼容性影响**；**不需要数据迁移或配置变更**。
+- 过期文档一律**归档而非删除**，全文保留可查。
+
+## [2026-08-29] append-only 提交历史 + 真实净增量 trend（B-050-后补2 Step 2，Task 4-8）
+
+### Changed
+- 提交存储改为 append-only：`SubmitDAO._upsert` 覆盖的全部 `raw_*` 表（`raw_character`/`raw_music`/`raw_cp`/`raw_paper`/`raw_dojin`）与结构化问卷表 `paper_answer` 改票不再删除/覆盖旧行，`_upsert` 与 `questionnaire/dao.py::replace_answers` 均改为追加（`paper_answer` 新增可空 `attempt` 批次号列 + 索引，一次提交的所有行归入同一 `attempt`；`raw_*` 天然按行追加，无需批次号）。读方经 `latest_batch`/等价逻辑只取最新批次，行为与迁移前一致。
+- `queryQuestionnaireTrend` 及角色/音乐/CP 三类榜单的 `trend`/`trendFirst` 全部升级为**真实净增量序列**：新纯函数 `src/apps/result/trend.py::net_delta_trends` 取代 Step 1 的"最新提交分桶"近似——改票产生的旧选择在原分桶记负值、新选择记正值，不变量为每个实体全部分桶净增量之和 == 该实体最终 `vote_count`。`compute_all`（预计算主路径）与 `advanced_search/service.py::_compute_filtered`（DSL 子集重算路径）均已接入。
+- 前端契约无变化：`Trends(trend, trend_first)` 字段本就按净增量语义消费（`QuestionnaireDetail.vue` 等组件直接绘制为增量柱状图），无需前端跟进发版。
+
+### Added
+- 迁移 `0017`：`paper_answer` 新增可空 `attempt` 列 + 索引，**删除** 原 `uq_paper_answer_voter_group` UNIQUE 约束（`vote_id, vote_year, questionnaire_id, group_id`），改由 append-only 语义承接（`down_revision=0016`）。
+- `ComputeDAO` 新增历史加载器：`load_char_history`/`load_music_history`/`load_cp_history`/`load_questionnaire_history`，按时间序读取 append-only 提交历史供净增量计算消费。
+- `src/apps/result/trend.py::net_delta_trends`：纯函数，输入按时间排序的提交历史（含改票批次），输出真实净增量分桶序列；配套不变量测试（每实体分桶净增量之和 == 最终票数）。
+
+### 兼容性
+- **需跑 `alembic upgrade head`（落地到 0017）**：`paper_answer` 表结构变化，未升级迁移则新版应用代码写入会失败（`attempt` 列不存在）。
+- **需重跑一次 `compute_all`**（或等定时任务下一轮）：Redis 里的旧近似 trend 快照需要用净增量口径重新计算才会生效；重跑前行为保持 Step 1 的近似值,不报错。
+- admin 监控投票列表会开始出现**历史行**（同一选民多次改票会看到多条 `paper_answer`/`raw_*` 记录，而非过去覆盖后的单行）——作废（软删）历史行不影响计票（只读最新批次），作废最新行的效果仍等价于该选民出局，管理员操作口径不变。
+- **历史断点**：迁移上线前发生的改票历史已被旧覆盖式存储永久抹掉，无法回填；真实净增量曲线从上线时刻起才开始积累，上线当天已存在的单行选民数据会被当作一次性净增量处理（近似值），属于数据侧自然退化，不需要额外兼容代码。
+- **已知限制**：同一选民短时间内**并发**重复提交理论上可能落在同一个 `attempt` 批次号（`prev + 1` 的读-算-写非原子），导致两次提交的行被误合并为一批——旧版本的 UNIQUE 约束曾意外挡住这种情况，现实并发窗口极窄、概率很低；问卷侧若观察到异常，可在读方按 `created_at` 取最大值兜底识别真正的最新批次。
+
+## [2026-08-29] 问卷趋势接通近似版（B-050-后补2 Step 1，Task 3）
+
+### Added
+- `queryQuestionnaireTrend` GraphQL 字段接通真实数据：`_query_questionnaire_trend_entries` 不再固定返回空 `Trends` 列表，改为逐题读取 `compute_paper_results` 产出的 `"trend"`（近似口径：按每条问卷回答行 `created_at` 分桶，与 legacy Rust 网关口径一致，非真实净增量——问卷题允许改答案，`paper_answer` 同一 `vote_id`+`group_id` 只留最新一行）；`trendFirst` 恒为空列表（问卷题没有"本命"概念，是本字段永久形状，不是退化）；某道题从未算过时该条目仍退化为 `Trends(trend=[], trend_first=[])`，不中断其余题目。
+- DSL `query` 子集路径（`advanced_search/service.py::_compute_filtered`）同样接通 trend：筛选后的子集重算复用同一 `compute_paper_results(..., vote_start=, total_hours=)` 调用，子集 trend 与全集同口径。
+- 两个调用点补齐 `vote_start`/`total_hours` 透传：`compute_service.py::compute_all`（预计算主路径）与 `advanced_search/service.py::_compute_filtered`（筛选子集路径）。
+- 测试：`tests/integration/test_result_compat_rest.py` 新增/改写 `queryQuestionnaireTrend` 集成测试——不同小时 `created_at` 的问卷回答验证 trend 精确分桶、`trendFirst` 恒空；DSL `query` 子集路径同样返回非空 trend（子集 counts ≤ 全集）。
+
+### 兼容性
+- **无 GraphQL schema 变化**：字段签名/返回类型不变，只是内容从恒空变成真实近似值——消费方（`QuestionnaireDetail.vue`）本就按 `[Trends!]!` 消费，无需跟进。
+- **需重跑 compute 才有数据**：本轮改动只影响 `compute_paper_results` 调用参数，不改数据模型；线上现有 Redis 缓存需重跑一次 `compute_all`（或等定时任务下一轮）才会写入非空 `trend`，重跑前该字段行为不变（仍是恒空）。
+- 真实净增量（Step 2）仍需 append-only 提交历史存储落地，属于同一 BACKLOG 项（B-050-后补2）的后续步骤，本轮不含。
+
+## [2026-08-22] B-060 高级搜索限频/单飞加固 + B-057① admin voteables 端点
+
+### Added
+- **B-057①**:`GET /api/v1/admin/voteables`(category/q/分页,联 work 表出 `workId`/`workName`/`workType`)+ `POST /api/v1/admin/voteables/{id}`(编辑 work 归属,null 清空;不存在的 work→409),挂 `require_admin`,变更后清 vote-objects 缓存。5 个集成测试。admin-ui 消费页面可后补(B-049 无 UI 端点清单)。
+- **B-060**:`ClientIPMiddleware`(`src/common/middleware/client_ip.py`)把 B-044 可信代理解析的 client IP 放 ContextVar,供深层服务读取。
+
+### Changed
+- **B-060 高级搜索 miss 限频升级为双层**:per-IP `ADV_MISS_LIMIT_PER_IP_PER_MINUTE=10` + 全局 30/min 兜底;**扣费点后置到真正执行重算处**——缓存命中、等锁后从缓存拿到结果的赛跑者不再扣预算(消除终审小尾巴"注释与行为不符")。
+- **等锁策略**:由固定 5s(25×200ms)改为**跟随锁存活轮询**(200ms 间隔,上限 60s,锁消失提前接手)。依据:真机实测单次重算 ~8s(4 万行问卷载票),固定 5s 会让并发等锁者在最贵场景集体转入重复计算。
+- 新增 3 个测试真实覆盖等锁分支(等锁缓存命中零扣费/锁消失提前接手含耗时断言/per-IP 隔离)——终审小尾巴"锁竞争分支覆盖为空"销账。
+
+### 兼容性
+- 无契约变化;`ADVANCED_SEARCH_BUSY` 语义不变,只是触发口径更精确(真重算才计数)。无 DB 迁移。
+
+## [2026-08-14] 高级搜索/筛选 DSL 实现落地（B-050-后补5，Task 1-6 全部完成）
+
+### Added
+- 新子包 `src/apps/result/advanced_search/`（`dsl.py`/`subset.py`/`service.py`）：lark 文法解析器（`chars`/`musics`/`chars_first`/`musics_first`/`q<code>=<option>` 五种原子 + `AND`/`OR`/括号组合）+ AST 归一化（交换律排序/去重/嵌套拍平，决定缓存命中率）+ 指纹（`fingerprint`）+ 复杂度护栏（原子数 ≤20、嵌套深度 ≤5、原串 ≤1KB，超限报 `ADVANCED_SEARCH_TOO_COMPLEX`）+ 事实索引（`build_facts`，O(票数) 一遍扫描）+ 名字解析（`resolve_names`，name/name_jp 精确匹配，未知名字报 `ADVANCED_SEARCH_UNKNOWN_NAME`，歧义命中多个 id 按并集处理不报错）+ AST 求值圈子集（`evaluate_subset`）+ 子集整包重算服务（`ensure_filtered_results`，单飞锁防击穿 + 快照版本化缓存失效）。
+- 契约层接通（`result_compat.py::_apply_advanced_search`）：**10 个** `query*` 查询点亮 query 参数（`queryCharacterRanking`/`queryMusicRanking`/`queryCPRanking`/`queryCharacterSingle`/`queryMusicSingle`/`queryCPSingle`/`queryGlobalStats`/`queryCompletionRates`/`queryQuestionnaire`/`queryQuestionnaireTrend`）——非空 `query` 不再抛 `ADVANCED_SEARCH_NOT_IMPLEMENTED`，而是圈子集重算（原样复用 compute 纯函数，子集内百分比/名次基数正确，不是对预计算榜单做后置过滤）。三种可辨识错误 kind：`ADVANCED_SEARCH_SYNTAX_ERROR`/`ADVANCED_SEARCH_UNKNOWN_NAME`/`ADVANCED_SEARCH_TOO_COMPLEX`（取代原来单一的 `ADVANCED_SEARCH_NOT_IMPLEMENTED`）。
+- 缓存布局镜像预计算路径，多一段 infix：`result:{year}:adv:{快照版本}:{指纹}:*`（TTL 24h，`compute_all` 写入新快照版本后旧筛选缓存整批自然失效，不用主动清理）。
+- 无数据库 schema 变更（纯计算层 + Redis 缓存布局扩展）。
+- 新依赖：`lark`（纯 Python 实现，无 C 扩展/编译工具链，用于 DSL 文法解析）。
+- 测试：5 万合成票性能冒烟（`tests/unit/test_advanced_search_perf.py`，纯内存管道（事实索引→求值→子集重排名，不含 DB 载票）5 次实测 225~301ms，均值约 261ms，阈值 2000ms，约 7~9 倍余量）+ 契约层端到端补测（音乐榜/CP 榜/全局统计/完成率四端点同一非空 query 下的子集口径互查、`queryCharacterSingle` 筛选后命中/未命中、21 原子 `ADVANCED_SEARCH_TOO_COMPLEX` 端到端）。
+- **终审修复波**（2026-08-14）：`ensure_filtered_results` 在进入 miss 计算分支之后、拿单飞锁之前，新增 miss 重算全局限频——Redis `INCR`+`EXPIRE` 固定窗口对 `adv_miss_budget:{year}` 计数，超过 `ADV_MISS_LIMIT_PER_MINUTE`（=30，依据见 `service.py` 常量注释）抛新增可辨识错误 `ADVANCED_SEARCH_BUSY`（`human_readable_message="高级搜索请求过于频繁,请稍后再试"`），堵住指纹空间无界 + 按指纹隔离单飞锁对轮换指纹攻击无效的口子；缓存命中路径不计数、不受影响。
+
+### 兼容性
+- **前端零改动**：前端 `AdvancedSearch` 组件早已按此语法生成 `query` 参数（`decodeAdditionalConstraint.ts`），此前只是后端拒绝；本轮上线后原样点亮，无需前端配合发版。
+- `ADVANCED_SEARCH_NOT_IMPLEMENTED` 错误 kind 移除，改为三种细分错误——若有调用方（内部脚本/监控）按旧 kind 字符串匹配，需跟进改为匹配三种新 kind 之一。
+- 问卷原子（`q<code>=<option>`）在 **B-054**（运营录题回填 `question_def`/`option_def` 的 `code` 列）之前恒匹配为空（线上问卷仍是占位内容），这是数据阻塞，不是代码缺陷，与 B-050-后补1/4 同源已知限制。
+- **筛选路径下 `RESULT_NOT_COMPUTED` 不可达**：预计算路径在该年从未跑过 `compute_all` 时报 `RESULT_NOT_COMPUTED`；但带 `query` 的筛选路径（`ensure_filtered_results`）不依赖预计算快照存在，会现场从 DB 载票直接算出结果——即"该年未跑过 compute 时，带筛选条件的查询反而能工作"，是行为更优的已知语义差异，不是 bug。
+- 新增依赖 `lark`（纯 Python 实现，无需编译工具链，不影响现有部署/CI 流程）。
+- 测试依赖 `fakeredis` 改为 `fakeredis[lua]`（拉入 `lupa`）：单飞锁 compare-and-delete 走 Redis `EVAL`（Lua），裸 fakeredis 不支持 eval——首次推送 CI"运行测试"即因此失败（本地因单独装过 lupa 而全绿），部署被跳过；修复后 CI 恢复。
+
+## [2026-08-14] Mock 投票数据生成器（测试工具，不进请求路径）
+
+### Added
+- `scripts/generate_mock_votes.py`:向测试库灌可复现的合成投票(角色/音乐/CP/问卷四表)。`vote_id` 一律 `mock-` 前缀,默认先清旧 mock 行再重灌(幂等),`--wipe-only` 一键清理,**真人数据零接触**(集成测试锁死)。分布:3 偏好簇 × Zipf(头部/长尾+子集筛选有区分度)、提交时间铺满投票窗口偏晚间(趋势有形状)、性别 55/45。顺带给占位问卷题回填测试 code(性别题用 Nacos 配置 code,其余 9 系;只填空值,B-054 真题录入不受影响)。使用手册 `docs/operations/mock-vote-data.md`(含容器内执行/清理/compute 触发的逐条命令)。
+- 测试:`tests/unit/test_generate_mock_votes.py`(20 项分布/形状/确定性/回填规划不变量)+ `tests/integration/test_generate_mock_votes_db.py`(写入/幂等/真人行不受影响/wipe 只删 mock)。
+
+### 兼容性
+- 纯手动运维脚本,不进 CI/请求路径;生产库禁跑(运行前打印目标库要求确认,`--force` 仅供测试容器非交互执行)。
+- **Dockerfile 变更(2026-08-21 补)**:development/production 两个 stage 增加 `COPY scripts/`——首次容器内执行时发现镜像里根本没有 `scripts/` 目录(此前 `import_mongo_dump.py` 等都是在宿主机 checkout 里跑的),重建镜像后 `docker exec ... python scripts/xxx.py` 才可用。
+- `paper_answer` 每票每题组一行(UNIQUE 约束),生成器按组产行、组内优先答性别题——与提交侧 `questionnaire/dao.py` 口径一致。
+
+## [2026-08-14] 高级搜索/筛选 DSL 设计稿（文档，无代码变更）
+
+### Added
+- `docs/superpowers/specs/2026-08-14-advanced-search-dsl-design.md`：B-050-后补5（P0）实现设计定稿。方案选型记录（服务端 lark 小型解析器；被否方案：砍指令模式改 JSON 契约 / 前端解析传 AST——性能担忧定位为"子集重算而非解析器"，且重算成本与约束表达形式无关）；架构=新子包 `src/apps/result/advanced_search/`（dsl/subset/service 三模块），子集圈选后**原样复用** compute 纯函数整包重算，缓存 key 镜像现有布局加 `adv:{快照版本}:{指纹}` 前缀（TTL 24h + compute 后版本翻转失效 + 单飞锁）；已拍板语义：未知名字报错指名（`ADVANCED_SEARCH_UNKNOWN_NAME`）、名字按 name/name_jp 双字段精确匹配;护栏：原串 ≤1KB、原子 ≤20、深度 ≤5、`ADVANCED_SEARCH_TOO_COMPLEX`。covote cs/mi 确认不做（需求无此页）。B-053 复用同一子集原语。
+
+## [2026-08-14] 结果统计层三方审计（文档，无代码变更）
+
+### Added
+- `docs/migration/result-stats-audit-2026-08-14.md`：前端 `packages/result` 需求 × Python `src/apps/result` × legacy Rust `result-query` 三方对照 + 缺口分类 + 优先级。结论：接口面基本迁全，真缺口是**高级搜索 DSL**（前端 AdvancedSearch 已生成 DSL，后端抛 `ADVANCED_SEARCH_NOT_IMPLEMENTED`）+ 往届对比（-1 哨兵 + historical 恒 {}）+ 问卷趋势/numDoujin 等桩，多与前端占位页或 B-054 数据未录入配对。实测 `/res-be` 通路已通（result 站可联调）。
+- **§六 需求文档对照(补)**：通读结果页需求文档后两处认知修正——① **covote/"同投"不是需求项**（需求无此页，"同投率"只是高级搜索筛选下"票数占比"列的改名），前端 connect 占位页可弃、后端 covote `cs`/`mi` 桩不必实现，从缺口划掉；② **高级搜索 DSL 升 P0**（需求 §846-923 硬核心，"子集重算"语义，覆盖所有主表页）。BACKLOG B-050-后补5 相应升 P0。
+
+## [2026-08-14] 测试登录旁路（TEST_LOGIN_BYPASS，临时测试设施）
+
+### Added
+- **验码侧白名单固定码旁路**：`TEST_LOGIN_BYPASS_ACCOUNTS`（JSON 数组）+ `TEST_LOGIN_BYPASS_CODE` 双非空时，白名单账号提交固定码即通过短信/邮件验证码校验（不打 PNVS/不查 Redis），供自动化端到端测试跑通登录→投票链路。发码链路（captcha/PNVS/限流）不动，真人真号不受影响；命中打脱敏 WARNING。新模块 `src/common/verification/test_bypass.py` + 两个 `consume` 短路 + 7 条单测（496 passed）。设计稿 `docs/superpowers/specs/2026-08-14-test-login-bypass-design.md`，操作说明 captcha-onboarding §六点五。
+
+### 兼容性
+- 默认双空 = 功能不存在（fail-closed）；**生产 Nacos 永不配置这两个 key**。
+- **移除条件**：公开上线前整体删除，`grep -r TEST_LOGIN_BYPASS` 全量定位。
+- 需配置变更：测试 Nacos `thvote_be` 加两个 key 并重启容器方可使用。
+
+> 最后更新：2026-08-13（测试环境事故修复：mynacos 重启后未拉起导致后端 crash-loop 六天）
+
+## [2026-08-13] 测试环境事故修复（运维，无代码变更）
+
+### Fixed
+- 测试机 2026-08-07 重启后 R-NACOS 容器 `mynacos`（restart 策略 `no`）未被拉起，后端拿不到配置回退 localhost DB 持续 crash-loop，登录等全部功能不可用六天。借 CI SSH 通道 `docker start mynacos` + `docker update --restart unless-stopped mynacos` + 重启后端恢复；临时诊断分支 `ops/test-env-diagnose` 用后即删。详见 `docs/operations/nacos-config-center.md` §八 事故记录。
+
+### Changed
+- **BACKLOG 大扫除（同日第二轮）**：31 条已完成/废弃历史项迁至新建 `docs/BACKLOG-archive.md`（原文保留），仪表盘只剩 35 条活项；B-028/B-054/B-042②/B-043尾项 标 ⏸ 等外部（用户确认只能等，Pixiv 可能不再需要）；B-037/39/40/41/57④ 前端部分确认我方负责并列出前端队列；维护规则改为"完成即归档"。
+- `deploy-test.yml`：删除等待 `thvote-postgres` 容器的死循环（该机无此容器，DB 为外部实例，每次部署白等 60 秒），换成 Nacos 容器（`mynacos`）存活前置检查——不在跑则以明确报错终止部署，正是本次事故当时缺的那道闸。
+
+### 兼容性
+- 无代码/接口变更。服务器侧变更一处：`mynacos` restart 策略 `no` → `unless-stopped`（防复发）。
+- 遗留：后端 Nacos 不可达时静默回退默认配置的行为宜改 fail-fast（与 B-030 一并处理）。
+
+## [2026-07-23] voteable/work 重构合入 main（补记）+ 分支收口
+
+> **补记**：以下变更由合作者在 `zfq_dev` 分支完成（2026-07-20~21，13 commits），2026-07-23 快进合入 `main` 并随 CI 部署测试机。原提交未更新本 CHANGELOG，按 CLAUDE.md §4 于合入日补记。实现对应设计稿：[voteable 跨年稳定 id](./superpowers/specs/2026-07-20-voteable-cross-year-stable-id-design.md)、[work 表前后端统一](./superpowers/specs/2026-07-21-work-table-unified-design.md)（实施计划 [2026-07-21-work-table-unified](archive/superpowers/plans/2026-07-21-work-table-unified.md)，11 tasks）。**目标：投票对象从"前端 .ts 写死"迁到后端数据库，投票传参最终只传 `candidateId`(int)。**
+
+### Added
+- `work` 表（跨切面作品目录：name + type∈old/new/CD/book/others，迁移内置种子数据）。
+- `voteable_character` / `voteable_music` 表（跨年稳定投票实体）：name/name_jp/type/first_appearance/aliases(JSON)/`work_id` FK/**`old_id`**（保留前端 8-hex 旧 id 的桥接字段，供历史数据关联）。
+- Alembic 迁移 `12a5f2e6dbed`（⚠️ 哈希名，命名漂移见 BACKLOG B-056）：建表 + work 种子 + 从既有 `candidate_*` 按 name GROUP 回填 voteable + 回填 `candidate.voteable_id` + `final_ranking` 加 `voteable_id`。
+- Admin Work CRUD：`GET/POST /admin/works`、`POST/DELETE /admin/works/{id}`（删除有引用时 409 `WORK_IN_USE`）+ admin-ui `WorksView`。
+- `scripts/bson_to_sql.py`：BSON dump → SQL 导入辅助。
+
+### Changed
+- **`candidate_character` / `candidate_music` 精简为纯年度关联表** `(vote_year, voteable_id)`：原 `name`/`name_jp`/`origin`/`album`/`type`/`first_appearance`/`merged_into` 列全部删除。任何直接读这些列的代码都会坏——仓库内消费方（admin 候选管理、autocomplete、compute_dao、导入）已同步适配为经 voteable/work JOIN 反查。
+- **`GET /vote-objects/characters|music` 响应重构**：改为 `{voteYear, groups:[{group, items:[{candidateId, name, nameJp, type, firstAppearance, workIds, workTypes}]}]}` + `filterMeta`（kinds/works），供前端筛选组件直接消费（实测 vote_year=12 数据完整）。
+- 测试重配：7 条旧候选测试（origin/album 分组、name 键）替换为 6 条新语义测试（work 分组、voteable_id 键）。
+
+### 契约方向（重要，尚未切换）
+- 会议结论（2026-07-20）：**投票提交只传 `candidateId`(int)**，`voteableId` 不出接口。**当前前后端提交侧均未切换**——`src/apps/submit` 零改动，前端 vote 包尚无 candidateId 提交路径，现行契约仍是旧 8-hex payload。
+
+### 兼容性
+- 需 `alembic upgrade head`（`12a5f2e6dbed`；测试库已应用）。迁移链已由 `0015` 重接为单链 `0014 → 12a5f2e6dbed → 0015`，**后续新迁移从 `0016` 顺延**。
+- ⚠️ **记票对撞点（合入时最高风险项）**：B-050 记票白名单仍按前端 8-hex id 归票（`whitelist_*.json` 前端快照）。**前端切换 candidateId 提交前必须完成 B-050-后补6**（白名单迁 DB voteable，`candidateId ↔ old_id` 双认），否则新格式票会被当未知 id 整票丢弃、排名归零。详见 BACKLOG。
+- 设计稿中 `GET /admin/voteables`（§4.6）**设计有、实现无**（404）；admin import 的 work 匹配（Task 5）按计划记为 tech-debt；上届 `final_ranking`(year=11) 导入未执行——收尾清单见 BACKLOG **B-057**。
+
+### 分支收口（2026-07-23，运维记录）
+- `main` 快进同步 `zfq_dev`（`771757f→ea16b1c`）；PR #25（result 契约层）随后合入并部署，compute 已重跑；后端/前端双仓开出我方工作分支 `renko_dev`；前端 `dev` 快进至 `zfq_dev_fe`（含 captcha 超时修复，Touhou-Vote #19）。
+
+## [2026-07-19] result 前端 GraphQL 契约层落地（12 个 query* + 问卷语义 code + 分段统计）
+
+> 承接 2026-07-19 设计稿《Result 前端契约层 + 问卷语义 code + 分段统计》，7 个任务全部完成：`code` 列地基、问卷 feed 换数据源、性别泛化为分段统计、compute 缺口补齐、GraphQL 契约层（12 个新查询）、端到端验收。详见 [设计稿](./superpowers/specs/2026-07-19-result-graphql-compat-design.md) §十"v1 实现落地"。**这是本轮 result 页面从"一个都跑不起来"（`Cannot query field 'queryCharacterRanking'`）到"能过 schema 校验并返回真实数据"的核心变更。**
+
+### Added
+- `question_def`/`option_def` 新增 `code` 列（`String(16)`，可空，索引；migration `0015`，Postgres-only 幂等 `ADD COLUMN/INDEX IF NOT EXISTS`）：独立于自增主键的语义码（题 5 位如 `11011`，选项 7 位如 `1101101`），导入接口与 admin 编辑器（`create_question`/`update_question`/`create_option`/`update_option`，经显式白名单 `_pick_writable`）均可携带/设置。
+- `src/api/graphql/resolvers/result_compat.py`：新增 `ResultCompatQuery`，挂进根 `Query`，新增 **12 个** GraphQL 查询：`queryCharacterRanking`/`queryMusicRanking`/`queryCPRanking`/`queryCharacterTrend`/`queryMusicTrend`/`queryCharacterSingle`/`queryMusicSingle`/`queryCPSingle`/`queryGlobalStats`/`queryQuestionnaire`/`queryQuestionnaireTrend`/`queryCompletionRates`。返回类型全部复用 `types.py` 里此前零引用的 typed strawberry 类型（`RankingEntry`/`CPRankingEntry`/`CharacterOrMusicRanking`/`Trends`/`ResultGlobalStats`/`CompletionRate`/`CachedQuestionItem`/`CovoteItem` 等）。
+- 新配置 `gender_question_code`（默认 `"11011"`）/`gender_male_option_code`（`"1101101"`）/`gender_female_option_code`（`"1101102"`），按语义 `code` 定位性别题与选项。
+
+### Changed
+- **性别泛化为分段统计**：`compute_gender_map` → `build_segment_map(votes, question_code, label_by_option)`；`compute_ranking`/`compute_cp_ranking` 参数 `gender_map`→`segment_map`，新增 `segments` 输出，**同时仍产出 legacy 的 `male_vote_count`/`female_vote_count` 嵌套对象**（向后兼容投影）；**CP 首次获得 gender 字段**（此前 `CPRankingEntry` 无 male/female）。`compute_paper_results(votes, segment_map)`：去掉未用的 `vote_start`/`total_hours` 参数，新增每题 `total_male`/`total_female`、每选项 `male_votes`/`female_votes`。
+- `compute_completion_rates` 返回结构变化：`{category: float}` → `{category: {rate, num_complete, total}}`（补分子分母，供 `CompletionRateItem` 直接消费）。
+- `compute_covote(votes, whitelist, top_k)`：新增 `whitelist` 参数，先按白名单过滤再配对（此前不过滤、直接用原始 id）；输出 `a`/`b` 改为人名（`Whitelist.name_of()`），不再是裸 8-hex id；`cs`/`mi` 显式置 `0.0` 并注释"未实现，前端 connect 页仍是占位、无消费方"。
+- `ComputeDAO.load_questionnaire_votes` 新增 `vote_year` 参数，数据源从死表 `Questionnaire`（全仓无写入方，恒空）改为读 B-039 结构化表 `paper_answer`，经 `question_def`/`option_def` 的 `id→code` 映射把 `active_question_id`/`selected_option_ids` 翻译成语义码；缺 code 的问题/选项行分别计数，汇总为一条 debug 日志。
+- **`queryQuestionnaireTrend` 计划纠错**：设计稿与实施计划均称其为 `queryQuestionnaire` 的别名、字面推导返回 `QueryQuestionnaireResponse`；用真实前端源码（`QuestionnaireDetail.vue`）核对，前端实际按数组下标消费 `queryQuestionnaireTrend[0].trend`，旧 Rust 网关 schema 与此一致。已更正为返回 `[Trends!]!`（与 `queryCharacterTrend`/`queryMusicTrend` 同构），内容为空序列（问卷无真实时间维度，需 append-only 存储改造后才能填真值）。若按计划字面实现会导致前端 schema 校验失败、页面整体挂掉。
+
+### 兼容性
+- **新增 12 个 GraphQL 查询是加法式**：旧的 JSON 标量查询 `ranking`/`trends`/`globalStats`/`singleEntity`/`reasons`/`covote`/`completionRates`/`questionnaire`/`questionnaireTrend` **全部保留**，不影响任何现有调用方。
+- **`compute_*` 三处签名变化**（纯内部函数，无外部调用方，仅供本仓库 `compute_service.py` 调用）：`compute_gender_map`→`build_segment_map`（参数含义变化：从"性别专用三元组"泛化为"任意题的选项→标签映射"）；`compute_paper_results` 去掉未用的 `vote_start`/`total_hours` 两个参数；`compute_covote` 新增必传 `whitelist` 参数。
+- **`compute_completion_rates` 返回结构变化**：调用方唯一是 `compute_service.py`（已同步更新），无 GraphQL/REST 直接暴露旧结构。
+- **新增 alembic `0015`**：`question_def`/`option_def` 加 `code` 列，需 `alembic upgrade head`；幂等、Postgres-only，sqlite 测试库经 `create_all` 不受影响。
+- **配置新增 `gender_*_code` 三项，旧三项 `gender_question_id`/`gender_male_value`/`gender_female_value` 标记 deprecated**（保留一个发布周期，`compute_service` 不再读取，仅为避免未升级配置的部署报缺键错误）。
+- ⚠️ **性别票/问卷结果本轮仍会是 0**：线上问卷是占位内容 + 非语义自增 id，真实题目待运营录入并回填 `code`（见 BACKLOG）；契约层本身已具备真实数据时的完整输出能力。
+- ⚠️ `paper_answer` 无 `invalidated` 标志，admin 作废动作（B-049）触达不到问卷答案（记录差异，未处理）。
+- ⚠️ **`result:{year}:*:ranking` 存储值本次 fix-wave 换单位（不兼容旧缓存，需要重新 compute）**：见下方"合并前复核修复"。**部署顺序要求：上线本次修复后必须重新执行一次 `POST /api/v1/admin/compute-results`（或等下一次定时 compute）**，覆盖掉修复前算出的旧缓存；否则前端会继续读到 0..100 口径与错误分母算出的 `percentage_per_total`，直到下次 compute 才会自愈。
+
+### Fixed（合并前复核修复，2026-07-19 fix-wave）
+
+> 承接 `feat/result-graphql-compat` 分支的全分支终审："Ready to merge: with fixes"，4 项必须修复 + 3 项低成本清理全部完成，并补齐了让 #1/#2 溜过评审的数值断言缺口（此前所有 compat 测试只断言名字/计数/错误 kind，没有一条断言过具体数值）。终审依据是**旧 Rust 网关**（`thvote-be/result-query/src/query.rs`）与**前端格式化函数**（`Touhou-Vote/packages/result/src/lib/numberFormat.ts`/`characterCompare.vue`）——这两处是单位与哨兵值的权威来源。
+
+- **【必须修复】百分比字段单位错误（100 倍）**：`compute.py` 里 `vote_percentage`/`favorite_percentage`/`favorite_percentage_of_all`（角色/音乐/CP 三处，含 `rank_snapshots[0]` 里那份此前用 `int(fp*100)` 的"第二套换算"）此前产出 0..100，但旧网关产出 0..1 的**分数**，前端 `toPercentageString` 自己 `*100` 拼 `%`——两边都乘一次会在结果页每张表的"票数占比"列渲染出 `8000.00%`。已改为全链路统一输出 0..1 分数（`_segment_breakdown`/CP 的 `_rate` 本来就是分数，现在整条流水线口径一致）。历史对比快照分支（`historical` 非空时的 `rank_snapshots[1]/[2]`）当前是死代码（`compute_service.py` 固定传 `historical={}`），为免将来启用时踩同一个坑，一并改成分数。已 grep 确认仓库内没有任何调用方读取 `rank[0]["favorite_percentage"]`（`save_final_ranking` 只读 `rank`/`vote_count`/`favorite_vote_count`），改动不影响历史归档。
+- **【必须修复】`percentage_per_total` 分母错误**：`_segment_breakdown` 此前用共享的 `total_voters` 做分母，旧网关口径是 `male_percentage_per_total = male_count / total_male`——**该 label 自己的总人数**（前端列名"占总体男性比例"）。已改为按 label 的 `segment_totals`（`Counter(segment_map.get(uid, "unknown") for uid, _, _ in votes)`，与旧网关同样统计口径：本类别投票人群，不是全站投票人群），角色/音乐/CP 三处调用点同步更新。
+- **【必须修复】上届对比字段哨兵值错误**：`result_compat.py` 的 `RankingEntry` 五组（共 10 个字段）`rank_last_*`/`vote_count_last_*`/`first_vote_count_last_*`/`first_vote_percentage_last_*`/`vote_percentage_last_*` 此前硬编码 `0`/`0.0`；旧网关对"无上届数据"用 `-1`/`-1.0` 哨兵（`query.rs` 的 `.unwrap_or(-1)`），前端 `characterCompare.vue` 按 `< 0` 判断"有没有上届数据"。硬编码 0 会让第⑨/⑩届对比列显示编造出来的"上届 0 票"而不是正确的"-"。已改为 `-1`/`-1.0`。
+- **【必须修复】`ResultQuery`（旧版 JSON 标量查询）泄露内部 admin 接口**：`result.py` 此前对 `ResultNotComputedError` 直接抛裸 `ValueError("...Run POST /api/v1/admin/compute-results first.")`，且该 resolver 类没有 `map_app_errors` 包裹，message 原样透传给匿名调用方。已包一层 `map_app_errors(service="result")`，并把哨兵异常改成与 `result_compat.py` 同款的稳定 `RESULT_NOT_COMPUTED` `ValidationError`（不透出任何内部路径/堆栈）。
+- **【清理】`compute_global_stats` 第 5 个参数 `gender_map`→`segment_map`**，与其余三个已泛化的同名参数保持一致命名。
+- **【清理】加固"无泄漏"回归测试**：`test_query_character_ranking_not_computed_is_stable_and_leak_free` 此前只挑 `message`/`extensions` 两个字段序列化断言，现在改成对 `GraphQLError.formatted`（含 `locations`/`path`）做完整序列化断言——这条测试的目的本来就是证明"响应任何角落都不泄内部细节"，挑字段验证是不完整的。
+- **【清理】`compute_covote` 里两个恒真断言 `a in top_set`/`b in top_set`**：`a`/`b` 本来就来自 `top_ids`（= `top_set` 的来源），非白名单 id 在更早的 `user_voted` 构造阶段已经过滤，判断恒为 `True`，已删除。
+- **新增数值断言测试**（此前所有 compat/compute 测试只断言名字/计数/错误 kind，没有一条断言具体数值，这正是 #1/#2 能溜过上一轮评审的原因）：`compute_ranking`/`compute_cp_ranking` 的百分比字段落在 `[0, 1]`（4/5 票 → `0.8`，不是 `80.0`）；`percentage_per_total` 用 per-label 分母而非全体投票人数（2 男 1 中 → `0.5`，不是 `0.25`）；`result_compat.py._ranking_entry_from_dict` 的历史字段回填 `-1`/`-1.0`。
+
+### 验收
+- `python3 -m pytest tests/ -q` → 466 passed, 1 skipped（跳过项依赖可选 `pymongo`；新增 4 条数值断言测试，另有 2 条既有测试因百分比单位修正被重新配平到新数值）。
+- `python3 -m flake8 src/` → exit 0。
+- 12 个 `query*` 字段的 SDL 与真实前端源码（`Touhou-Vote/packages/result/src`，14 个 `.vue` 文件）逐字段/参数核对，零漂移；实际执行前端原文 `queryCharacterRanking` 查询验证 `voteYear` 回落行为与真实数据返回。
+
+## [2026-07-18] B-050 v1：计票系统重写落地（读 raw_*、id 白名单、CP 无序、名次口径对齐）
+
+> 承接 2026-07-18 的 B-050 设计稿(id-based 记票重写)与权威需求对齐,本次完成 v1 全部 6 个实现任务:计票数据源切换、id 归票、CP 无序 multiset、名次口径、schema 补字段、设计稿/BACKLOG 收尾。详见 [设计稿](./superpowers/specs/2026-07-18-result-recount-id-based-design.md) §九"v1 实现落地"。
+
+### Added
+- `src/apps/result/whitelist.py` + 快照 `src/apps/result/data/whitelist_{character,music}.json`(角色 244 / 音乐 612 条,从前端 `character.ts`/`music.ts` 提取,含 `system_id` = 列表位置序号)。`scripts/extract_whitelist.mjs`:前端列表变更时的重新提取脚本(`node scripts/extract_whitelist.mjs <前端仓库根> <后端仓库根>`,覆盖写两份 JSON,需手动提交)。
+- `RankingEntity`(`src/apps/result/schemas.py`)新增 `id: Optional[str] = None`、`favorite_percentage_of_all: float = 0.0`,与新 compute 输出对齐。
+
+### Changed
+- **计票改读真实提交表 `raw_*`**(`ComputeDAO.load_char_votes`/`load_music_votes`/`load_cp_votes`):取每个 `vote_id` 最新一条(按 `created_at`/`attempt` 兜底去重)、排除 `invalidated=true`(接 B-049 管理端作废标记)。不再读死表 `character`/`music`/`cp`(此前这些死表永远空,计票产出恒为空/零排名)。
+- **按角色 id 归票**(`compute_ranking`):角色/音乐票的 `item.id` 不在对应白名单 → 直接丢弃(不计入任何统计);白名单同时提供展示元数据(name/name_jp/origin/album/type)与 `system_id`。
+- **CP 记票改无序 multiset**(`compute_cp_ranking`):key = `tuple(sorted([id_a,id_b,id_c 去 None]))`(保留重复元素,允许 2 人自 CP);顺序/主动方不进 key;`active` 作为属性,产出 `active_a/active_b/active_c/active_none` 四个占比;任一成员不在白名单 → 整条 CP 丢弃;**组合票数 == 1 不计入**排名与统计。
+- **名次口径对齐权威文档**:票数(desc)→本命数(desc)→系统 ID(asc)三级排序;**同票数即同名次(虚位)**——`display_rank` 只在票数变化时递推。`favorite_vote_count_weighted`(本命加权)= 票数 + 本命数。
+- 离线批量计算沿用既有管理台 `POST /admin/compute-results` 按钮,未新增触发入口。
+
+### 兼容性
+- **发榜条目新增字段**:`id`、`favorite_percentage_of_all`(均有默认值,向后兼容,GraphQL/REST 走无类型 JSON 不受影响)。
+- **名次排序口径变化**:此前(死表路径)按加权值排序,现改为票数优先(见上"名次口径"),同票数视为并列——依赖旧排序口径的下游(如有)需核对。
+- **计票数据源变更**:由死表 `character`/`music`/`cp` 改为 `raw_*`——死表此前恒为空,故本变更实为"从零排名修复为真实排名",非破坏性回退。
+- 无需数据库迁移(不改表结构)。
+
+### Fixed（fix-wave 补丁,同分支）
+- **作废语义修正**(`ComputeDAO._latest_per_vote`):此前逻辑先剔除 `invalidated` 行、再取剩余行里最新的一条——legacy 多行选民(Mongo 同步一 doc 一行)若最新行被作废,会**错误回退到更旧的合法行**,导致该票仍被计入。改为:先按 `created_at`/`attempt` 取每个 `vote_id` 最新一行,若该最新行本身被作废,**整个 `vote_id` 丢弃**,不回退旧提交——即"作废当前投票 = 删除这一票",而非"作废当前投票 = 恢复上一票"。已补回归测试 `test_invalidated_latest_row_drops_vote_no_fallback`。
+- **清理接线后的死代码**:`compute_dao.py` 删除 `load_char_candidates`/`load_music_candidates`/`load_merge_name_map`/`load_historical`(id 白名单管线接线后零调用方);`compute.py` 删除 `CandidateMeta`/`KIND_MAPPING`(与 `whitelist.py::_KIND_MAPPING` 重复维护)。grep 确认 `src/`+`tests/` 无残留引用。
+
+## [2026-07-18] Docs：入官方需求文档 + B-050 设计稿对齐权威口径
+
+> 用户上传两份 VoileLabs 官方需求文档,作为投票/记票的权威依据入 `docs/`,并把 B-050 结果/记票设计稿(`docs/superpowers/specs/2026-07-18-result-recount-id-based-design.md`)与之对齐。**纯文档,无代码/schema 变更。**
+
+### Added
+- `docs/VoileLabs-人气投票项目-需求文档 (2).docx`(投票系统需求,输入侧;4.2MB)+ 自动转换文本版 `...-投票系统.md`(供 grep/diff,权威以 docx 为准)。
+- `docs/VoileLabs-人气投票项目-需求文档-投票结果页面 (1).docx`(结果页面需求 v2.0,输出侧;15MB)+ 已有 `...-投票结果页面.md`。
+
+### Changed
+- B-050 设计稿新增 **§八 权威需求对齐**:①票位数(角色8/音乐12/CP4/提名5)、本命≤1 加权2、有效票=各部门≥1 无空位;②白名单=官方策展名单(角色截至 2024/12/22 按作品分类、音乐按专辑);③**CP 相同组合**权威去重("顺序不同、主动方不同也视为同组合");④问卷 7 位 ID 体系、性别题取后端配置 `q11011`;⑤结果页完整指标全集(名次 tie-break=票数→本命→系统ID、本命加权、trend、上届对比、高级搜索);⑥trend 需全提交历史 vs 终榜各自取最新。
+- **修正**:CP key 由 `sorted({A,B,C})`(set)改为 `tuple(sorted([A,B,C]))`(**multiset**)——2 人 CP 允许自 CP(如 灵梦×灵梦),set 会误去重;3 人 CP 禁重复角色。
+
+### 兼容性
+- 无接口/数据影响(设计阶段文档)。⚠️ 两份 docx 合计约 19MB 二进制入库,后续如需瘦身可转 git-lfs。
+
+## [2026-07-18] Ops：测试库全量重建（全流程 alembic）—— 修复 B-051
+
+> 诊断 B-051 时确认测试库 `activity_log` 表**根本不存在**却 `alembic_version=0014`(stamp 未真跑,init_db/stamp 漂移)。经用户授权,对测试库(临时凭据)做**从头到尾的 alembic 重建**,确保 schema 与迁移一致、以后安全。**纯运维操作,无代码变更。**
+
+### 操作(保留数据式重建)
+1. `pg_dump` 无(用 asyncpg COPY)导出有数据的 10 张表(候选 244+612、问卷结构 8/24/32/40、user 2、raw_character/raw_paper/paper_answer)。
+2. `DROP TABLE ... CASCADE` 清空全部 23 表(含错误 stamp 的 `alembic_version`)。
+3. `alembic upgrade head` 从空库跑通 **0001→0014 全 14 步无错**(验证全链路迁移健康)。
+4. COPY 回灌数据 + 重置各表 id 序列;`reload-config` 刷后端连接池。
+5. 验证:`activity_log` 表已建、`activity-logs` 端点 200、全部行数一致、`alembic_version=0014`(真跑)。PII 转储文件用后 shred 清除。
+
+### 结论 / 遗留
+- **B-051 已解决**;`login_session` 缺失是误报(SSO 会话在 Redis)。
+- 根因预防仍属 **B-026**(CI `alembic check` + 去 init_db):本次重建修好了当前漂移,但要防复发需补 DB 治理门禁。
+- 候选数据 `vote_year=12`(测试导入值,非日历年);查候选端点需带 `vote_year=12`。
+
+## [2026-07-18] Fixed：审计日志端点真实库 500
+
+> 迁移后 smoke 测试发现 `/api/v1/admin/activity-logs` 在测试机真实库返回 500(sqlite 测试库正常,故此前未暴露)。旧/新面板的"审计日志"页均受影响(纯后端问题,非前端迁移引入)。
+
+### Fixed
+- `AdminService.list_activity_logs` 由 `select(ActivityLog)`(取全部映射列)改为**只 SELECT 端点用到的 5 列**(id/event_type/user_id/requester_ip/created_at)。真实 `activity_log` 表疑由早期 init_db/stamp 路径建成、缺后加的审计列(target_email/old_value/additional_fingerprint 等),整实体 SELECT 遇缺列即 500;只取所需列规避,也更省。
+- router 序列化 `created_at` 加空值兜底(`... if r.created_at else None`)。
+- 全量 411 passed。**⚠️ 更正:此改动是有效改进(不过取无用列/更省),但部署后 smoke 显示端点仍 500**——进一步诊断:空结果查询(不存在的 user_id / 超尾页)也 500,即**查询层失败**,非行数据、非被移除的审计列、非 null created_at。真因是**真实测试库 `activity_log` 表 schema 问题**(疑缺某核心列或表本身异常,init_db/stamp 遗留),需 DB 直连 `\d activity_log` 或容器 traceback 才能定位。**转 B-051 跟踪**(本机无 DB 密码、无 SSH,无法进一步诊断)。写入侧因 `_safe_log` 吞异常而静默失败,故一直未暴露。
+
+## [2026-07-18] B-049 Plan 2 Phase 2：迁移全部旧工具到 Vue
+
+> 承接 Phase 1(骨架+监控页+Users),把旧单文件面板剩余 6 个工具全部迁到模块化 Vue view —— 拆巨大 HTML 收官。全部经 `vue-tsc` 类型检查 + 构建通过(81 模块,JS 54KB gzip)。
+
+### Added
+- 6 个 view + 对应类型化 api 模块(契约集中 `api/types.ts` + 各 api 模块):
+  - **CandidatesView**(候选项:搜索/字段规格驱动编辑/删除/合并查看+拆分/CSV·JSON 两步导入)+ `api/candidates.ts`
+  - **SyncView**(数据同步:开始/取消,2s 轮询状态+进度条,历史+重试;后端 status 永不返回 completed,以 run_id running→idle 判完成)+ `api/sync.ts`
+  - **NominationsView**(提名审核:状态过滤/通过/驳回)+ `api/nominations.ts`
+  - **QuestionnaireView**(问卷 4 层嵌套编辑器:问卷→题组→题→选项 全层 CRUD + 整树导入;父 id 由编辑态跟踪,改动后重拉树)+ `api/questionnaire.ts`
+  - **LogsView**(审计日志:user_id/event_type/since 过滤)+ `api/logs.ts`
+  - **ExportView**(导出投票 CSV,blob 下载)+ `api/exportVotes.ts`
+
+### Changed
+- AppShell 顶栏补齐 6 个工具入口;router 补 6 条路由。旧面板 `/admin-ui-legacy` 暂留作回退(标"旧版(备用)")。
+
+### 兼容性 / 部署
+- 纯前端;无后端变更。`pnpm build` 类型检查+构建均通过。
+- **全部工具已在新 Vue 台可用**;旧面板保留一轮供视觉验收,验收后可删 `src/admin_ui_legacy/` + 其 StaticFiles 挂载 + nav 入口。
+
+## [2026-07-18] B-049 Plan 2 Phase 1：管理台 Vue 模块化重写
+
+> 拆掉旧 `src/admin_ui/index.html`(1115 行单文件),重写为 Vue3+Vite+TypeScript 模块化应用。首要目的是可维护/可扩展,其次补齐 B-049 安全监控 UI(后端 Plan 1 已上线但一直无前端)。设计见 `docs/superpowers/specs/2026-07-18-admin-console-vue-frontend-design.md`。
+
+### Added
+- 新 `admin-ui/`(Vue3 `<script setup>` + Vite + TS,hash 路由,无 Pinia):
+  - **api 层**:`api/client.ts` 唯一 fetch 封装(`/api/v1` 前缀、`X-Admin-Secret`、403→登出、`!ok`→带 detail 抛错、裸 `/admin/reload-config`)+ 类型化端点模块 `admin.ts`/`monitor.ts` + `types.ts`(后端契约镜像)。契约集中一处。
+  - **composable**:useAuth/useToast/useAsync/usePagination。
+  - **共享组件**:DataTable(分页表格)/Modal/Toast/FilterBar/StatCard/AppShell/LoginOverlay —— 取代旧版每 tab 手写的表格/弹窗/fetch。
+  - **view**:仪表盘 + 5 监控页(流量概览/IP·设备聚类/可疑名单/投票浏览器+作废恢复/账号钻取+人工复核)+ 用户(搜索/封解封,模块化打样)。
+- **构建方式 commit-dist**:`admin-ui/` 源码 `pnpm build`(vue-tsc 类型检查 + vite build)→ 产物提交到 `src/admin_ui/`,StaticFiles 服务、`COPY src/` 进镜像,**部署管线零改动**。见 `admin-ui/README.md`。
+
+### Changed
+- `/admin-ui` 现服务新 Vue 台;旧单文件面板移到 **`src/admin_ui_legacy/`**、挂 **`/admin-ui-legacy`** 作迁移期兜底(尚未迁移的候选/同步/提名/问卷编辑器/日志/导出仍在旧面板用,新台顶栏有入口)。`main.py` 加第二个 StaticFiles 挂载。
+
+### 兼容性 / 部署
+- 纯前端 + 一处 StaticFiles 挂载;无后端 API/schema/迁移变更。前端 `pnpm build` 类型检查通过;Python 全量 411 passed。
+- 访问 `/admin-ui` 需管理密钥(`ADMIN_SECRET` 已在 Nacos 配)。
+- 后续:增量迁移其余 7 工具 + 几个当前无 UI 的端点(用户详情钻取/建合并/ranking preview),迁完删 legacy。
+
+## [2026-07-17] 管理端 UI↔API 对齐:修 5 处子页面/按钮/字段/结果显示错位
+
+> 全量审计现有 admin panel(`src/admin_ui/index.html`)各子页面/按钮 vs 后端端点契约,修复实测发现的 3 个真 bug + 2 个显示/健壮性缺陷。为 Vue 重写(Plan 2)前先把现有面板的功能/字段/结果显示对齐。
+
+### Fixed
+- **候选项编辑不再破坏合并状态**:`candidate_field_specs` 排除内部列 `merged_into`(合并链,只应由 merge/unmerge 端点改)。此前它被当可编辑文本字段渲染,`saveEdit` 每次保存都回发 `merged_into=""` → 空串写入 Integer 列 500,或悄悄清掉候选的合并链;且 `saveEdit` 只处理 409/404,其他状态(含 500)仍提示"已保存"。同时给 `saveEdit` 加 `!r.ok` 判错。
+- **问卷题/选项编辑不再把 `order` 重置为 0**:`assembler.py` 的 `_question_out`/`_option_out` 现在输出 `order`(此前只有 `_group_out` 带)。编辑弹窗读 `qu.order||0`/`o.order||0` 恒为 0,保存又回发 → 静默打乱展示顺序。
+- **"Reload Config" 按钮不再 404**:该端点挂在裸 `/admin/reload-config`(非 `/api/v1`),前端 `quickAction` 经 `api()` 误加 `/api/v1` 前缀 → 404。改为直连裸路径并带 `X-Admin-Secret`;三个 quick action 一并加 `!r.ok` 判错。
+- **问卷列表卡片"问题"数不再恒为 0**:`list_questionnaires` 现返回 `question_count`(题→组→问卷计数),卡片改读它。
+- **审计日志 `since` 传非法格式返回 400** `INVALID_SINCE_FORMAT`(此前 `datetime.fromisoformat` 无 try/except → 500)。
+
+### 兼容性
+- assembler 结构输出**新增 `order` 键**(问题/选项层):附加字段,向后兼容(结构本就按 order 排序);问卷列表项新增 `question_count`。二者均只增不改。
+- 纯后端 + 管理端静态页,无 schema/迁移/GraphQL SDL 变更。测试 +4,全量 411 passed。
+
+## [2026-07-17] B-042 收口 admin ops 端点鉴权
+
+> B-049 的 `require_admin` 只覆盖到 `/api/v1/admin/*` 两个路由;`main.py` 上还有三个裸 `/admin/*` ops 端点未纳入闸门。本次补齐。
+
+### Security
+- `main.py` 的 `POST /admin/reload-config`、`GET /admin/discover/{service_name}`、`GET /admin/discover-self` 三个 ops 端点加 `dependencies=[Depends(require_admin)]`——此前**零鉴权**,`reload-config` 还会回显 DB host/port/name(信息泄露)。勘察确认这三个端点无内部/自动调用方(CI、健康检查、服务注册均不调),唯一调用方是携带 `X-Admin-Secret` 的 admin UI,故加闸门不影响运维。
+- 测试 +6(`tests/integration/test_admin_auth.py`:三端点 × 无 secret/错 secret 各 403;require_admin 在 handler 前短路,不触发真实 reload/Nacos 调用)。全量 407 passed。
+
+### 兼容性 / 部署
+- 需 `ADMIN_SECRET` 已配(B-049 已在 Nacos 配好)。调这三个端点现在必须带 `X-Admin-Secret` 头。
+- 纯后端,无 schema/迁移变更。B-042 的 admin 鉴权项就此关闭;仅剩 scraper Pixiv 凭据待配。
+
+## [2026-07-17] B-049 安全监控管理端 API + 处置动作（record-only）
+
+> 承接 B-044~B-048 各反刷票取证信号(IP/设备指纹、`fill_duration_ms`、`client_env`、作弊评分)，本次落地一套只读监控视图 + 可逆的人工处置端点，挂在既有 fail-closed 的 `require_admin` 闸门下(见上一条目)。只读 `raw_*`(路径 A)，`raw_work`(废弃路径 B)不纳入。
+
+### Added
+- migration `0014`：`raw_character/music/cp/paper/dojin` 各表加 `invalidated`(bool，默认 `false`，管理端软作废标记)+ 若干监控查询索引；新表 `voter_review`(`user_id` 主键，`status`/`note`/`updated_at`，人工复核记录)。
+- `src/apps/admin/monitor/`：新的监控子模块，挂在 `/api/v1/admin/monitor`，与 `router.py` 一样受 `require_admin` 统一闸门保护。
+  - `GET /overview`：各类别投票总数、去重 IP/设备数、按日提交量。
+  - `GET /groups`、`GET /groups/{kind}/{key}/members`：IP/设备聚类(同一 IP 或设备关联的多账号)及成员列表。
+  - `GET /suspects`：固定权重可疑打分(首投过快、无 `client_env`、UA 疑似脚本、注册到首投间隔过短、所在 IP/设备组过大)，分页返回、候选集封顶避免全量算分。
+  - `GET /votes`：单类别投票浏览器，支持按 `vote_id`/`user_ip`/`device`/`invalidated` 过滤 + 分页。
+  - `GET /account/{vote_id}`：单账号钻取，聚合其在 5 个类别下的全部提交 + 已有复核记录 + 关联的 IP/设备组。
+  - `PATCH /vote/{category}/{row_id}/invalidate`、`.../restore`：切换单条投票记录的 `invalidated` 标记，行不存在返回 404。
+  - `PATCH /account/{vote_id}/review`：人工复核状态 upsert(`status`/`note`，每账号一行，覆盖式更新)。
+- `tests/integration/test_admin_monitor.py`：15 个用例，覆盖聚类/分页/评分/HTTP 鉴权 + 本次新增的处置动作(作废→列表可见→恢复；作废不存在的行 404；复核 upsert 覆盖并反映到账号详情)。
+
+### Record-only 边界（重要）
+- `invalidate`/`restore`/`review` **只写标记或行数据，不做任何排名重算**——排名仍完全由现有(未改动的)计票逻辑产出。响应 `detail` 明确写"已记录；影响排名需 B-050 计票重写落地后生效"，前端据此提示管理员"已记录，暂不影响当前排名"。
+- 这是刻意的阶段边界：B-050(计票重写)落地前，本控制台只做"取证 + 记录"，不接入排名计算，避免在旧计票逻辑上叠加新的隐式规则。
+
+### 兼容性 / 部署
+- 新增数据库表/列需要 `alembic upgrade head`(migration `0014`)才能使用；未跑迁移时相关端点会因列/表缺失报错。
+- 无破坏性变更：新增端点均为新路径，不影响既有 `/api/v1/admin/*` 端点语义。
+
+## [2026-07-17] B-049 管理端鉴权 fail-closed + IP 白名单
+
+> Review 发现 `src/apps/questionnaire/admin_router.py` 有独立 `/admin` 路由,仍用旧的 fail-open `_check_admin_secret`(未配 `admin_secret` 时直接放行)——与 `src/apps/admin/router.py` 已切换的 fail-closed `require_admin` 不是同一套闸门,形成一个未闭合的开放口子。本次把它补齐。
+
+### Changed
+- `_check_admin_secret` 由 fail-open 改 fail-closed(未配 `admin_secret` 一律 403);`require_admin` 统一闸门(secret + IP 白名单)应用于 `src/apps/admin/router.py` 与 `src/apps/questionnaire/admin_router.py` 两个 `/admin` 路由。
+- `require_admin`(以及两处 `_check_admin_secret`)的 secret 比较改用 `secrets.compare_digest` 常量时间比较,避免逐字节比较的响应耗时差被用于旁路猜测 secret。
+
+### Security
+- 新配置 `ADMIN_ALLOWED_IPS`(Nacos JSON 数组字符串,空 = 不限 IP;非空时客户端 IP 须精确匹配或落入某个 CIDR 才放行,否则 403)。
+- 新增 `tests/integration/test_admin_auth.py`:对 `require_admin` 的 fail-closed 行为做 HTTP 级回归覆盖(未配 secret 403、错 secret 403、IP 不在白名单 403、空白名单 + 正确 secret 放行)。
+- `tests/contract/test_result_endpoints.py` 删除了一个本地 `admin_secret` fixture——它不还原 `ADMIN_SECRET` 环境变量,会污染同进程内后续测试;改用 `tests/contract/conftest.py` 里已有的、会正确还原环境的同名 fixture。
+
+### 兼容性 / 部署
+- **部署警告(重要)**:上线前必须在 Nacos 配好 `ADMIN_SECRET`,否则**所有 `/api/v1/admin/*` 端点将 403**(测试机此前 `ADMIN_SECRET` 未配 = 裸奔,部署本改动前务必先配)。
+- 遗留:`main.py` 的 `/admin/reload-config`、`/admin/discover*` 三个 ops 端点仍未纳入闸门(需先分析内部调用方),B-042 部分保留。
+
+## [2026-07-17] 删除死代码：vote_data 模块（路径 B 空壳）
+
+> 勘探(2026-07-17)发现投票有两套并行存储:**路径 A** `raw_*`(前端 GraphQL 提交的真实落库,提交/回读/CSV/统计全走这)与**路径 B** `character/music/cp/questionnaire`(由 `vote_data` 模块写,但**无任何调用方**、测试库 0 行、旧 Rust 侧本就是空壳 `fn main(){}`、项目文档 2026-05-12 已标"遗留不再写入")。二者**从未接线**。
+
+### Removed
+- 删除整个 `src/apps/vote_data/`(service/dao/router/models/schemas)——路径 B 的唯一写入方,其 REST `/api/v1/vote-data/*` 端点无任何调用者。
+- `src/api/rest/v1/__init__.py`:注销 `vote_data_router`。
+- `tests/integration/test_vote_data.py` 删除。
+
+### Fixed
+- `AdminService.get_user_detail` 的"投票状态"改读**真实提交表 raw_***(`SubmitDAO.has_submit`),此前读死表 Path B 永远显示"未投",不准。
+
+### 遗留（转 B-050 大重写）
+- `db_model/character.py`/`music.py`/`cp.py`/`questionnaire.py` 四个模型现只剩 `compute_dao` 在读——它们是 B-050 计票重写的对象,本次不动。
+> 最后更新：2026-07-17（B-048 拦脚本:Origin/Referer 校验）
+
+## [2026-07-17] B-048 拦脚本：服务端 Origin/Referer 校验（默认关）
+
+> 让变更请求尽量来自真人浏览器,拦掉裸脚本(curl/python 直连)。设计见 `docs/superpowers/specs/2026-07-17-block-scripts-design.md`。
+
+### Added / Security
+- `BrowserOriginGuardMiddleware`(`src/common/middleware/origin_guard.py`):对**变更类请求**要求带浏览器自动附加的 `Origin`/`Referer`,不带→403(`FORBIDDEN_ORIGIN`)。范围:`POST /graphql` 且 body 含 `mutation`(正则 `\bmutation\b`,**不匹配 introspection 的 `mutationType`**→前端 codegen 不受影响)、REST 提交/发码/登录端点。`CORS_ALLOWED_ORIGINS` 配了具体域名时还需 host 匹配。
+- 开关 `REQUIRE_BROWSER_ORIGIN`(Nacos,默认 **false**),安全灰度;改后重启容器(B-017)。
+- 测试 +6,含钉死 BaseHTTPMiddleware 读 body 后能回放给下游 GraphQL(带 Origin 的 mutation 真的执行)。
+
+### 兼容性 / 局限
+- **默认关,零行为变化**。CORS 拦不住脚本(浏览器端执行),故本项在服务端主动校验。
+- 少数隐私插件剥离 Referer/Origin 的用户,开启后投票会被拦——故可随时关。伪造头能过(刻意接受,成本已抬高)。
+- **端口收口(`:18000` 直连)列为后续项**:前端 codegen 直连 :18000 拉 schema,直接关端口会断前端 CI,收口前须先把 codegen 改走 nginx 代理。
+
+## [2026-07-17] B-046 User-Agent + 浏览器环境指纹（每票取证）
+
+> 每票记录客户端环境指纹作反刷票特征。只取证不拦截。前端在 Touhou-Vote `4b89a23`。
+
+### Added
+- `raw_*.client_env`(新列 **migration 0013**,6 张表,单个 JSON 列):`{ua, tz, screen, lang}`。
+  - `ua` 服务端在 `_server_meta` 从请求头取(连纯 API 机器人也跑不掉:headless/`python-requests`/缺 UA 皆信号)。
+  - `tz/screen/lang` 前端 `clientEnv.ts` 采集、以 JSON 字符串上报;服务端**只白名单取这三键、值截断、限总长**(不做 PII grab-bag)。浏览器时区 vs IP 地理不符=经典代理信号。
+  - 单个 JSON 列,以后加环境信号无需改表。
+- 5 个 `*SubmitGQL` 加可选 `clientEnv`(SDL 向后兼容);sync mapper 透传(历史 NULL)。测试 +7。
+
+### 兼容性 / 部署
+- 需 `alembic upgrade head`(**0013**,依赖 0012;`ADD COLUMN IF NOT EXISTS`,幂等)。**本 PR 叠在 B-045(#11)之上,须先合 #11**。
+- 只取证、不拦截。
+
+## [2026-07-17] B-045 提交耗时 + 服务端改票计数（反机器人时序特征）
+
+> 记录投票/问卷填写耗时作为反机器人特征(瞎点耗时≈0),**不误伤改票的人**。只取证不拦截。设计见 `docs/superpowers/specs/2026-07-17-submit-timing-signal-design.md`;前端在 Touhou-Vote `f59585a`。
+
+### Added
+- `raw_*.fill_duration_ms`(新列,**migration 0012** 覆盖 6 张 raw_* 表):客户端上报的"页面挂载→提交"墙钟毫秒数。5 个 `*SubmitGQL` 加可选 `fillDurationMs` → `_server_meta` → `SubmitMetadata` → 落库。前端 `fillTimer.ts` + 5 类投票/问卷埋点。机器人直接打 GraphQL 不跑前端 → 值为 null(本身即信号)。
+  - **落库语义 = 首次提交耗时,改票时服务端保留不覆盖**(`_upsert` 逻辑)。防机器人"投一次快、再重提一次"洗掉首投证据(覆盖式提交会物理删掉 attempt=1 那行)。判据直接看这个保留值(快/为空=可疑),重提多少次改不了它;不再按 attempt 豁免。
+- `attempt` 计数**改由服务端计算**(复用此前恒 NULL 的死列,无需迁移):`SubmitDAO._upsert`(5 个 create_* 收敛到它)覆盖写前 `MAX(attempt)+1`,首次=1、改票=2/3…,作辅助信息(改了几次)。
+- 测试 +2(attempt 1→2→3、只留一行、fill_duration 落库)。
+
+### 兼容性 / 部署
+- SDL:5 个 submit input 各加**可选** `fillDurationMs`(向后兼容);契约测试同步更新。
+- 需 `alembic upgrade head`(0012,`ADD COLUMN IF NOT EXISTS`,幂等)。
+- 二者均**只取证、不拦截**。
+
+## [2026-07-17] B-043 发码端点限流（此前完全无限流）
+
+### Added / Security
+- `UserService.send_email_code/send_sms_code` 加两层限流（service 层单一收口,GraphQL `request*Code` + REST `send-*-code` 双入口一并覆盖）：
+  - **per-IP 洪泛限流 30/60s**,放在 captcha **之前**——挡洪泛并保护每次验证码校验对阿里云的付费调用(0.005 元/次)。额度取宽松值:captcha 已逐次拦每次发码,per-IP 只作洪泛/成本兜底;共用出口 IP(校园/小区 NAT)一分钟内可能几十真实用户同时注册,30/60s 给足余量避免误伤。依赖 X-Real-IP 可信(B-044)才有意义。
+  - **per-号码重发间隔 1/60s(短信)**,放在 captcha **之后**——只对真正发出的码计数,避免过验证码前失败也占额度。邮箱沿用 EmailCodeService 既有 120s guard。
+- `rate_limit` 的 `HTTPException(429)` 经 `map_app_errors`(GraphQL)/FastAPI(REST) 出 `REQUEST_TOO_FREQUENT`。测试 +4(限流顺序:IP 在 captcha 前、洪泛在 captcha/发送前被拦)。
+
+### 兼容性
+- 纯后端,无 schema/契约变更。撞线为 `REQUEST_TOO_FREQUENT` 软提示,60s 后可重试。
+
+## [2026-07-17] B-044 反刷票证据采集：设备 UUID + 可信客户端 IP
+
+> 目标:为"一人多小号"刷票留可事后聚类的可信证据(现在就记,投票期一开补不回来)。指纹与 IP **只取证不拦截**。设计见 `docs/superpowers/specs/2026-07-17-anti-vote-farming-design.md`。前端改动在 Touhou-Vote `4b9f4c5`。
+
+### Added
+- 设备指纹(Phase 0,localStorage UUID):5 个 `*SubmitGQL` 加可选 `deviceId` → `_server_meta` 写入已有的 `raw_*.additional_fingreprint` 列(投票表无需迁移);`loginPhone/loginEmail` 加可选 `deviceId` → `Meta` → 新列 `user.register_device_id`(**migration 0011**)。前端 `deviceId.ts` 生成/持久化 UUID,随投票与登录上报。
+- 单测 +12(X-Real-IP/CIDR 解析)。
+
+### Fixed / Security
+- `get_client_ip`:对端为可信代理(`trusted_proxy_ips`,**支持 CIDR**)时读 nginx 覆盖写的、不可伪造的 `X-Real-IP`(旧实现读可伪造的 `X-Forwarded-For[0]`);无该头则取 XFF 最右一跳。修复"未配 `TRUSTED_PROXY_IPS` 时所有请求记成 nginx 内网 IP"→ 之前 IP 限流与聚类均失效。
+- REST 提交 5 端点服务端强制覆盖 `meta.user_ip`(旧实现信客户端 body 自报,可伪造)。
+
+### 兼容性 / 部署
+- SDL:5 个 submit input 各加**可选** `deviceId`(向后兼容,老客户端不传);契约测试同步更新。
+- 需 `alembic upgrade head`(0011,`ADD COLUMN IF NOT EXISTS`,幂等)。
+- 需 Nacos 配 `TRUSTED_PROXY_IPS`(nginx 网段/私有网段,JSON 字符串数组,改后重启)——否则 IP 仍不可信。
+
+## [2026-07-17] B-043 人机验证前端接入 + 测试机全链路生效（Touhou-Vote 仓库改动,此处记录以便追溯）
+
+### Added
+- 前端（Touhou-Vote dev `30efc96`）:`packages/vote/src/common/lib/aliyunCaptcha.ts`（脚本预载+隐藏代理按钮弹出 popup 验证,`CAPTCHA_PREFIX`/`CAPTCHA_SCENE_ID` 常量集中于此,换账户改这里）;LoginBox/UserSettings 的"获取验证码"改为先过验证再发码,`captchaVerifyParam` 随 `request*Code` 提交;新增 CAPTCHA_* 错误的用户提示分支。
+- 降级语义:用户关闭弹窗=静默中止;`AliyunCaptcha.js` 加载失败(如海外网络)=无参直发,由后端闸门裁决。
+
+### 部署/验证（2026-07-17 实测）
+- Nacos 六键已配（ENABLED=true,FAIL_MODE=closed,SceneId `8yhz5jet`）;后端(:18000)与前端(:8082)均已部署。
+- smoke:无参发码→`CAPTCHA_REQUIRED`;伪造参数→`CAPTCHA_FAILED`（阿里云真实判定回包,证明 AK/SceneId/endpoint 全通）;部署产物 chunk 内确认集成存在。
+- 真人浏览器验收通过（2026-07-17，Touhou-Vote `11a7630`）：点"获取"→弹出阿里云验证→过验→倒计时启动→收到短信,全链路正常。
+- 修复（`11a7630`）：`verifyHuman` 的弹窗触发从 `setTimeout(0)` 改到 `getInstance` 回调后（+300ms 兜底）——原写法在 widget 异步绑定按钮监听前就程序化点击,点击落空导致 Promise 永久悬住（无弹窗/无报错/无倒计时）。
+- 待办:发码端点限流（独立小 PR）、海外网络加载实测（B-043 剩余项）。
+
+## [2026-07-17] B-043 人机验证后端壳（配置/客户端/闸门,默认关闭）
+
+### Added
+- `Settings` 新增 `ALIYUN_CAPTCHA_*` 六键（ENABLED/AK 对/ENDPOINT/SCENE_ID_SEND_CODE/FAIL_MODE,均 Nacos 下发,改后需重启,B-017）。
+- `src/common/aliyun/captcha_client.py`:验证码 2.0 `VerifyIntelligentCaptcha` 封装（照 pnvs_client 模式:lazy SDK import、线程池异步、lru_cache 单例;API 级错误→`CAPTCHA_UNAVAILABLE`）。依赖新增 `alibabacloud-captcha20230305>=1.1.0`。
+- `src/common/verification/captcha.py`:`CaptchaService.verify_or_raise` 闸门（行为矩阵:关闭=放行;缺参=`CAPTCHA_REQUIRED`;未过=`CAPTCHA_FAILED`+VerifyCode;服务异常按 `FAIL_MODE` closed(默认拒)/open(放行)）。
+- 接入点:`UserService.send_sms_code/send_email_code` 首行调闸门——GraphQL 与 REST 双入口同时收口。
+- GraphQL `requestPhoneCode/requestEmailCode` 新增**可选**参数 `captchaVerifyParam`(SDL 向后兼容,契约测试钉死可选性);REST `Send*CodeRequest` 加同名可选字段;错误文案表 +3(中文)。
+- 测试 +12(闸门行为矩阵/响应解析/service 接线顺序/SDL 契约),全量 355 passed。
+- `docs/operations/captcha-onboarding.md`:傻瓜式接入手册（开通→建场景→RAM AK→Nacos→smoke→**个人→公家账户切换清单**→坑速查）。
+
+### 兼容性
+- **`ALIYUN_CAPTCHA_ENABLED` 默认 false,零行为变化**;拨 true 前需按手册配齐 Nacos 六键并重启。
+- SDL 变更(§8 报备):仅两个 mutation 各加一个可空参数,旧调用不受影响。
+
+## [2026-07-16] B-043 注册防刷人机验证：调研与构思（docs）
+
+### Added
+- `docs/superpowers/specs/2026-07-16-captcha-anti-abuse-design.md`：阿里云验证码 2.0 联网调研（1.0 已于 2026-06-10 停服;计费 0.005 元/次;前端动态加载 `AliyunCaptcha.js` popup 绑定发码按钮;服务端 `VerifyIntelligentCaptcha` + PyPI `alibabacloud-captcha20230305`;`captchaVerifyParam` 一次性防重放）+ 方案构思（闸门设在发验证码,service 层双入口收口;`requestPhoneCode/EmailCode` 加可选参数,SDL 向后兼容;默认 fail-closed,Nacos 开关人工降级;成本约 0.005 元/次可忽略）。
+- ⚠️ 勘探发现并记录：发码端点（GraphQL `request*Code` + REST `send-*-code`）**当前无任何后端限流**——列入 B-043 一并修复。
+
+### 兼容性
+- 纯文档,无代码变更。实施将新增 GraphQL 可选参数与 `ALIYUN_CAPTCHA_*` 配置组（届时另记）。
+
+## [2026-07-14] 删除 GraphQL 旧 submit 死字段（refactor PR）
+
+### Removed
+- `resolvers/submit.py` 整文件:旧 `SubmitQuery`(7 字段:`getCharacterSubmit`/`getMusicSubmit`/`getCpSubmit`/`getPaperSubmit`/`getDojinSubmit`/`getVotingStatus`/`getVotingStatistics`,均 `voteId` 入参)与旧 `SubmitMutation`(5 字段:`submitCharacter`/`submitMusic`/`submitCp`/`submitPaper`(input:)及被 MRO 遮蔽的旧 `submitDojin`)。全部 resolver 因 `SubmitService(db)` 传参错误**运行时本就不可用**,且契约对账确认前端零调用(见 api-contract-audit-2026-07-14.md)。
+- `types.py` 13 个随之成为孤儿的类型/转换器:`SubmitMetadata(Input)`、`*SubmitResult`×4、`VotingStatus`、`VotingStatistics`、`SubmitSuccess`、`*SubmitMutationInput`×5→其中 Dojin 系早已被 SDL 剪除、`DojinSubmitInput`、`pydantic_to_graphql_meta/voting_status/voting_statistics`。
+- `tests/contract/test_graphql_login_contract.py` 中"旧 submit 字段仍在"的断言改为守护桥接字段 `submitCharacterVote`。
+
+### 兼容性
+- **SDL 变更**(§8 报备):11 个字段、13 个类型从 schema 消失;**桥接字段与其余契约零变化**(删除前后 SDL diff 验证:只减不增)。前端 codegen 下次运行后 `__generated__` 类型同步瘦身,因无 documents 校验且前端零调用,无破坏。
+- 附带收益:关闭 `get*(voteId)` 无鉴权查任意人提交的历史暴露面(migration 文档 §4 遗留风险项)。
+- REST 的 `/api/v1/voting-status/`、`/voting-statistics/`(pydantic 同名模型)不受影响。
+
+## [2026-07-14] 前后端 API 契约对账（docs）
+
+### Added
+- `docs/migration/api-contract-audit-2026-07-14.md`：后端全量 API × 前端全量调用交叉对账。要点：vote 包 GraphQL 已全量在桥接层（零漂移）;**result 包 18 文件 21+ query 全在老 Rust 契约上**（Python 无 `query*Ranking` 等字段,测试机 :8084 已指向 Python → result 页全挂,为当前最大缺口）;旧 GraphQL submit 12 字段确认全坏但前端零调用（死代码,建议删）;本地静态数据→后端化对照表;修正两条旧判断（`/server-time` 前端并不调用、`search_cps` 恒空暂不影响前端）。
+
+## [2026-07-14] nginx v12 路由部署（Touhou-Vote 仓库改动，此处记录以便追溯）
+
+### Changed
+- 测试机 :8082 vote 容器 nginx（`Touhou-Vote/Dockerfile.vote.template`,`c5c508f`+`cfba9cc`）：新增 `/v12-be/` 精确 location（vote-objects/questionnaire → `/api/v1/*`;`/v12-be/doujin/api` 精确匹配 → `/api/v1/scraper/scrape`;兜底 → 根路径），**保留 `/v11-be/` 过渡块**（移除条件：前端全量切 v12）。与原 plan 的两处刻意偏离及验收记录见 [nginx-routing-fix plan 实施记录](./archive/superpowers/plans/2026-06-09-nginx-routing-fix.md)。
+
+### 兼容性
+- v11 前端不受影响（过渡块在）；前端可开始按 v12 API_PREFIX 切换。
+- 发现项：测试环境 scraper 的 Pixiv 凭据未配（`Pixiv authentication failed`），二创提名联调前需补。
+
+## [2026-07-14] B-032：删除 alembic auto-baseline shim
+
+### Removed
+- `alembic/env.py` 的 `_maybe_baseline_existing_schema` 与 `_SENTINELS`:该 shim 按"表是否存在"闷头 stamp、不校验列,会掩盖 schema 漂移(2026-05-31 测试库登录全挂的根因)。B-025 移除 init_db 后门后它已无存在必要,`alembic upgrade head` 现在对空库老实从 0001 跑全链。
+- 连带移除 zfq 为 shim 打的"清残留事务"补丁(`connection.in_transaction()` 时 rollback):shim 没了,inspect() 不再先于 begin_transaction 执行,补丁失去存在理由,`do_run_migrations` 恢复标准 alembic 写法。
+
+### 兼容性
+- 已被 alembic 管理的库(测试机已 stamp 至 0010)不受影响,upgrade head 为 no-op。
+- 若存在**从未被 alembic 管理**的祖传库(有 `user` 表但无 `alembic_version`),upgrade 将因 CREATE TABLE 冲突显式报错而非静默 stamp——这是刻意行为,此类库应清空重建。
+- 空库全链路由 CI 每次 push 的迁移烟雾测试(空 PG 跑 `alembic upgrade head`)持续验证。5-31 事件的残留漂移核查(空库重建测试机)暂缓:待 B-026 CI `alembic check` 门禁或联调中发现异常时再做。
+
+## [2026-07-14] 合并 zfq_dev：问卷结构化(B-039) + 投票对象后端(B-040) + 自由问卷管理(B-041) + BSON 离线导入
+
+> 合并记录:代码作者 zfqxuz(分支 `zfq_dev`,2026-06-08..06-28,31 commits),`main` 快进合并至 `e516321`。合并前在隔离 worktree 全量 pytest:343 passed / 1 skipped(跳过项依赖可选 `pymongo`,预期行为)。本条目按 CLAUDE.md §4 补记(原分支未随代码更新 CHANGELOG)。
+
+### Added
+- **B-039 问卷结构化(Block 3A)**:4 张问卷结构表 + `PaperAnswer`(migration `0008`);DB→questionnaireV2 assembler;完成度纯校验;questionnaire domain dao/service/router + `GET /api/v1/questionnaire/structure`;GraphQL `submitPaperV2`/`getPaperV2`(SDL 契约测试钉死);投票门禁升级为结构化完成校验(过渡安全:无结构数据时回退旧行为)。
+- **B-040 投票对象迁后端(Block 3B)**:候选表加 `merged_into`(migration `0009`);`detect_merges` 纯逻辑 + 导入时自动合并 + admin merge/unmerge 端点;统计 compute 尊重 `merged_into`(仅 canonical 项 + 票数归并);`GET /api/v1/vote-objects/characters|music|{id}` 分组查询;管理端候选项合并视图。
+- **B-041 自由问卷管理**(取代 B-039 的 admin/契约部分):问卷结构表重塑为自由列表(去年份、自增 id,migration `0010`,**drop & recreate 4 表**);`GET /questionnaire/structure` 改返回**问卷数组**(原固定 8 槽对象作废)且去年份参数;答案改扁平数组;completion 改按 `required` 字段;13 个 admin CRUD 端点(问卷/题组/题/选项,均 `X-Admin-Secret`)+ 整树导入(支持无 id JSON);管理端自研嵌套编辑器 UI(卡片式问卷列表 + 逐层编辑)。
+- `scripts/import_mongo_dump.py`:离线 BSON dump 导入 CLI(复用 sync mappers,`ON CONFLICT DO NOTHING`;需可选依赖 `pymongo`)。
+- 设计文档:v11→v12 API 版本升级 + nginx 路由修复 spec/plans(`docs/superpowers/{specs,plans}/2026-06-09-*`)——**nginx 与前端侧均未实施**,是前后端联调前置项。
+
+### Fixed
+- alembic:`inspect()` 残留事务导致迁移不落库(clear transaction 后再 `begin_transaction`)。
+- submit:raw submit 改 upsert,防重复落库。
+- questionnaire:`_row_to_dict` 的 datetime 转 ISO 字符串;层级树导入兼容无 id JSON。
+
+### 兼容性 / 部署
+- 需 `alembic upgrade head`(0008→0010)。**0010 对 4 张问卷结构表 drop & recreate**,已导入的问卷结构需重新导入(设计时测试库为空,无损;若目标库已有结构数据需先导出)。
+- `GET /questionnaire/structure` 为破坏性契约变更(数组形态);投票前端 questionnaireV2 加载**待适配**(plan 已写)。
+- v12 路由契约(`/v12-be/` + nginx location 拆分)未部署;部署顺序约束:nginx 升版 ≤ 前端升版,后端结构端点先于前端切换。

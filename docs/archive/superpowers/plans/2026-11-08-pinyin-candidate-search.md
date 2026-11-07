@@ -1,5 +1,8 @@
 # 拼音候选搜索后端化实施计划
 
+> 归档日期：2026-11-08。已执行或被后续方案取代；剩余实际事项以当前 BACKLOG 为准。
+> 下文保留原设计／实施过程，仅调整相对链接；不要按旧步骤再次执行迁移、导入或部署。当前入口见 [文档索引](../../../README.md)。
+
 > 状态：第一阶段已提交（后端 `77f43cf`、前端 `26f79df`），未发布或部署。本文保留该阶段的历史契约；当前接口以 [第二阶段收敛计划](2026-11-08-autocomplete-search-consolidation.md) 及设计/API 文档为准。
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans when implementing inline; use superpowers:subagent-driven-development only when the user chooses delegated execution. Steps use checkbox (`- [x]`) syntax. Project AGENTS.md and current user authorization take precedence.
 
@@ -9,7 +12,7 @@
 
 **Tech Stack:** Python >=3.12、pypinyin==0.55.0、现有 FastAPI / SQLAlchemy / Redis；现有 Vue 3 / TypeScript / node:test / tsx。
 
-**Spec:** [拼音候选搜索后端化设计](../specs/2026-11-08-pinyin-candidate-search-design.md)。本文与设计一起阅读；本轮仅执行已确认范围。
+**Spec:** [拼音候选搜索后端化设计](../../../superpowers/specs/2026-11-08-pinyin-candidate-search-design.md)。本文与设计一起阅读；本轮仅执行已确认范围。
 
 ## Global Constraints
 

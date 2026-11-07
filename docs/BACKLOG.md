@@ -10,7 +10,7 @@
 
 | 编号 | 当前事实 | 剩余范围／边界 | 证据 |
 |---|---|---|---|
-| **B-037** | 提名校验响应、待审核提示及问卷门禁已接入前端；“前端待做”失实 | 原计划逐条 index 提示与现有合并原因／重复数量展示有差异，是否调整待产品判断；可选 approved 列表不自动变为需求 | [前端计划](superpowers/plans/2026-06-08-security-frontend.md)；`Touhou-Vote/packages/vote/src/vote-doujin/VoteDoujin.vue` |
+| **B-037** | 提名校验响应、待审核提示及问卷门禁已接入前端；“前端待做”失实 | 原计划逐条 index 提示与现有合并原因／重复数量展示有差异，是否调整待产品判断；可选 approved 列表不自动变为需求 | [前端计划](archive/superpowers/plans/2026-06-08-security-frontend.md)；`Touhou-Vote/packages/vote/src/vote-doujin/VoteDoujin.vue` |
 | **B-050-后补3** | 主榜与 DSL 子集仍传空 historical，历史字段返回 -1／-1.0；旧 load_historical 已删除 | 若需要上届对比，需确认历史数据、ID 对应及接口接线。2026-08-22 旧 API 可用只是历史记录，本轮未核验数据／服务，不执行导入 | `src/apps/result/compute_service.py`、`advanced_search/service.py`、`src/api/graphql/result_compat.py` |
 | **B-059** | Nacos 失败会记 warning，再尝试本地配置并可能回退默认值；并非无日志“静默”回退 | 是否改为 fail-fast 及适用运行模式仍需确认；历史事故不能自动授权增加恢复机制 | `src/common/nacos.py`、`src/common/config.py`；[Nacos 手册](operations/nacos-config-center.md) |
 | **monitor 文案** | `_B050_NOTE` 仍说“需 B-050 落地后生效”，但计票已排除作废票 | 真实残留为提示文案；处置后仍需重算结果。本轮只核对文档，未修改业务响应 | `src/apps/admin/monitor/router.py`、`src/apps/result/compute_dao.py` |
