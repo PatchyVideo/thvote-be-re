@@ -107,7 +107,7 @@ async def test_candidate_search_http_contract(app):
         cid = (await session.execute(text(
             "SELECT id FROM candidate_character WHERE vote_year=2026 AND voteable_id=11"
         ))).scalar_one()
-    url = "/api/v1/autocomplete/candidates/search"
+    url = "/api/v1/autocomplete/search"
     async with AsyncClient(transport=ASGITransport(app=a), base_url="http://test") as client:
         result = await client.post(url, json={"category": "character", "query": " MLS "})
         assert result.status_code == 200

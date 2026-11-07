@@ -2,7 +2,7 @@
 
 > 状态：用户已确认，两个同名分支已本地实现；未发布或部署。2026-11-08。
 > 已确认方向：使用 pypinyin 提供读音，在项目内实现需要的匹配行为，不引入 JS 运行时。
-> 模块位置、接口、缓存和前端接入方案均已确认；下文保留设计依据。
+> 模块位置、接口、缓存和前端接入方案均已确认；第二阶段经用户确认统一到 `/autocomplete/search`，下文描述当前方案。
 
 ## 1. 目标与当前实现
 
@@ -10,7 +10,7 @@
 
 代码基线：后端分支 `feat/pinyin-backend-search`，`265ab63`，已包含 `origin/main` 的 `6d8afc1`；前端同名分支指向 `ef028e0`，与调研时的 `origin/dev` 一致。实施前已归档并 stash 前端 `fix/codegen-exit-status` 未提交现场，切到同名功能分支，并保留尚未被上游包含的本地改动。
 
-迁移前前端使用 `pinin@0.2.0`。角色和 CP 成员共用 `characterSearch.ts`；音乐由 `musicSearch.ts` 创建搜索器。迁移前后端 `apps/autocomplete` 只有名称 ILIKE 和 60 秒响应缓存，响应没有候选 ID；旧接口继续保留。结果页正则筛选不使用 Pinin，本次不改。源码和迁移目录没有现成拼音字段；本次不据此声称线上数据库已核验。
+迁移前前端使用 `pinin@0.2.0`。角色和 CP 成员共用 `characterSearch.ts`；音乐由 `musicSearch.ts` 创建搜索器。迁移前后端 `apps/autocomplete` 只有名称 ILIKE 和 60 秒响应缓存，响应没有候选 ID；第二阶段用候选搜索契约替换旧接口，移除旧建议实现。结果页正则筛选不使用 Pinin，本次不改。源码和迁移目录没有现成拼音字段；本次不据此声称线上数据库已核验。
 
 ## 2. 路线与取舍
 
@@ -34,13 +34,13 @@
 | 文件 | 职责 |
 |---|---|
 | 新增 `src/apps/autocomplete/pinyin.py` | 纯 Python 的读音准备、21 条规则和文字匹配；不依赖 DAO、Redis、FastAPI |
-| 新增 `src/apps/autocomplete/candidate_search.py` | 候选搜索用例：加载语料、调用匹配器、使用公共 Redis 缓存 |
-| 修改 `src/apps/autocomplete/dao.py` | 增加当前年度候选的搜索字段读取；保留旧查询 |
+| 更新 `src/apps/autocomplete/service.py` | 候选搜索用例：加载语料、调用匹配器、使用公共 Redis 缓存 |
+| 修改 `src/apps/autocomplete/dao.py` | 按请求年度读取候选搜索字段；移除旧 ILIKE 查询和空 CP 方法 |
 | 修改 `src/apps/autocomplete/schemas.py` | 新接口的显式请求和响应 |
-| 修改 `src/apps/autocomplete/router.py` | 新路由与依赖注入；旧 `/search` 保持原契约 |
+| 修改 `src/apps/autocomplete/router.py` | 唯一 `/search` 路由与依赖注入，返回候选 ID 契约 |
 | 复用 `src/common/cache.py` | JSON 缓存及前缀失效；不扩展成新的缓存框架 |
 
-依赖方向：router → candidate_search → DAO / pinyin / common.cache；pinyin 只依赖标准库和 `pypinyin==0.55.0`。原 `service.py` 继续服务旧自动补全接口，避免将两种响应混在一个流程中。
+依赖方向：router → service → DAO / pinyin / common.cache；pinyin 只依赖标准库和 `pypinyin==0.55.0`。`service.py` 只承载候选搜索；旧建议模型和临时候选路由均已移除。
 
 前端在 `packages/shared/api/candidateSearch.ts` 放无框架请求函数，在 `packages/vote/src/common/lib/useCandidateSearch.ts` 放 Vue 请求状态；三个选择入口复用这两处逻辑。
 
@@ -114,7 +114,7 @@ def contains(text: PreparedText, query: str) -> bool: ...
 
 ## 5. 新接口与数据访问
 
-推荐增加 `POST /api/v1/autocomplete/candidates/search`，不改变现有 `POST /api/v1/autocomplete/search` 的请求、响应、配额和 ILIKE 行为。
+唯一入口为 `POST /api/v1/autocomplete/search`。第二阶段替换旧 suggestions 契约，不再保留限量 ILIKE 建议或临时候选路由；仓库内未发现旧建议业务调用方。这一契约变更已获用户确认。
 
 ```json
 请求：{"category":"character","query":"mls","vote_year":12}
@@ -132,7 +132,7 @@ def contains(text: PreparedText, query: str) -> bool: ...
 数据层新增：
 
 ```python
-# dao.py；旧 DAO 的 vote_year 构造参数和旧方法保留。
+# dao.py；构造函数只接收 session，查询年度显式传入。
 async def load_search_documents(
     self, category: Literal["character", "music"], vote_year: int
 ) -> list[tuple[int, tuple[str, ...]]]: ...
@@ -164,7 +164,7 @@ flowchart LR
 | 原字及按位置排列的声母／韵母候选 | `autocomplete:pinyin:v1:{year}:{category}:corpus` | 60 秒 |
 | 完整命中 ID 列表，包括空结果 | `autocomplete:pinyin:v1:{year}:{category}:q:{sha256(query)}` | 60 秒 |
 
-语料以 JSON 列表存储 candidate ID、独立文本和每个位置的原字／读音二元组。只保存当前年度该类别的搜索字段，不保存图片、音频、票数或个人已选项。按位置保留多音候选，不展开完整读音组合；序列化和恢复逻辑只留在 candidate_search.py。空查询直接由语料取全部 ID，不另外写 query 结果键。
+语料以 JSON 列表存储 candidate ID、独立文本和每个位置的原字／读音二元组。只保存当前年度该类别的搜索字段，不保存图片、音频、票数或个人已选项。按位置保留多音候选，不展开完整读音组合；序列化和恢复逻辑只留在 service.py。空查询直接由语料取全部 ID，不另外写 query 结果键。
 
 规则或内部语料格式变动时将内部版本升为 `v2`；这只是代码常量，不新增数据库版本字段。依赖版本固定为 pypinyin 0.55.0，升级时核对读音差异并同步缓存版本。
 
@@ -179,7 +179,7 @@ flowchart LR
 
 ## 7. 前端接入
 
-前端请求使用 `${API_PREFIX}/api/v1/autocomplete/candidates/search`，即 `/v12-be/api/v1/autocomplete/candidates/search`。已核对 Vite 与 `Dockerfile.vote.template` 的通用 `/v12-be/` 转发：均剥离该前缀后到达后端 `/api/v1/...`。因此无需增加代理路径或改变部署拓扑。
+前端请求使用 `${API_PREFIX}/api/v1/autocomplete/search`，即 `/v12-be/api/v1/autocomplete/search`。已核对 Vite 与 `Dockerfile.vote.template` 的通用 `/v12-be/` 转发：均剥离该前缀后到达后端 `/api/v1/...`。因此无需增加代理路径或改变部署拓扑。
 
 新增共享函数：
 
@@ -203,7 +203,7 @@ function fetchCandidateSearch(
 
 Vue 层统一 `useCandidateSearch(category, query: Ref<string>)`，使用当前 `voteYear` 和 API_PREFIX。返回 `matchedIds: Ref<Set<string>>`、`loading: Ref<boolean>`、`error: Ref<string | null>`。不缓存历史 query 结果，不持久化浏览器搜索缓存。
 
-- 保留输入端现有 100ms 节流，不叠加另一套 debounce。公共输入框与 CP 输入框增加 `maxlength=64`；后端仍独立校验码点长度。空查询立即展示本地已有列表，不发搜索请求。
+- 保留输入端现有 100ms 节流，不叠加另一套 debounce。公共输入框 `CandidateSearchInput.vue` 与 CP 输入框增加 `maxlength=64`；后端仍独立校验码点长度。空查询立即展示本地已有列表，不发搜索请求。
 - 角色／音乐列表和 CP 选择框以公共命中 ID 集合过滤当前列表；已选项目的排除、类别／作品筛选、日期排序及 CP 允许重复成员等规则不变。
 - 非空查询等待期间清除上一关键词的命中列表，显示“正在搜索…”；失败显示“搜索失败，请修改关键词重试”，清空关键词可继续浏览全部列表。不自动重试，不回退第二套拼音引擎。
 - 使用 Vue watch 的 cleanup 忽略过期请求返回，确保快速输入或清空后旧结果不会盖掉当前结果；不增加请求队列、版本恢复或持久化状态。
@@ -221,15 +221,15 @@ Vue 层统一 `useCandidateSearch(category, query: Ref<string>)`，使用当前 
 - 后端集成层使用现有 SQLite／fakeredis 测试条件，覆盖年度和类别、别名／作品独立匹配、完整集合与候选 ID、缓存命中／空结果／失效／Redis 不可用。
 - 前端用现有 node:test 与 tsx 工具覆盖真实请求 helper、ID 映射、错误和过期返回；不建立新的端到端测试工程。UI 按项目约定最多截图，不自动点击或填写表单。
 - 不以小样本全部相同证明完全兼容；若关键名字或常见输入与预期不符，先明确字典差异还是匹配错误，再调整该用例或将产品差异交用户确认。
-- 后端先提供加法接口，旧前端照常工作；前端切换后再清理 Pinin 依赖。前端上线依赖新接口可用，不以静默本地降级掩盖后端未更新。
-- 回滚先回前端旧版本，再按需回后端；数据库与投票记录无需回滚。新 Redis 键可自然过期或用原 autocomplete scope 清理。无数据迁移、真实回填或重新计票。
+- 初次迁移前的 Pinin 前端不使用此接口；第一阶段与第二阶段的前后端须分别配套发布，不能混用路径与契约。前端不保留第二套本地拼音引擎。
+- 回滚前后端到同一阶段的配套版本；数据库与投票记录无需回滚。新 Redis 键可自然过期或用原 autocomplete scope 清理。无数据迁移、真实回填或重新计票。
 
 ## 9. 实施状态与剩余验证
 
-2026-11-08 用户确认了模块边界、新 ID 接口、两层 Redis 缓存及前端接入方案。纯匹配器、DAO、API、缓存、三个选择入口和依赖替换均已本地实现。
+2026-11-08 用户确认了模块边界、新 ID 接口、两层 Redis 缓存及前端接入方案。纯匹配器、DAO、API、缓存、三个选择入口和依赖替换均已本地实现。第一阶段后端 `77f43cf`、前端 `26f79df` 已分别提交；随后用户确认统一接口与命名，第二阶段见 [收敛计划](../plans/2026-11-08-autocomplete-search-consolidation.md)。
 
 已验证关键匹配正反例、年度／字段隔离、缓存与失效、Redis 故障直算、HTTP 输入输出及前端请求竞态。最终命令与结果见 [实施计划](../plans/2026-11-08-pinyin-candidate-search.md) 执行记录。
 
-未进行线上数据查询、真实链路部署或浏览器交互验收；本次不包含这些授权。两端保留本地未提交改动，旧 CP 组合自动补全问题不在本次范围。
+未进行线上数据查询、真实链路部署或浏览器交互验收；本次不包含这些授权。两端无关本地改动继续保留；旧 CP 空实现随建议链路移除，不表示实现了 CP 组合推荐。
 
 参考：[pypinyin 用法](https://pypinyin.readthedocs.io/zh-cn/master/usage.html)、前端 `ef028e0` 的 `pinin.ts` / `characterSearch.ts` / `musicSearch.ts`。官方需求中的角色和音乐拼音搜索见 `docs/requirements/VoileLabs-人气投票项目-需求文档-投票系统.md` 的角色选择框与曲目选择框。

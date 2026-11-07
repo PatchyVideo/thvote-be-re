@@ -84,71 +84,9 @@ async def session():
 
 
 @pytest.mark.asyncio
-async def test_search_characters_by_name(session):
-    dao = AutocompleteDAO(session, VOTE_YEAR)
-    results = await dao.search_characters("灵梦", 10)
-    assert len(results) == 1
-    assert results[0]["name"] == "博丽灵梦"
-    assert results[0]["origin"] == "东方红魔乡"
-
-
-@pytest.mark.asyncio
-async def test_search_characters_by_name_jp(session):
-    dao = AutocompleteDAO(session, VOTE_YEAR)
-    results = await dao.search_characters("霊夢", 10)
-    assert len(results) == 1
-    assert results[0]["name"] == "博丽灵梦"
-
-
-@pytest.mark.asyncio
-async def test_search_characters_no_match(session):
-    dao = AutocompleteDAO(session, VOTE_YEAR)
-    results = await dao.search_characters("不存在的名字xyz", 10)
-    assert results == []
-
-
-@pytest.mark.asyncio
-async def test_search_characters_limit(session):
-    dao = AutocompleteDAO(session, VOTE_YEAR)
-    results = await dao.search_characters("夜", 1)
-    assert len(results) <= 1
-
-
-@pytest.mark.asyncio
-async def test_search_music_by_name(session):
-    dao = AutocompleteDAO(session, VOTE_YEAR)
-    results = await dao.search_music("Bad", 10)
-    assert len(results) == 1
-    assert results[0]["name"] == "Bad Apple!!"
-    assert results[0]["origin"] == "Akyu's Untouched Score vol.5"
-
-
-@pytest.mark.asyncio
-async def test_search_music_no_album_returns_none_origin(session):
-    dao = AutocompleteDAO(session, VOTE_YEAR)
-    results = await dao.search_music("U.N", 10)
-    assert len(results) == 1
-    assert results[0]["origin"] is None
-
-
-@pytest.mark.asyncio
-async def test_search_cps_returns_empty(session):
-    dao = AutocompleteDAO(session, VOTE_YEAR)
-    results = await dao.search_cps("anything", 10)
-    assert results == []
-
-
-@pytest.mark.asyncio
-async def test_wrong_year_returns_nothing(session):
-    dao = AutocompleteDAO(session, vote_year=9999)
-    results = await dao.search_characters("灵梦", 10)
-    assert results == []
-
-
-@pytest.mark.asyncio
 async def test_candidate_search_fields_year_and_cache(session, patch_redis):
     from src.apps.admin.router import _clear_vote_objects_cache
-    from src.apps.autocomplete.candidate_search import CandidateSearchService
+    from src.apps.autocomplete.service import CandidateSearchService
     from src.apps.autocomplete.schemas import CandidateSearchRequest
     from src.db_model.candidate import CandidateCharacter
     from src.db_model.voteable import VoteableCharacter
@@ -158,7 +96,7 @@ async def test_candidate_search_fields_year_and_cache(session, patch_redis):
     session.add(CandidateCharacter(vote_year=2027, voteable_id=101))
     await session.commit()
     service = CandidateSearchService(
-        AutocompleteDAO(session, VOTE_YEAR), patch_redis, VOTE_YEAR
+        AutocompleteDAO(session), patch_redis, VOTE_YEAR
     )
 
     async def search(query, year=VOTE_YEAR, category="character"):
@@ -201,7 +139,7 @@ async def test_candidate_search_fields_year_and_cache(session, patch_redis):
 
 @pytest.mark.asyncio
 async def test_candidate_search_all_matches_and_redis_failure(session):
-    from src.apps.autocomplete.candidate_search import CandidateSearchService
+    from src.apps.autocomplete.service import CandidateSearchService
     from src.apps.autocomplete.schemas import CandidateSearchRequest
     from src.db_model.candidate import CandidateCharacter
     from src.db_model.voteable import VoteableCharacter
@@ -223,7 +161,7 @@ async def test_candidate_search_all_matches_and_redis_failure(session):
         "SELECT id FROM candidate_character WHERE vote_year=2028 ORDER BY id"
     ))).scalars())
     service = CandidateSearchService(
-        AutocompleteDAO(session, 2028), UnavailableRedis(), 2028
+        AutocompleteDAO(session), UnavailableRedis(), 2028
     )
     result = await service.search(
         CandidateSearchRequest(category="character", query="共同")
@@ -236,10 +174,10 @@ async def test_candidate_search_all_matches_and_redis_failure(session):
 async def test_candidate_search_does_not_cache_database_errors(
     session, patch_redis, monkeypatch
 ):
-    from src.apps.autocomplete.candidate_search import CandidateSearchService
+    from src.apps.autocomplete.service import CandidateSearchService
     from src.apps.autocomplete.schemas import CandidateSearchRequest
 
-    dao = AutocompleteDAO(session, VOTE_YEAR)
+    dao = AutocompleteDAO(session)
 
     async def fail(*args):
         raise RuntimeError("test database failure")
