@@ -216,5 +216,5 @@ Web UI 为静态 HTML,手工验收。
 
 ## 十一、关联文档
 
-- 管理端原设计:[`2026-06-07-admin-panel-design.md`](./2026-06-07-admin-panel-design.md)
+- 管理端原设计:[`2026-06-07-admin-panel-design.md`](../../archive/superpowers/specs/2026-06-07-admin-panel-design.md)
 - BACKLOG:新增 B-036

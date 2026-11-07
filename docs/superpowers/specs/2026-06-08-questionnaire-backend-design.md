@@ -5,7 +5,7 @@
 
 > 创建日期：2026-06-08
 > 最后更新：2026-06-08
-> 配套前端设计稿：[`2026-06-08-questionnaire-frontend-design.md`](./2026-06-08-questionnaire-frontend-design.md)
+> 配套前端设计稿：[`2026-06-08-questionnaire-frontend-design.md`](../../archive/superpowers/specs/2026-06-08-questionnaire-frontend-design.md)
 
 ## 一、背景与目标
 
@@ -163,5 +163,5 @@ Block 1 的 `_require_questionnaire(vote_id)` 从"存在任意 paper"升级为:
 
 ## 十一、关联
 
-- 前端设计稿:[`2026-06-08-questionnaire-frontend-design.md`](./2026-06-08-questionnaire-frontend-design.md)
+- 前端设计稿:[`2026-06-08-questionnaire-frontend-design.md`](../../archive/superpowers/specs/2026-06-08-questionnaire-frontend-design.md)
 - BACKLOG:B-039

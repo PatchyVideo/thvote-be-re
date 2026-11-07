@@ -1,7 +1,10 @@
 # 问卷契约变更 — 投票前端(thvote-fe)Implementation Plan
 
+> 归档日期：2026-11-08。已执行或被后续方案取代；剩余实际事项以当前 BACKLOG 为准。
+> 下文保留原设计／实施过程，仅调整相对链接；不要按旧步骤再次执行迁移、导入或部署。当前入口见 [文档索引](../../../README.md)。
+
 > 当前状态（2026-11-08 源码核对）：前端已消费问卷数组、category/order、required、隐藏组以及结构化答案提交／回填；题库内容和部署／真人验收本次未核验。
-> 本文后续为原始设计／实施记录；旧状态与 checkbox 不代表当前待办。证据见 [BACKLOG 核对记录](../../migration/backlog-audit-2026-11-08.md)。
+> 本文后续为原始设计／实施记录；旧状态与 checkbox 不代表当前待办。证据见 [BACKLOG 核对记录](../../../migration/backlog-audit-2026-11-08.md)。
 
 
 > **For agentic workers:** 前端 Vue 3 monorepo,手工验收为主。**一次性切换**,后端结构端点(数组契约)+ submitPaperV2 先合并并录入题库。

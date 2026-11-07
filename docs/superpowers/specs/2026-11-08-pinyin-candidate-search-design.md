@@ -226,9 +226,9 @@ Vue 层统一 `useCandidateSearch(category, query: Ref<string>)`，使用当前 
 
 ## 9. 实施状态与剩余验证
 
-2026-11-08 用户确认了模块边界、新 ID 接口、两层 Redis 缓存及前端接入方案。纯匹配器、DAO、API、缓存、三个选择入口和依赖替换均已本地实现。第一阶段后端 `77f43cf`、前端 `26f79df` 已分别提交；随后用户确认统一接口与命名，第二阶段见 [收敛计划](../plans/2026-11-08-autocomplete-search-consolidation.md)。
+2026-11-08 用户确认了模块边界、新 ID 接口、两层 Redis 缓存及前端接入方案。纯匹配器、DAO、API、缓存、三个选择入口和依赖替换均已本地实现。第一阶段后端 `77f43cf`、前端 `26f79df` 已分别提交；随后用户确认统一接口与命名，第二阶段见 [收敛计划](../../archive/superpowers/plans/2026-11-08-autocomplete-search-consolidation.md)。
 
-已验证关键匹配正反例、年度／字段隔离、缓存与失效、Redis 故障直算、HTTP 输入输出及前端请求竞态。最终命令与结果见 [实施计划](../plans/2026-11-08-pinyin-candidate-search.md) 执行记录。
+已验证关键匹配正反例、年度／字段隔离、缓存与失效、Redis 故障直算、HTTP 输入输出及前端请求竞态。最终命令与结果见 [实施计划](../../archive/superpowers/plans/2026-11-08-pinyin-candidate-search.md) 执行记录。
 
 未进行线上数据查询、真实链路部署或浏览器交互验收；本次不包含这些授权。两端无关本地改动继续保留；旧 CP 空实现随建议链路移除，不表示实现了 CP 组合推荐。
 
