@@ -145,9 +145,9 @@
 - `src/apps/result/compute_service.py`:接线——`compute_all` 依次 `load_*_votes` → `load_whitelist("character"|"music")` → `compute_ranking`/`compute_cp_ranking` → 写 Redis,替换掉原先读死表 + 走 `CandidateMeta` 元数据的旧管线。
 - `src/apps/result/schemas.py`:`RankingEntity` 加 `id: Optional[str] = None`、`favorite_percentage_of_all: float = 0.0`,与上述 compute 输出对齐。
 
-### 9.2 白名单快照重新提取步骤(前端列表变更时)
+### 9.2 历史白名单快照步骤（已停止作为生产步骤）
 
-前端 `Touhou-Vote` 的 `character.ts`/`music.ts` 每次增删角色/曲目/改 `system_id` 顺序后,需要重新生成快照并提交:
+当前生产计票使用 `load_whitelist_db`。以下命令仅为 v1 历史步骤，不再要求前端列表变动后重新提取，不执行生产回填：
 
 ```bash
 node scripts/extract_whitelist.mjs /data/sunyunbo/www/Touhou-Vote /data/sunyunbo/www/Thvote-be/thvote-be-re
@@ -165,14 +165,13 @@ node scripts/extract_whitelist.mjs /data/sunyunbo/www/Touhou-Vote /data/sunyunbo
 - **CP 组合票数 == 1 不计入**排名与 `global_stats`(`all_keys = [k for k in vote_count if vote_count[k] >= 2]`)。
 - **计票取每 vote_id 最新、排除 invalidated**:`ComputeDAO._latest_per_vote` 对同一账号的多次提交只留最新一条(`created_at` 为主、`attempt` 兜底),`invalidated=true`(B-049 管理端作废标记)的行在取最新之前就被过滤,不参与去重比较。
 
-### 9.4 v1 明确后补(未做)
+### 9.4 后补项的当前状态（2026-11-08）
 
-以下项目在设计稿 §8.4 已列为后补,v1 未实现,GraphQL/REST 对应字段暂不产出或喂空值:
+本节替换早期“全部未做”的状态快照，证据见 [核对记录](../../migration/backlog-audit-2026-11-08.md)。不据旧数据库快照推断当前数据或统计值。
 
-- **性别男女票**:`compute_ranking` 里 `male_vote_count`/`female_vote_count` 依赖 `compute_gender_map`,该函数需要 `raw_paper`(问卷)按性别题 `q11011` join 每个 `vote_id`;v1 的 `load_questionnaire_votes` 读的是旧 `Questionnaire` 死模型的空表,故性别恒为 `unknown`,统计结果恒 0。**需切到 `raw_paper` 才能出真实性别票**。
-- **trend 演进**:`raw_*` 各表当前是"改票即覆盖"式存储(`_upsert` 只留最新一条,详见 B-045 CHANGELOG),没有保留历史提交行;而 trend 需要画"随时间推移的新增/累计"曲线,要求**逐次提交都留痕(append-only)**。现有 `compute_ranking`/`compute_cp_ranking` 里的 `trend`/`trend_first` 字段基于的是"取最新那一条的 `created_at`"分桶,**不是**真实的历史演进(改票会让旧的 hour bucket 计数消失),这是已知的近似值而非目标口径——真正复刻需要先把 `raw_*` 改造成 append-only 存储,记入 B-050 后补项而非本次交付范围。
-- **上届对比**:需要历史 `final_ranking` 表(`FinalRanking` 模型,`compute_dao.load_historical`)有上一/上上届数据;测试库目前该表为空,且 `load_historical` 的 key 是 name(而非 id),与本次 id-based 归票路径尚未对齐,v1 未接线(`compute_ranking` 签名保留了 `historical: dict[str, dict]` 参数,但 `compute_service.py` 传入的是空 `{}`)。
-- **问卷结果页**:`compute_paper_results` 仍是占位实现,读的是死表 `Questionnaire`;真实问卷统计需要 B-039 结构化问卷表(`raw_paper`/`paper_answer`)接入,本次不动。
-- **高级搜索、candidate 表迁移 `object_id`**:均按设计稿 §四"非目标"/§8.4"后补"处理,v1 未涉及。
-
-
+- 性别／问卷统计：已有后续实现与归档记录，不再把读取死表或占位统计当当前状态；题库、code 和实际统计值未查库。
+- trend：append-only 与净增量已接入主榜及 DSL 子集，B-050-后补2 结项。
+- 上届对比：仍未接线；主榜与子集传空 historical，输出 -1／-1.0，见 B-050-后补3。旧 load_historical 已删除，不再按旧函数名安排改造；旧 API 可用性与真实历史数据未核验。
+- 高级搜索：DSL、任意问卷题回答索引与子集重算已实现，后补5 已归档。
+- DB 白名单：已从 candidate/voteable/work 加载，不依赖重新提取前端静态表，后补6 已归档。
+- attempt 管理列：API、DAO 和 UI 已存在，B-061 结项。

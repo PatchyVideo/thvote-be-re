@@ -1,5 +1,9 @@
 # 问卷契约变更 — 投票前端(thvote-fe)Implementation Plan
 
+> 当前状态（2026-11-08 源码核对）：前端已消费问卷数组、category/order、required、隐藏组以及结构化答案提交／回填；题库内容和部署／真人验收本次未核验。
+> 本文后续为原始设计／实施记录；旧状态与 checkbox 不代表当前待办。证据见 [BACKLOG 核对记录](../../migration/backlog-audit-2026-11-08.md)。
+
+
 > **For agentic workers:** 前端 Vue 3 monorepo,手工验收为主。**一次性切换**,后端结构端点(数组契约)+ submitPaperV2 先合并并录入题库。
 > 仓库：`D:\personal\thvote-fe`，包：`packages/vote`
 > 前置：后端 B-041 合并(structure 数组契约 + 扁平答案数组)。

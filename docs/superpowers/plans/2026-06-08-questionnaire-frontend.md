@@ -1,5 +1,9 @@
 # Block 3A 问卷结构化系统 — 前端(thvote-fe)Implementation Plan
 
+> 当前状态（2026-11-08 源码核对）：问卷主路径已使用后端 V2；本旧固定槽／按年度方案已由 questionnaire-admin-frontend 的数组契约取代，不再按旧步骤迁移。
+> 本文后续为原始设计／实施记录；旧状态与 checkbox 不代表当前待办。证据见 [BACKLOG 核对记录](../../migration/backlog-audit-2026-11-08.md)。
+
+
 > **For agentic workers:** 前端 Vue 3,手工验收为主。**一次性切换**,务必后端 structure/submitPaperV2 先合并并灌入题库。
 > 仓库：`D:\personal\thvote-fe`，包：`packages/vote`
 > 前置：后端 3A 合并 + `/admin/questionnaire/import` 已灌入现有题库。

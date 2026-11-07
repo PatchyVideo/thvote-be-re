@@ -1,5 +1,8 @@
 # Legacy REST 兼容层（旧 Rust gateway 扁平契约）
 
+> 当前核对补记：2026-11-08：当前前端 API_PREFIX 为 /v12-be，home/lib/user.ts 仍调用 /user-token-status，后端仍挂载兼容路由，不能删除。文中 /v11-be、共享产物／上线状态属于 05-31 的历史背景，本轮未核验部署。GET /server-time 未发现当前调用需求，不单凭旧 gateway 曾有便要求移植。 见 [证据记录](backlog-audit-2026-11-08.md)。
+
+
 > 迁移主题文档，按 CLAUDE.md §3 维护：写现状与约束，不只写理想方案。
 > 创建：2026-05-31
 
