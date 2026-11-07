@@ -6,8 +6,14 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.apps.autocomplete.candidate_search import CandidateSearchService
 from src.apps.autocomplete.dao import AutocompleteDAO
-from src.apps.autocomplete.schemas import AutocompleteRequest, AutocompleteResponse
+from src.apps.autocomplete.schemas import (
+    AutocompleteRequest,
+    AutocompleteResponse,
+    CandidateSearchRequest,
+    CandidateSearchResponse,
+)
 from src.apps.autocomplete.service import AutocompleteService
 from src.common.cache import cache_get_json, cache_set_json
 from src.common.config import Settings, get_settings
@@ -26,6 +32,24 @@ async def get_autocomplete_service(
 ) -> AutocompleteService:
     dao = AutocompleteDAO(session, settings.vote_year)
     return AutocompleteService(dao)
+
+
+async def get_candidate_search_service(
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> CandidateSearchService:
+    return CandidateSearchService(
+        AutocompleteDAO(session, settings.vote_year), redis, settings.vote_year
+    )
+
+
+@router.post("/candidates/search", response_model=CandidateSearchResponse)
+async def search_candidates(
+    request: CandidateSearchRequest,
+    service: CandidateSearchService = Depends(get_candidate_search_service),
+) -> CandidateSearchResponse:
+    return await service.search(request)
 
 
 @router.post("/search", response_model=AutocompleteResponse)

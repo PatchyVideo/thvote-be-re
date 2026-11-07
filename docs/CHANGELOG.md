@@ -5,6 +5,14 @@
 > 创建日期：2026-04-27
 > **2026-08-31 整理**：合并 9 组重复条目、按日期倒序重排；**2026-07-01 之前**的条目已迁至 [CHANGELOG-archive-2026H1.md](./CHANGELOG-archive-2026H1.md)。
 
+## [2026-11-08] 拼音候选搜索迁至 Python 后端
+
+- **Added**：`pypinyin==0.55.0` 与项目内纯匹配器，支持原文、全拼、声母简拼、多音字、混输和原有模糊音；新增 `POST /api/v1/autocomplete/candidates/search`，按分类与年度返回全部匹配 candidate IDs。
+- **Added**：Redis 派生语料及查询结果各缓存 60 秒，复用现有 autocomplete 写入失效、手动清理及故障直算逻辑；不增加数据库字段或 JS 运行时。
+- **Changed**：配套前端角色、音乐与 CP 成员选择使用新接口；保留个人筛选与排序，增加等待／失败提示并忽略过期响应，移除前端 Pinin。设计、实施计划和 API 契约已同步。
+- **兼容性影响**：旧 `/autocomplete/search` 不变；需先发布后端，再发布配套前端；回滚先前端后后端。当前只在两个 `feat/pinyin-backend-search` 分支本地实现，未部署。
+- **数据迁移 / 配置变更**：无数据迁移或新增配置；后端安装新增 Python 依赖。Redis 沿用既有配置。
+
 ## [2026-10-29] 生产上线前加固：关闭 API 文档 + 移除测试登录旁路 + deploy-prod 流水线
 
 - **Added**：`Settings.expose_api_docs`（`EXPOSE_API_DOCS`，默认 `false`）。`src/main.py` 按开关传 `docs_url`/`redoc_url`/`openapi_url`，并给 `AppGraphQLRouter` 传 `graphql_ide`——关闭时 `/docs`、`/redoc`、`/openapi.json`、浏览器打开 `/graphql` 均 404，`POST /graphql` 不受影响。回归用例 `tests/unit/test_expose_api_docs.py`（8 例）。
