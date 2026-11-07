@@ -460,25 +460,36 @@ GET /vote-objects/{category}/{candidateId}
 
 ## 七、自动补全
 
-### `POST /autocomplete/search`
+### `POST /autocomplete/search`（原接口保留）
 
-```typescript
-// Request:
-{
-  "query": "博麗",
-  "categories": ["character", "music", "cp"],
-  "limit": 10
-}
-
-// Response:
-{
-  "character": [{ "name": "博麗靈夢", "origin": "東方紅魔鄉", ... }],
-  "music": [...],
-  "cp": []
-}
+```json
+// Request
+{ "query": "博麗", "limit": 10 }
+// Response
+{ "suggestions": [{ "name": "博麗靈夢", "type": "character", "origin": "東方紅魔鄉" }] }
 ```
 
-> 🚧 本次改动后，前端投票页改用 `/vote-objects` 返回的 `aliasMap` 做本地匹配。此接口保留，供其他场景使用。
+该接口按配置年度提供名称 ILIKE 建议，不返回候选 ID；不接受 categories 筛选。角色与音乐合并在 `suggestions` 中，CP 组合建议仍未实现。
+
+### `POST /autocomplete/candidates/search`（2026-11-08 本地实现，未部署）
+
+完整路径为 `/api/v1/autocomplete/candidates/search`；投票前端通过现有 API_PREFIX 转发。
+
+```json
+// Request（vote_year 可省略，默认服务配置年度）
+{ "category": "character", "query": " MLS ", "vote_year": 12 }
+// Response（ID 仅为格式示例）
+{ "category": "character", "query": "mls", "vote_year": 12, "candidate_ids": [123] }
+```
+
+- `category` 限 `character` / `music`；CP 成员按 character 搜索，不推荐 CP 组合。
+- query 原始长度最多 64 个 Unicode 码点，去首尾空白并转小写；vote_year 为正整数。非法输入返回 422。
+- 搜索当年候选的名称、各别名和主作品／专辑名；各字段独立匹配，不跨字段拼接，不含 name_jp 或音乐 include。
+- 支持原文、全拼、声母简拼、多音字、混输、末音节前缀及既有模糊音规则；详细规则见 [设计](../superpowers/specs/2026-11-08-pinyin-candidate-search-design.md)。
+- 返回全部匹配的 **candidate ID**，升序去重，无 limit；空查询返回当年该分类全部 ID，未知年度返回空数组。
+- 前端将整数 ID 转字符串，与当前候选求交；个人已选项排除、CP 可重复成员、作品／类别筛选及日期排序留在前端。空查询不发请求；等待与失败有提示，过期响应不会覆盖新查询。
+- 派生拼音语料和查询结果（含空数组）各缓存 60 秒；Redis 失败直接读数据库计算，数据库失败正常报错。现有写入失效及 `scope=autocomplete` 同时清理两类缓存。绕过正常失效时，两层 TTL 叠加最多约 120 秒旧结果。
+- 无数据库 schema 或数据迁移。发布顺序为后端先、前端后；回滚先前端，再按需回后端。
 
 ---
 
@@ -712,6 +723,7 @@ Query: category?, vote_year?
 | 投票对象列表/详情 | `vote_objects:{year}:{category}[:{id}]` | 600s | work CRUD、voteable 导入/改归属/改资源、候选导入/改/删/合并 |
 | 问卷结构 | `questionnaire:structure:{year}` | 1800s | 问卷/题组/问题/选项 CRUD、整树导入 |
 | 自动补全 | `autocomplete:{year}:{limit}:{q}` | 60s | 候选/作品变更 |
+| 拼音候选语料／结果 | `autocomplete:pinyin:v1:{year}:{category}:corpus` / `...:q:{sha256(query)}` | 各 60s | 与自动补全共用失效前缀 |
 | 已通过提名 | `nominations:approved:{page}:{size}` | 60s | 提名 approve/reject |
 
 - 失效用 `SCAN` 前缀删除（非 `KEYS`）；管理台可用 `POST /admin/cache/flush` 手动强刷。

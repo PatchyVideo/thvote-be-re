@@ -154,6 +154,7 @@
 |---|---|
 | [`2026-06-08-questionnaire-backend-design.md`](./superpowers/specs/2026-06-08-questionnaire-backend-design.md) | 问卷结构化后端（B-039）：4 结构表 + admin 整树导入 + structure 查询 + 完成校验升级 |
 | [`2026-06-08-vote-objects-backend-design.md`](./superpowers/specs/2026-06-08-vote-objects-backend-design.md) | 投票对象迁后端（B-040）：`merged_into` 去重合并 + 分类查询端点 |
+| [`2026-11-08-pinyin-candidate-search-design.md`](./superpowers/specs/2026-11-08-pinyin-candidate-search-design.md) | **已确认、本地实现**：pypinyin 匹配模块、候选 ID 搜索、Redis 派生语料与结果缓存、投票页三个入口迁移 |
 
 ### 前端侧设计（`thvote-fe` / `Touhou-Vote` 仓库）
 
@@ -178,7 +179,7 @@
 
 ## 实施计划（`superpowers/plans/`）
 
-> **只剩未实施完的 5 份 + 本轮 1 份**。已执行完毕/废弃的 26 份在 [`archive/superpowers/plans/`](./archive/superpowers/plans/)。
+> 本节保留尚需实施或追溯的计划；已执行完毕／废弃的历史计划见 [`archive/superpowers/plans/`](./archive/superpowers/plans/)。具体确认与实施状态见各文档头部。
 > ⚠️ plans 里的 `- [ ]` checkbox **从未被维护过**（BACKLOG **B-057⑤**），不要拿它判断完成度。
 
 | 文档 | 状态 |
@@ -189,6 +190,7 @@
 | [`2026-06-08-vote-objects-frontend.md`](./superpowers/plans/2026-06-08-vote-objects-frontend.md) | 待实施（B-040 前端） |
 | [`2026-06-08-questionnaire-admin-frontend.md`](./superpowers/plans/2026-06-08-questionnaire-admin-frontend.md) | 待实施（B-041 投票前端） |
 | [`2026-07-21-work-table-unified.md`](./superpowers/plans/2026-07-21-work-table-unified.md) | **部分实施**：后端主体已合入 main，收尾清单见 BACKLOG **B-057** |
+| [`2026-11-08-pinyin-candidate-search.md`](./superpowers/plans/2026-11-08-pinyin-candidate-search.md) | **已本地实现、未部署**：匹配器 → 后端 API 与缓存 → 前端请求状态 → 三入口替换和依赖清理 |
 
 ---
 
