@@ -97,18 +97,12 @@ curl -s -X POST http://154.37.215.62:18000/graphql -H 'content-type: application
 
 > 前后端的 SceneId 必须是**同一个场景**;前端 prefix 与后端 AK 必须是**同一个账户**——混用新旧账户的任意组合都会校验失败（阿里云侧对不上）。
 
-## 六点五、测试期登录旁路(TEST_LOGIN_BYPASS,上线前移除)
+## 六点五、测试期登录旁路(已于 2026-10-29 移除)
 
-自动化测试(浏览器端到端)无法过滑块、也收不到真实验证码。测试环境提供**验码侧白名单固定码**旁路(设计稿 [test-login-bypass](../superpowers/specs/2026-08-14-test-login-bypass-design.md)):
-
-- 测试 Nacos `thvote_be` 配两个 key(**生产 dataId 永不配置**):
-  ```json
-  "TEST_LOGIN_BYPASS_ACCOUNTS": "[\"19900000001\", \"test1@example.com\"]",
-  "TEST_LOGIN_BYPASS_CODE": "888888"
-  ```
-- 用法:登录页填白名单假号 → 验证码直接填固定码 → 登录。**不要点"发送验证码"**——旁路只挂在验码侧,发码链路(captcha/PNVS/限流)原样不动,真人真号不受影响。
-- 每次命中打 WARNING 日志(账号脱敏)。改完 Nacos 要重启容器(B-017,workflow_dispatch 即可)。
-- **移除条件**:公开上线前删除,`grep -r TEST_LOGIN_BYPASS` 全量定位(模块/短路行/config 字段/Nacos key/本节)。
+> ❌ **本节已失效**：白名单固定验证码旁路(P-4)已于 2026-10-29 从代码与 Nacos 中整体删除
+> (`src/common/verification/test_bypass.py`、两个 `consume` 短路、`Settings` 两个字段)。
+> 现在所有账号(含测试假号)都必须走真实发码 + 真实验码，自动化端到端测试需要真人提供验证码。
+> 历史设计与取舍见 [test-login-bypass](../superpowers/specs/2026-08-14-test-login-bypass-design.md)。
 
 ## 七、常见坑速查
 

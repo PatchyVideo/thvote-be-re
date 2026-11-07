@@ -287,17 +287,46 @@ class Settings(BaseSettings):
 
     # 安全配置
     cors_allowed_origins: list[str] = Field(default_factory=lambda: ["*"])
-    trusted_proxy_ips: list[str] = Field(default_factory=list)
+    # 下面两个 IP 列表同样要容忍 Nacos 里的各种写法。NoDecode 关掉 env source
+    # 的 JSON 预解析，否则写成 "" / "10.0.0.1" 会在 source 层抛 SettingsError，
+    # 整个进程起不来（2026-10-29 生产首次部署即因此失败）。
+    trusted_proxy_ips: Annotated[list[str], NoDecode] = Field(default_factory=list)
     # 管理端 IP 白名单(B-049)。Nacos 里写 JSON 数组字符串,
     # 如 "ADMIN_ALLOWED_IPS": "[\"1.2.3.4\", \"10.0.0.0/8\"]"。
-    # 空 = 不限 IP(仍需 X-Admin-Secret);pydantic-settings 自动 JSON 解码 list[str]。
-    admin_allowed_ips: list[str] = Field(default_factory=list)
+    # 空 = 不限 IP(仍需 X-Admin-Secret)。
+    admin_allowed_ips: Annotated[list[str], NoDecode] = Field(default_factory=list)
+
+    @field_validator("trusted_proxy_ips", "admin_allowed_ips", mode="before")
+    @classmethod
+    def _parse_ip_lists(cls, value):
+        """接受 ``""``、JSON 数组、逗号分隔三种写法；空值 = 空列表。"""
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if not text:
+            return []
+        if text[0] in "[{":
+            import json
+
+            try:
+                parsed = json.loads(text)
+            except ValueError:
+                parsed = None
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed]
+            logger.error("IP 白名单配置 %r 不是合法的 JSON 数组,按空列表处理", value)
+            return []
+        return [part.strip() for part in text.split(",") if part.strip()]
     # 拦裸脚本(B-048):对变更类请求(GraphQL mutation + REST 提交/登录/发码)要求
     # 带浏览器自动附加的 Origin/Referer 头;curl/python 默认不带→403。默认关,
     # 经 Nacos 灰度开启(REQUIRE_BROWSER_ORIGIN=true)。不拦 query(codegen 免受影响)。
     require_browser_origin: bool = Field(
         False, validation_alias="REQUIRE_BROWSER_ORIGIN"
     )
+    # 公开 API 文档(P-1)。false = /docs、/redoc、/openapi.json 全部 404,
+    # GraphQL IDE(/graphql 的 GraphiQL 页面)也一并关闭;只保留纯 GraphQL POST。
+    # 默认关:生产不暴露 schema 与调试界面,测试环境经 Nacos 显式打开。
+    expose_api_docs: bool = Field(False, validation_alias="EXPOSE_API_DOCS")
 
     # SSO 配置（通过 Nacos 下发，与 ALIYUN_* 字段同等对待）
     qq_app_id: Optional[str] = Field(None, validation_alias="QQ_APP_ID")
@@ -411,11 +440,9 @@ class Settings(BaseSettings):
         "closed", validation_alias="ALIYUN_CAPTCHA_FAIL_MODE"
     )
 
-    # TEST_LOGIN_BYPASS——测试登录旁路(⚠️ 临时测试设施,公开上线前整体移除,
-    # grep TEST_LOGIN_BYPASS 全量定位)。两者同时非空才激活;生产 Nacos 永不配置。
-    # 见 docs/superpowers/specs/2026-08-14-test-login-bypass-design.md
-    test_login_bypass_accounts: list[str] = Field(default_factory=list)
-    test_login_bypass_code: str = Field("")
+    # 测试登录旁路(白名单固定验证码)已于 P-4 公开上线前整体移除,两个配置字段
+    # 随之删除;配置里再出现旧键会被忽略(extra="ignore")。设计稿与历史见
+    # docs/superpowers/specs/2026-08-14-test-login-bypass-design.md。
 
     @property
     def database_url(self) -> str:

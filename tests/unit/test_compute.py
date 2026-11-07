@@ -75,17 +75,14 @@ def test_compute_global_stats():
 
 def test_compute_completion_rates():
     all_voters = {"u1", "u2", "u3"}
-    music_votes = [("u1", _dt(1), [])]
-    cp_votes = []
-    q_votes = []
     rates = compute_completion_rates(
-        CHAR_VOTES, music_votes, cp_votes, q_votes, all_voters
+        {"required": {"u1", "u2", "u3"}, "optional": {"u1", "outside"}},
+        all_voters,
     )
-    assert rates["character"]["rate"] == pytest.approx(1.0)   # 3/3
-    assert rates["character"]["num_complete"] == 3
-    assert rates["character"]["total"] == 3
-    assert rates["music"]["rate"] == pytest.approx(1/3)        # 1/3
-    assert rates["cp"]["rate"] == pytest.approx(0.0)
+    assert rates["required"] == {"rate": 1.0, "num_complete": 3, "total": 3}
+    assert rates["optional"]["rate"] == pytest.approx(1 / 3)
+    assert rates["optional"]["num_complete"] == 1
+    assert rates["optional"]["total"] == 3
 
 
 # ── compute_covote ────────────────────────────────────────────────────

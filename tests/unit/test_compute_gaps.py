@@ -50,10 +50,9 @@ CHAR_VOTES = [
 
 
 def test_completion_rates_returns_counts():
-    res = compute_completion_rates(CHAR_VOTES, [], [], [], {"u1", "u2", "u3"})
-    assert res["character"]["num_complete"] == 3
-    assert res["character"]["total"] == 3
-    assert res["character"]["rate"] == pytest.approx(1.0)
+    assert compute_completion_rates({"main_required": {"u1"}}, set()) == {
+        "main_required": {"rate": 0.0, "num_complete": 0, "total": 0},
+    }
 
 
 def test_covote_uses_names_and_filters_whitelist():

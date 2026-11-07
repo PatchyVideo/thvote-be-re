@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 import pytest_asyncio
 
@@ -47,6 +49,53 @@ async def test_filtered_ranking_recounts_on_subset(gql) -> None:
     assert [e["name"] for e in data["entries"]] == [name1]
     assert data["entries"][0]["voteCount"] == 2
     assert data["global"]["totalVotes"] == 2
+
+
+@pytest.mark.asyncio
+async def test_cp_detail_questionnaire_uses_combination_and_original_filter(
+    gql, session,
+) -> None:
+    schema_, name1, name2 = gql
+    question = (await session.get(QuestionDef, 1))
+    female = OptionDef(question_id=question.id, content="女", code="1101102")
+    session.add(female)
+    await session.flush()
+    # Two voters in the pair, one only in the 3-member combination, and a
+    # character-only voter: only the first two belong to this detail cohort.
+    for voter in ("cp-user-1", "cp-user-2", "cp-user-3", "user-1"):
+        session.add(PaperAnswer(
+            vote_id=voter, vote_year=2026, attempt=2,
+            questionnaire_id=1, group_id=1, active_question_id=question.id,
+            selected_option_ids=[female.id],
+        ))
+    await session.commit()
+    result = await schema_.execute(
+        """query($query: String) {
+          queryCPRanking(voteYear:2026, query:$query) {
+            global { totalVotes }
+            entries { voteCount }
+          }
+          queryQuestionnaire(voteYear:2026, query:$query,
+                             questionsOfInterest:["q11011"]) {
+            entries { totalAnswers totalFemale }
+          }
+          queryCompletionRates(voteYear:2026, query:$query) {
+            items { name numComplete total rate }
+          }
+        }""",
+        variable_values={"query": (
+            f'cp=({json.dumps(name2)},{json.dumps(name1)}) AND q11011=1101102'
+        )},
+    )
+    assert result.errors is None
+    assert result.data["queryCPRanking"]["global"]["totalVotes"] == 2
+    assert result.data["queryCPRanking"]["entries"] == [{"voteCount": 2}]
+    assert result.data["queryQuestionnaire"]["entries"] == [
+        {"totalAnswers": 2, "totalFemale": 2},
+    ]
+    assert result.data["queryCompletionRates"]["items"] == [
+        {"name": "main_required", "numComplete": 2, "total": 2, "rate": 1.0},
+    ]
 
 
 @pytest.mark.asyncio
@@ -229,10 +278,8 @@ async def test_music_cp_stats_completion_share_same_filtered_subset(gql) -> None
       user-2} → numVote=2；``segment_map`` 用**全量**问卷构建(不经子集
       过滤,见 ``_compute_filtered`` 注释),user-1 答过性别=男，user-2 未
       答 → numMale=1、numFemale=0。
-    - 完成率:``all_voters`` 同上 = {user-1, user-2}，total=2；character
-      分子=2(两人都投了角色)→ rate=1.0；music/cp 分子=0(同上)；
-      questionnaire 分子=1(问卷投票者里只有 user-1 的性别答案落在子集
-      内,user-2 没有问卷答案)→ rate=0.5。
+    - 问卷完成率:子集两人中只有 user-1 完成 main_required，
+      numComplete=1、total=2、rate=0.5。
     """
     schema_, name1, _ = gql
     variables = {"voteYear": 2026, "query": f'chars: ["{name1}"]'}
@@ -268,12 +315,10 @@ async def test_music_cp_stats_completion_share_same_filtered_subset(gql) -> None
     )
     assert rates_result.errors is None
     items = {i["name"]: i for i in rates_result.data["queryCompletionRates"]["items"]}
-    assert items["character"]["total"] == 2
-    assert items["character"]["numComplete"] == 2
-    assert items["music"]["numComplete"] == 0
-    assert items["cp"]["numComplete"] == 0
-    assert items["questionnaire"]["numComplete"] == 1
-    assert items["questionnaire"]["total"] == 2
+    assert set(items) == {"main_required"}
+    assert items["main_required"]["numComplete"] == 1
+    assert items["main_required"]["total"] == 2
+    assert items["main_required"]["rate"] == 0.5
 
 
 QUERY_CHARACTER_SINGLE = """

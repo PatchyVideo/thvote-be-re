@@ -2,24 +2,25 @@
 /**
  * Frontend-driven scraper E2E (Playwright).
  *
- * Logs in through the real login modal with the test-bypass phone/code,
- * opens the doujin nomination editor and clicks “自动获取信息” for each URL.
+ * Logs in through the real login modal, opens the doujin nomination editor and
+ * clicks “自动获取信息” for each URL.
  *
  * Prereqs:
  *   npm i playwright && npx playwright install chromium
- *   Test env must have TEST_LOGIN_BYPASS_ACCOUNTS/CODE configured.
+ *   2026-10-30 起改用邮箱+密码登录(loginEmailPassword):测试账号
+ *   votetester1@touhou.ai 带真实密码哈希,不再依赖验证码/短信/旁路。
  *
  * Usage:
  *   FRONTEND_BASE=http://154.37.215.62:8082/v11 \
- *   PHONE=19900000001 CODE=888888 \
+ *   EMAIL=votetester1@touhou.ai PASSWORD=<password> \
  *   node scripts/e2e/scraper_frontend.js
  */
 
 const { chromium } = require('playwright');
 
 const BASE = process.env.FRONTEND_BASE || 'http://154.37.215.62:8082/v11';
-const PHONE = process.env.PHONE || '19900000001';
-const CODE = process.env.CODE || '888888';
+const EMAIL = process.env.EMAIL || 'votetester1@touhou.ai';
+const PASSWORD = process.env.PASSWORD || 'wlrg6M43tpI6919i';
 const OUT = process.env.E2E_OUT_DIR || '/tmp/thvote-scraper-e2e';
 // 测试机 154.37.215.62 的出口 IP 被 B 站风控时只能验收“友好报错”；
 // 在未被风控的网络(或配了 B 站代理)上设 BILI_EXPECT=ok 验收真实抓取。
@@ -69,17 +70,18 @@ async function closeNotice(page) {
   const errors = [];
   page.on('pageerror', e => errors.push(String(e).slice(0, 160)));
 
-  // login through the real modal
+  // login through the real modal (email + password, no SMS)
   await page.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForTimeout(4000);
   await page.locator('a.float-arrow-box').click();
   await page.waitForTimeout(1000);
-  await page.locator('input[placeholder="手机号(仅限国内)或邮箱"]').fill(PHONE);
-  await page.locator('input[placeholder="验证码"]').fill(CODE);
+  await page.getByText('使用旧版账号密码登录', { exact: true }).click();
+  await page.locator('input[placeholder="邮箱"]').fill(EMAIL);
+  await page.locator('input[placeholder="密码"]').fill(PASSWORD);
   const loginResp = page
-    .waitForResponse(r => r.url().includes('/graphql') && r.request().postData()?.includes('loginPhone'), { timeout: 30000 })
+    .waitForResponse(r => r.url().includes('/graphql') && r.request().postData()?.includes('loginEmailPassword'), { timeout: 30000 })
     .catch(() => null);
-  await page.locator('button', { hasText: '开始投票' }).last().click();
+  await page.locator('button', { hasText: '登录' }).last().click();
   await loginResp;
   await page.waitForTimeout(5000);
   const session = await page.evaluate(() => !!localStorage.getItem('sessionToken'));

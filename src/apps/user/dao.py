@@ -19,6 +19,8 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.apps.user.identity import IdentityProvider, normalize_subject
+from src.common.crypto import blind_index
 from src.db_model.activity_log import ActivityLog
 from src.db_model.user import User
 from src.db_model.user_identity import UserIdentity
@@ -88,9 +90,17 @@ class UserDAO:
     ) -> tuple[list[User], int]:
         query = select(User)
         if email:
-            query = query.where(_has_identity_like("email", email))
+            try:
+                canonical = normalize_subject(IdentityProvider.EMAIL, email)
+            except ValueError:
+                return [], 0
+            query = query.where(_has_identity_exact("email", canonical))
         if phone:
-            query = query.where(_has_identity_like("phone", phone))
+            try:
+                canonical = normalize_subject(IdentityProvider.PHONE, phone)
+            except ValueError:
+                return [], 0
+            query = query.where(_has_identity_exact("phone", canonical))
         count_result = await self.session.execute(
             select(func.count()).select_from(query.subquery())
         )
@@ -110,11 +120,13 @@ class UserDAO:
         return user
 
 
-def _has_identity_like(provider: str, pattern: str):
+def _has_identity_exact(provider: str, subject: str):
+    """EXISTS(...) over the blind index — encrypted subjects cannot be
+    fuzzy-matched, so admin search is exact on the canonical identifier."""
     return User.identities.any(
         and_(
             UserIdentity.provider == provider,
-            UserIdentity.subject.ilike(f"%{pattern}%"),
+            UserIdentity.subject_idx == blind_index(provider, subject),
         )
     )
 
@@ -134,7 +146,7 @@ class UserIdentityDAO:
         result = await self.session.execute(
             select(UserIdentity).where(
                 UserIdentity.provider == provider,
-                UserIdentity.subject == subject,
+                UserIdentity.subject_idx == blind_index(provider, subject),
             )
         )
         return result.scalar_one_or_none()
@@ -146,7 +158,7 @@ class UserIdentityDAO:
             .join(User.identities)
             .where(
                 UserIdentity.provider == provider,
-                UserIdentity.subject == subject,
+                UserIdentity.subject_idx == blind_index(provider, subject),
             )
         )
         return result.scalar_one_or_none()

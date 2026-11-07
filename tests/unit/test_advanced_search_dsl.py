@@ -78,6 +78,8 @@ class TestErrors:
         "q11011 == 1101101",             # 双等号
         'chars: ["a"] and chars: ["b"]', # 小写 and 不是关键字
         "",                              # 空串不该走到解析(调用方保证),真走到也报语法错
+        'cp=("A")',                     # 组合必须两人或三人
+        'cp=("A","B","C","D")',
     ])
     def test_syntax_error(self, bad: str):
         with pytest.raises(ValidationError) as exc_info:
@@ -97,6 +99,14 @@ from src.apps.result.advanced_search.dsl import (  # noqa: E402
 
 
 class TestNormalization:
+    def test_cp_order_does_not_change_fingerprint_but_multiplicity_does(self):
+        assert fingerprint(parse_query('cp=("A","B")')) == fingerprint(
+            parse_query('cp=("B","A")')
+        )
+        assert fingerprint(parse_query('cp=("A","A")')) != fingerprint(
+            parse_query('cp=("A","B")')
+        )
+
     def test_commutative_and_same_fingerprint(self):
         a = parse_query('chars: ["a"] AND q1 = 2')
         b = parse_query('q1 = 2 AND chars: ["a"]')

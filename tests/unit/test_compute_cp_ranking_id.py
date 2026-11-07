@@ -18,6 +18,19 @@ def _v(vid, items):
     return (vid, VS, items)
 
 
+def test_cp_ballots_include_singletons_without_counting_multiple_slots_twice():
+    votes = [
+        _v("u1", [{"id_a": "A", "id_b": "B"}, {"id_a": "A", "id_b": "C"}]),
+        _v("u2", [{"id_a": "A", "id_b": "B"}, {"id_a": "A", "id_b": "C"}]),
+        _v("u3", [{"id_a": "B", "id_b": "C"}]),
+    ]
+    ranking, stats = compute_cp_ranking(votes, _wl(), {}, {}, VS, 1)
+    assert stats["total_votes"] == 3
+    assert len(ranking) == 2
+    assert [e["vote_count"] for e in ranking] == [2, 2]
+    assert stats["average_votes_per_item"] == 2.0
+
+
 def test_unordered_key_merges_and_drops_singletons():
     # (A,B) 与 (B,A) 应合并为同一组合；共 2 票（≥2 保留）
     votes = [

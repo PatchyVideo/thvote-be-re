@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
+from freezegun import freeze_time
 
 try:
     import fakeredis.aioredis as fakeredis_aioredis
@@ -141,6 +142,35 @@ async def test_result_not_computed_error(fake_redis, settings):
     result_dao = ResultDAO(fake_redis, settings)
     with pytest.raises(ResultNotComputedError):
         await result_dao.get_ranking("character", [], 2026)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("now", "cutoff"),
+    [
+        ("2026-01-02T12:30:00Z", "2026-01-02T12:30:00+00:00"),
+        ("2027-01-02T00:00:00Z", "2026-12-31T23:59:59+00:00"),
+    ],
+)
+async def test_compute_saves_timeline(session, fake_redis, settings, now, cutoff):
+    await _seed_data(session)
+    with freeze_time(now):
+        await ComputeService(ComputeDAO(session), fake_redis, settings).compute_all(2026)
+    # Later config edits must not change an already computed result's dates.
+    settings.__dict__["vote_start_iso"] = "2030-01-01T00:00:00Z"
+    timeline = await ResultDAO(fake_redis, settings).get_timeline(2026)
+    assert timeline["vote_start"] == "2026-01-01T00:00:00+00:00"
+    assert timeline["vote_end"] == "2026-12-31T23:59:59+00:00"
+    assert timeline["statistics_end"] == cutoff
+    assert datetime.fromisoformat(timeline["generated_at"]) == datetime.fromisoformat(
+        now.replace("Z", "+00:00")
+    )
+
+
+@pytest.mark.asyncio
+async def test_timeline_missing_from_old_result_is_null(fake_redis, settings):
+    await fake_redis.set("result:2026:global_stats", '{"num_vote": 1}')
+    assert await ResultDAO(fake_redis, settings).get_timeline(2026) is None
 
 
 @pytest.mark.asyncio

@@ -118,7 +118,7 @@ async def test_sso_merge_does_not_replace_existing_binding(
         .where(UserIdentity.user_id == user.id, UserIdentity.provider == "qq")
         .execution_options(populate_existing=True)
     )).scalar_one()
-    assert identity.subject == "openid-original", "已有 qq 绑定被登录路径静默顶掉了"
+    assert identity.subject_plain == "openid-original", "已有 qq 绑定被登录路径静默顶掉了"
 
 
 @pytest.mark.asyncio
@@ -142,7 +142,7 @@ async def test_sso_merge_still_binds_when_slot_is_free(
         .where(UserIdentity.user_id == user.id, UserIdentity.provider == "qq")
         .execution_options(populate_existing=True)
     )).scalar_one()
-    assert identity.subject == "openid-new"
+    assert identity.subject_plain == "openid-new"
 
 
 @pytest.mark.asyncio

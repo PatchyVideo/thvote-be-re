@@ -107,32 +107,42 @@ def _visible_group_ids(
     return visible
 
 
-def is_complete(structure: dict[str, Any], answers: list[dict]) -> bool:
-    """True if every required questionnaire is completed (see module docstring)."""
-    index = StructureIndex(structure)
+def completed_questionnaire_ids(
+    index: StructureIndex, answers: list[dict],
+) -> set[int]:
+    """Completed questionnaires, including optional ones, using the gate rules.
+
+    A caller aggregating statistics must exclude unconfigured questionnaires;
+    their legacy row-coverage fallback exists only to preserve gate behaviour.
+    """
     rows = _rows_by_group(answers)
     answered = {
         (qn_id, group_id)
         for (qn_id, group_id), group_rows in rows.items()
         if any(is_done_row(index, row) for row in group_rows)
     }
-
+    completed: set[int] = set()
     for questionnaire in index.questionnaires:
-        if not questionnaire.get("required"):
-            continue
-        qn_id = questionnaire.get("id")
+        qn_id = questionnaire["id"]
         groups = _groups_of(questionnaire)
         answerable = [g for g in groups if index.group_has_questions(g)]
         if not answerable:
-            # Legacy fallback: nothing is answerable yet → old "row exists" rule.
+            # Preserve the gate's legacy fallback for unconfigured structures.
             if all((qn_id, g.get("id")) in rows for g in groups):
-                continue
-            return False
+                completed.add(qn_id)
+            continue
         visible = _visible_group_ids(index, questionnaire, rows) & {
             g["id"] for g in answerable
         }
-        if not visible:
-            return False
-        if any((qn_id, group_id) not in answered for group_id in visible):
-            return False
-    return True
+        if visible and all((qn_id, group_id) in answered for group_id in visible):
+            completed.add(qn_id)
+    return completed
+
+
+def is_complete(structure: dict[str, Any], answers: list[dict]) -> bool:
+    """True if every required questionnaire is completed (see module docstring)."""
+    index = StructureIndex(structure)
+    completed = completed_questionnaire_ids(index, answers)
+    return all(
+        qn["id"] in completed for qn in index.questionnaires if qn.get("required")
+    )

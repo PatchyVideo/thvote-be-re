@@ -82,6 +82,26 @@ def _eval(query: str, facts, char_wl, music_wl) -> set[str]:
     return evaluate_subset(node, facts, resolved)
 
 
+def test_cp_filters_exact_combinations_not_character_covotes(char_wl, music_wl):
+    cps = [
+        ("pair", _DT, [{"id_a": "2", "id_b": "1"}]),
+        ("self", _DT, [{"id_a": "1", "id_b": "1"}]),
+        ("triple", _DT, [{"id_a": "1", "id_b": "2", "id_c": "1"}]),
+    ]
+    data = build_facts(
+        _votes(("character-only", [(1, False), (2, False)])), [], cps,
+        [("pair", [{"id": "11011", "answer": ["1101102"]}])],
+        char_wl, music_wl,
+    )
+    pair = 'cp=("東風谷早苗","博丽灵梦")'
+    assert _eval(pair, data, char_wl, music_wl) == {"pair"}
+    assert _eval(pair + ' AND q11011=1101102', data, char_wl, music_wl) == {"pair"}
+    assert _eval(pair + ' AND q11011=1101101', data, char_wl, music_wl) == set()
+    assert _eval('cp=("东风谷早苗","东风谷早苗")', data, char_wl, music_wl) == {"self"}
+    assert _eval('cp=("东风谷早苗","博丽灵梦","东风谷早苗")',
+                 data, char_wl, music_wl) == {"triple"}
+
+
 class TestEvaluate:
     def test_chars_any_is_or_within_group(self, facts, char_wl, music_wl):
         result = _eval('chars: ["东风谷早苗", "博丽灵梦"]', facts, char_wl,

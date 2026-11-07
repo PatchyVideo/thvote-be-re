@@ -278,7 +278,7 @@ class UserService:
             event_type=event_type,
             user_id=user.id,
             old_value=bound.replaced_subject,
-            new_value=bound.identity.subject,
+            new_value=bound.identity.subject_plain,
             requester_ip=meta.user_ip,
             additional_fingerprint=meta.additional_fingureprint,
         )
@@ -377,7 +377,7 @@ class UserService:
             # 任何人都能再去认领；而这里只是登录顺带的 courtesy，用户并未
             # 表达换绑意图。换绑走 update_* / bind_sso 的显式入口。
             current = user.identity(provider.value)
-            if current is not None and current.subject != subject:
+            if current is not None and current.subject_plain != subject:
                 logger.warning(
                     "SSO merge skipped for user_id=%s provider=%s: "
                     "already bound to a different subject",
@@ -401,7 +401,7 @@ class UserService:
                 await self._safe_log(
                     event_type="bind_sso",
                     user_id=user.id,
-                    new_value=bound.identity.subject,
+                    new_value=bound.identity.subject_plain,
                     requester_ip=meta.user_ip,
                     additional_fingerprint=meta.additional_fingureprint,
                 )

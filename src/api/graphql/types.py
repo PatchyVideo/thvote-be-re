@@ -131,6 +131,14 @@ class Trends:
 
 
 @strawberry.type
+class ResultTimeline:
+    vote_start: DateTimeUtc
+    vote_end: DateTimeUtc
+    statistics_end: DateTimeUtc
+    generated_at: DateTimeUtc
+
+
+@strawberry.type
 class ResultGlobalStats:
     vote_year: int
     num_vote: int

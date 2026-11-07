@@ -30,7 +30,9 @@ from src.apps.result.compute_dao import ComputeDAO
 from src.apps.result.compute_service import ComputeService
 from src.apps.result.whitelist import load_whitelist_db
 from src.common.config import Settings
-from src.db_model.questionnaire_def import OptionDef, PaperAnswer, QuestionDef
+from src.db_model.questionnaire_def import (
+    OptionDef, PaperAnswer, QuestionDef, QuestionnaireDef, QuestionGroupDef,
+)
 from src.db_model.raw_submit import RawCharacterSubmit, RawCPSubmit, RawMusicSubmit
 
 QUERY_CHARACTER_SINGLE = """
@@ -221,6 +223,12 @@ async def _seed_and_compute(session: AsyncSession, fake_redis, settings) -> None
         ),
     ])
 
+    session.add_all([
+        QuestionnaireDef(id=1, key="main_required", title="基本问卷"),
+        QuestionGroupDef(id=1, questionnaire_id=1, order=1),
+        QuestionnaireDef(id=2, key="main_optional", title="附加问卷"),
+        QuestionGroupDef(id=2, questionnaire_id=2, order=1),
+    ])
     gender_q = QuestionDef(group_id=1, type="Single", content="性别", code="11011")
     input_q = QuestionDef(group_id=2, type="Input", content="备注", code="11021")
     session.add_all([gender_q, input_q])
@@ -246,7 +254,7 @@ async def _seed_and_compute(session: AsyncSession, fake_redis, settings) -> None
         ),
         # 填空题只有 user-1(male)答了,created_at 与其性别题回答同一天
         PaperAnswer(
-            vote_id="user-1", vote_year=2026, questionnaire_id=1, group_id=2,
+            vote_id="user-1", vote_year=2026, questionnaire_id=2, group_id=2,
             active_question_id=input_q.id, selected_option_ids=[],
             input_text="喜欢",
             created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
@@ -433,13 +441,12 @@ async def test_query_completion_rates_returns_items_with_counts(gql_schema) -> N
     payload = result.data["queryCompletionRates"]
     assert payload["voteYear"] == 2026
     by_name = {item["name"]: item for item in payload["items"]}
-    assert set(by_name) == {"character", "music", "cp", "questionnaire"}
-    assert by_name["character"]["numComplete"] == 5
-    assert by_name["character"]["total"] == 7
-    assert by_name["music"]["numComplete"] == 3
-    assert by_name["cp"]["numComplete"] == 2
-    assert by_name["questionnaire"]["numComplete"] == 2  # user-1、user-3 答过题
-    assert by_name["character"]["rate"] == pytest.approx(5 / 7)
+    assert set(by_name) == {"main_required", "main_optional"}
+    assert by_name["main_required"]["numComplete"] == 2
+    assert by_name["main_required"]["total"] == 7
+    assert by_name["main_optional"]["numComplete"] == 1
+    assert by_name["main_optional"]["rate"] == pytest.approx(1 / 7)
+
 
 
 # ── queryQuestionnaire / queryQuestionnaireTrend ────────────────────────────

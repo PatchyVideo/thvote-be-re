@@ -7,7 +7,10 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apps.questionnaire.dao import latest_batch
+from src.apps.questionnaire.assembler import assemble_structure
+from src.apps.questionnaire.completion import completed_questionnaire_ids
+from src.apps.questionnaire.dao import QuestionnaireDAO, latest_batch
+from src.apps.questionnaire.structure_index import StructureIndex
 from src.db_model.candidate import CandidateCharacter, CandidateMusic, FinalRanking
 from src.db_model.questionnaire_def import OptionDef, PaperAnswer, QuestionDef
 from src.db_model.raw_submit import (
@@ -186,6 +189,41 @@ class ComputeDAO:
                 skipped_options,
             )
         return list(grouped.items())
+
+    async def load_questionnaire_completion(
+        self, vote_year: int,
+    ) -> dict[str, set[str]]:
+        """Complete voters per real questionnaire, independent of semantic codes."""
+        structure_rows = await QuestionnaireDAO(self.session).load_structure_rows()
+        index = StructureIndex(assemble_structure(*structure_rows))
+        completed_by_id: dict[int, set[str]] = {
+            qn["id"]: set() for qn in index.questionnaires
+        }
+        configured_ids = {
+            qn["id"] for qn in index.questionnaires
+            if any(g.get("questions") for g in qn["questionGroups"])
+        }
+        answers = (await self.session.execute(
+            select(PaperAnswer).where(PaperAnswer.vote_year == vote_year)
+        )).scalars().all()
+        by_vote: dict[str, list] = {}
+        for answer in answers:
+            by_vote.setdefault(answer.vote_id, []).append(answer)
+        fields = (
+            "questionnaire_id", "group_id", "active_question_id",
+            "selected_option_ids", "input_text",
+        )
+        for vote_id, vote_rows in by_vote.items():
+            rows = [
+                {key: getattr(row, key) for key in fields}
+                for row in latest_batch(vote_rows)
+            ]
+            completed = completed_questionnaire_ids(index, rows) & configured_ids
+            for qn_id in completed:
+                completed_by_id[qn_id].add(vote_id)
+        return {
+            qn["key"]: completed_by_id[qn["id"]] for qn in index.questionnaires
+        }
 
     async def load_questionnaire_history(
         self, vote_year: int

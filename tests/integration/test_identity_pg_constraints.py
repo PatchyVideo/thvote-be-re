@@ -41,7 +41,7 @@ async def test_same_subject_twice_rejected(pg_session):
     pg_session.add(build_user(email=subject))
     with pytest.raises(IntegrityError) as exc_info:
         await pg_session.commit()
-    assert "uq_user_identity_provider_subject" in str(exc_info.value)
+    assert "uq_user_identity_provider_idx" in str(exc_info.value)
 
 
 @pytest.mark.asyncio

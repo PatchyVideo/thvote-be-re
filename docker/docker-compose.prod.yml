@@ -32,10 +32,14 @@ services:
       NACOS_PASSWORD: "${NACOS_PASSWORD}"
       APP_HOST: "0.0.0.0"
       APP_PORT: "8000"
+      PII_DEK_PATH: "/run/secrets/pii_dek"
     ports:
       - "18000:8000"
     volumes:
       - ./logs:/app/logs
+      # DEK 用相对路径挂载：测试机解析到 /opt/thvote/test/secrets/，生产到
+      # /opt/thvote/prod/secrets/。宿主文件权限(0400/uid1000)随 bind mount 保留。
+      - ./secrets/pii_dek:/run/secrets/pii_dek:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s

@@ -69,3 +69,7 @@ CLAUDE.md
 old-backend/
 .superpowers/
 /.vs
+
+# temp data dumps: may contain real user PII. never commit.
+.tmp_*
+*.bson

@@ -89,6 +89,15 @@ class ResultDAO:
     async def get_global_stats(self, vote_year: int | None = None) -> dict:
         return await self._get_json(self._key(self._year(vote_year), "global_stats"))
 
+    async def get_timeline(self, vote_year: int | None = None) -> dict | None:
+        """Use the main snapshot's dates, including for filtered results.
+
+        Older snapshots have no timeline. Do not substitute current settings.
+        """
+        key = f"result:{self._year(vote_year)}:timeline"
+        raw = await self.redis.get(key)
+        return json.loads(raw) if raw is not None else None
+
     async def get_single_entity(
         self, category: str, name: str, vote_year: int | None = None
     ) -> dict:

@@ -1,6 +1,6 @@
 """高级搜索 DSL:文法、AST、解析(设计稿 §四/§五)。
 
-语法(需求文档 §846-923):5 种原子条件 + AND/OR/括号,AND 结合紧于 OR。
+语法:角色/音乐/问卷条件及详情页组合条件 + AND/OR/括号,AND 结合紧于 OR。
 解析产物是与 lark 解耦的 frozen dataclass AST,B-053 直接消费。
 """
 
@@ -48,6 +48,11 @@ class MusicFirst:
 
 
 @dataclass(frozen=True)
+class CPExact:
+    names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class And:
     children: tuple["Node", ...]
 
@@ -57,7 +62,7 @@ class Or:
     children: tuple["Node", ...]
 
 
-Node = Union[QCond, CharAny, CharFirst, MusicAny, MusicFirst, And, Or]
+Node = Union[QCond, CharAny, CharFirst, MusicAny, MusicFirst, CPExact, And, Or]
 
 _GRAMMAR = r"""
 ?expr: or_expr
@@ -69,12 +74,14 @@ _GRAMMAR = r"""
      | chars_first
      | musics_any
      | musics_first
+     | cp_exact
 
 q_cond: QNAME "=" INT
 chars_any: "chars" ":" "[" string ("," string)* "]"
 chars_first: "chars_first" "=" string
 musics_any: "musics" ":" "[" string ("," string)* "]"
 musics_first: "musics_first" "=" string
+cp_exact: "cp" "=" "(" string "," string ("," string)? ")"
 
 string: ESCAPED_STRING
 QNAME: /q\d+/
@@ -113,6 +120,9 @@ class _ToAst(Transformer):
     def musics_first(self, items: list[str]) -> MusicFirst:
         return MusicFirst(name=items[0])
 
+    def cp_exact(self, items: list[str]) -> CPExact:
+        return CPExact(names=tuple(items))
+
     def or_expr(self, items: list[Node]) -> Or:
         return Or(children=tuple(items))
 
@@ -134,6 +144,9 @@ def canonical(node: Node) -> str:
         return f"musics:[{inner}]"
     if isinstance(node, MusicFirst):
         return f"musics_first={json.dumps(node.name, ensure_ascii=False)}"
+    if isinstance(node, CPExact):
+        inner = ",".join(json.dumps(n, ensure_ascii=False) for n in node.names)
+        return f"cp=({inner})"
     op = " AND " if isinstance(node, And) else " OR "
     return "(" + op.join(canonical(c) for c in node.children) + ")"
 
@@ -162,6 +175,8 @@ def normalize(node: Node) -> Node:
         return CharAny(names=tuple(sorted(set(node.names))))
     if isinstance(node, MusicAny):
         return MusicAny(names=tuple(sorted(set(node.names))))
+    if isinstance(node, CPExact):
+        return CPExact(names=tuple(sorted(node.names)))
     return node
 
 

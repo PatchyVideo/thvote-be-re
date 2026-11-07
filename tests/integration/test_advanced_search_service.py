@@ -77,6 +77,19 @@ async def test_compute_all_writes_snapshot_version(seeded, fake_redis):
 
 
 @pytest.mark.asyncio
+async def test_filtered_trend_uses_snapshot_dates(seeded, fake_redis, settings):
+    name1, _ = seeded
+    # Config changes after publication must not move the subset's hour buckets.
+    settings.__dict__["vote_start_iso"] = "2030-01-01T00:00:00Z"
+    settings.__dict__["vote_end_iso"] = "2030-02-01T00:00:00Z"
+    infix = await ensure_filtered_results(
+        fake_redis, settings, 2026, f'chars: ["{name1}"]'
+    )
+    ranking = json.loads(await fake_redis.get(f"result:2026:{infix}:chars:ranking"))
+    assert ranking[0]["trend"] == [{"hrs": 24, "cnt": 2}]
+
+
+@pytest.mark.asyncio
 async def test_filtered_ranking_uses_subset_denominator(seeded, fake_redis, settings):
     name1, _ = seeded
     infix = await ensure_filtered_results(
