@@ -1,5 +1,12 @@
 # Work 表 + 前后端统一 — 实现计划
 
+> 归档日期：2026-11-08。代码收口已完成；历史数据与对比接线仍见 B-050-后补3。
+> 下文保留原设计／实施过程，仅调整相对链接；不要按旧步骤再次执行迁移、导入或部署。当前入口见 [文档索引](../../../README.md)。
+
+> 当前状态（2026-11-08 源码核对）：管理列表／归属编辑与按名称匹配／自动创建 work 已实现；前端 Task6–9、candidateId 与 CP metadata 已接通。历史榜单导入并入 B-050-后补3；不重新执行旧迁移。
+> 本文后续为原始设计／实施记录；旧状态与 checkbox 不代表当前待办。证据见 [BACKLOG 核对记录](../../../migration/backlog-audit-2026-11-08.md)。
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 新增 unified `work` 表，voteable 用 work_id FK 替代 origin/album，前后端同步适配 API 契约。

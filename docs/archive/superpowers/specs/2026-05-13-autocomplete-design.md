@@ -1,7 +1,10 @@
 # Autocomplete 模块设计规格
 
-> **状态**：已实施 —— `search_characters`/`search_music` 已按本设计实现（`src/apps/autocomplete/dao.py`）；`search_cps()` 按设计明确不实现，现状仍 `return []`，与设计范围一致（[BACKLOG.md](../../BACKLOG.md)「模块功能缺口」把 CP 补全列为本设计之外的独立后续项）。
-> 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
+> 归档日期：2026-11-08。已执行或被后续方案取代；剩余实际事项以当前 BACKLOG 为准。
+> 下文保留原设计／实施过程，仅调整相对链接；不要按旧步骤再次执行迁移、导入或部署。当前入口见 [文档索引](../../../README.md)。
+
+> **状态（2026-11-08）**：本 ILIKE 建议契约已被 [拼音候选搜索](../../../superpowers/specs/2026-11-08-pinyin-candidate-search-design.md) 取代；唯一 `/autocomplete/search` 返回完整 candidate IDs。旧 service/schema/ILIKE 查询与 `search_cps()` 已移除（44bd972），B-062 按废弃归档，未新增 CP 组合推荐。
+> 下文是历史设计，不代表当前接口，不作为待实现需求。
 
 > 创建日期：2026-05-13
 > 最后更新：2026-05-13

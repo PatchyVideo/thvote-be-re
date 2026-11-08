@@ -1,26 +1,21 @@
-"""Autocomplete schemas for request/response validation."""
+"""Public candidate search request and response contracts."""
 
-from typing import Optional
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
-class AutocompleteRequest(BaseModel):
-    """Request schema for autocomplete."""
+CandidateCategory = Literal["character", "music"]
 
+
+class CandidateSearchRequest(BaseModel):
+    category: CandidateCategory
+    query: str = Field(max_length=64)
+    vote_year: int | None = Field(default=None, gt=0)
+
+
+class CandidateSearchResponse(BaseModel):
+    category: CandidateCategory
     query: str
-    limit: Optional[int] = 10
-
-
-class AutocompleteSuggestion(BaseModel):
-    """Autocomplete suggestion item."""
-
-    name: str
-    type: str
-    origin: Optional[str] = None
-
-
-class AutocompleteResponse(BaseModel):
-    """Response schema for autocomplete."""
-
-    suggestions: list[AutocompleteSuggestion]
+    vote_year: int
+    candidate_ids: list[int]

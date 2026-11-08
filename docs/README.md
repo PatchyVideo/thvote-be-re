@@ -1,11 +1,9 @@
 # `docs/` 索引
 
 > 创建日期：2026-04-27
-> 最后更新：2026-09-06（用户身份模型归一化：新设计稿 + 计划入索引，B-008 计划归档）；2026-08-31（**文档大扫除**：30 份已实施/已废弃的过程产物迁入 [`archive/`](./archive/)；补齐 07–08 月此前从未进索引的约 25 份文档；现役设计稿统一补状态头；CHANGELOG 去重排序并切分归档）
+> 最后更新：2026-11-08（当前数据来源入口、历史计划／设计归档、CHANGELOG 季度拆分）。
 
-本表只列**现役文档**的入口与职责。历史过程记录在 [`archive/`](./archive/)，那里的内容**不代表当前实现**。
-
-**每份文档头部都有状态与日期元信息**——设计稿带 `状态：已实施 / 部分实施 / 待实施`，读之前先看一眼。
+从 [当前后端结构与数据来源](architecture/backend-overview.md) 开始阅读；接口字段查 API 契约及源码，开放事项查 BACKLOG。技术设计解释当时的取舍，归档保留过程，二者都不自动代表待实施需求或当前线上状态。
 
 ---
 
@@ -20,6 +18,8 @@
 | **维护结果趋势时间轴** | [`api/result-timeline.md`](./api/result-timeline.md) —— 快照日期、GraphQL 字段及前后端发布顺序 |
 | **核对结果统计口径** | [`api/result-statistics.md`](./api/result-statistics.md) —— 部门有效票与逐问卷完成情况 |
 | **维护详情页人群筛选** | [`api/result-detail-filters.md`](./api/result-detail-filters.md) —— 原约束、目标交集及组合 DSL |
+| **了解当前后端结构与数据来源** | [`architecture/backend-overview.md`](architecture/backend-overview.md) —— 当前模块职责、候选／问卷／计票与缓存边界 |
+| **核对历史待办是否仍成立** | [`migration/backlog-audit-2026-11-08.md`](migration/backlog-audit-2026-11-08.md) —— 源码、历史需求与外部状态分开判断，避免重复实施 |
 
 ---
 
@@ -85,7 +85,7 @@
 
 ---
 
-## 设计稿（`superpowers/specs/`）
+## 技术设计记录（`superpowers/specs/`）
 
 > 记录**当时的设计意图与取舍**——「为什么这么做」的长期参考。每份头部有 `状态` 行标明落地情况。
 > 已废弃、纯操作性、或属事后记录的设计稿已迁入 [`archive/superpowers/specs/`](./archive/superpowers/specs/)。
@@ -154,15 +154,18 @@
 |---|---|
 | [`2026-06-08-questionnaire-backend-design.md`](./superpowers/specs/2026-06-08-questionnaire-backend-design.md) | 问卷结构化后端（B-039）：4 结构表 + admin 整树导入 + structure 查询 + 完成校验升级 |
 | [`2026-06-08-vote-objects-backend-design.md`](./superpowers/specs/2026-06-08-vote-objects-backend-design.md) | 投票对象迁后端（B-040）：`merged_into` 去重合并 + 分类查询端点 |
+| [`2026-11-08-pinyin-candidate-search-design.md`](./superpowers/specs/2026-11-08-pinyin-candidate-search-design.md) | **已确认、本地实现**：pypinyin 匹配模块、候选 ID 搜索、Redis 派生语料与结果缓存、投票页三个入口迁移 |
+
+> 技术设计解释当时的需求映射与取舍；当前入口与归档边界见 [设计记录说明](superpowers/specs/README.md)。
 
 ### 前端侧设计（`thvote-fe` / `Touhou-Vote` 仓库）
 
-> 这四块的**后端已于 2026-07-14 合入 main，前端侧全部待做**（2026-08-13 确认由我方负责）。
+> 2026-11-08 已核对提交态：B-039／040／041 前端主路径已实现；B-037 主要接入已具备，逐条提示仍有计划差异。下列早期设计用于追溯，不能据旧状态重新排期。见 [核对记录](migration/backlog-audit-2026-11-08.md)。
 
 | 文档 | 对应 |
 |---|---|
 | [`2026-06-08-security-frontend-design.md`](./superpowers/specs/2026-06-08-security-frontend-design.md) | B-037 安全 |
-| [`2026-06-08-questionnaire-frontend-design.md`](./superpowers/specs/2026-06-08-questionnaire-frontend-design.md) | B-039 问卷结构化 |
+| [`2026-06-08-questionnaire-frontend-design.md`](archive/superpowers/specs/2026-06-08-questionnaire-frontend-design.md) | B-039 问卷结构化 |
 | [`2026-06-08-vote-objects-frontend-design.md`](./superpowers/specs/2026-06-08-vote-objects-frontend-design.md) | B-040 投票对象 |
 | [`2026-06-08-questionnaire-admin-frontend-design.md`](./superpowers/specs/2026-06-08-questionnaire-admin-frontend-design.md) | B-041 自由问卷管理 |
 
@@ -170,25 +173,19 @@
 
 | 文档 | 被谁取代 |
 |---|---|
-| [`2026-05-13-autocomplete-design.md`](./superpowers/specs/2026-05-13-autocomplete-design.md) | 无取代；CP 搜索缺口见 BACKLOG **B-062** |
+| [`2026-05-13-autocomplete-design.md`](archive/superpowers/specs/2026-05-13-autocomplete-design.md) | 已被 [拼音候选搜索](./superpowers/specs/2026-11-08-pinyin-candidate-search-design.md) 取代；B-062 旧空实现随建议链路废弃 |
 | [`2026-05-13-result-query-design.md`](./superpowers/specs/2026-05-13-result-query-design.md) | 计票部分已由 [`2026-07-18-result-recount-id-based-design.md`](./superpowers/specs/2026-07-18-result-recount-id-based-design.md) 重写取代 |
-| [`2026-06-07-admin-panel-design.md`](./superpowers/specs/2026-06-07-admin-panel-design.md) | 单文件 Web UI 已由 [`2026-07-18-admin-console-vue-frontend-design.md`](./superpowers/specs/2026-07-18-admin-console-vue-frontend-design.md) 取代 |
+| [`2026-06-07-admin-panel-design.md`](archive/superpowers/specs/2026-06-07-admin-panel-design.md) | 单文件 Web UI 已由 [`2026-07-18-admin-console-vue-frontend-design.md`](./superpowers/specs/2026-07-18-admin-console-vue-frontend-design.md) 取代 |
 
 ---
 
-## 实施计划（`superpowers/plans/`）
+## 实施计划
 
-> **只剩未实施完的 5 份 + 本轮 1 份**。已执行完毕/废弃的 26 份在 [`archive/superpowers/plans/`](./archive/superpowers/plans/)。
-> ⚠️ plans 里的 `- [ ]` checkbox **从未被维护过**（BACKLOG **B-057⑤**），不要拿它判断完成度。
+当前目录 [superpowers/plans/](superpowers/plans/README.md) 仅用于待执行的新计划。本轮核对的 8 份旧计划已迁入 [归档索引](archive/README.md)，不再同时列为现役待办。
 
-| 文档 | 状态 |
-|---|---|
-| [`2026-09-06-user-identity-model.md`](./superpowers/plans/2026-09-06-user-identity-model.md) | **已实施**（2026-09-06）：`user` + `user_identity` 归一化，migration 0018 |
-| [`2026-06-08-security-frontend.md`](./superpowers/plans/2026-06-08-security-frontend.md) | 待实施（B-037 前端） |
-| [`2026-06-08-questionnaire-frontend.md`](./superpowers/plans/2026-06-08-questionnaire-frontend.md) | 待实施（B-039 前端） |
-| [`2026-06-08-vote-objects-frontend.md`](./superpowers/plans/2026-06-08-vote-objects-frontend.md) | 待实施（B-040 前端） |
-| [`2026-06-08-questionnaire-admin-frontend.md`](./superpowers/plans/2026-06-08-questionnaire-admin-frontend.md) | 待实施（B-041 投票前端） |
-| [`2026-07-21-work-table-unified.md`](./superpowers/plans/2026-07-21-work-table-unified.md) | **部分实施**：后端主体已合入 main，收尾清单见 BACKLOG **B-057** |
+- 已完成或被取代的执行过程查归档；真实剩余事项查 [BACKLOG](BACKLOG.md)。
+- 技术取舍查 [设计记录](superpowers/specs/README.md)，当前数据流查 [后端结构](architecture/backend-overview.md)。
+- 历史 checkbox 不保证逐项维护，不据其重复执行迁移、导入或部署。
 
 ---
 
@@ -198,12 +195,16 @@
 
 | 子目录 | 内容 |
 |---|---|
-| [`archive/superpowers/plans/`](./archive/superpowers/plans/) | 25 份已执行完 / 已废弃的实施计划 |
-| [`archive/superpowers/specs/`](./archive/superpowers/specs/) | 4 份已废弃 / 纯操作性 / 事后记录类设计稿 |
-| [`archive/superpowers/handoffs/`](./archive/superpowers/handoffs/) | 1 份一次性任务交接记录 |
-| [`archive/2026-05-30-refactor-todo.md`](./archive/2026-05-30-refactor-todo.md) | 模块级迁移进度快照（内容已过期；仍成立的缺口已转 B-062 / B-063） |
+| [`archive/superpowers/plans/`](./archive/superpowers/plans/) | 已执行完或被取代的计划；按归档索引查阅 |
+| [`archive/superpowers/specs/`](./archive/superpowers/specs/) | 已被取代、纯操作性或事后记录的设计 |
+| [`archive/superpowers/handoffs/`](./archive/superpowers/handoffs/) | 一次性任务交接记录 |
+| [`archive/2026-05-30-refactor-todo.md`](./archive/2026-05-30-refactor-todo.md) | 模块级迁移进度快照（内容已过期；B-062 已废弃、B-063 已补测试，见当前核对记录） |
 
 ---
+
+## 变更历史
+
+最近记录见 [CHANGELOG](CHANGELOG.md)，旧季度详情见 [2026Q3](CHANGELOG-archive-2026Q3.md) 与 [2026H1](CHANGELOG-archive-2026H1.md)。
 
 ## 阅读建议
 

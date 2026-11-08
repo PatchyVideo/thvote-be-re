@@ -1,6 +1,9 @@
 # 管理端（Admin Panel）— 设计稿
 
-> **状态**：已实施（部分被取代） —— B-035 已完成（[BACKLOG-archive.md](../../BACKLOG-archive.md)，2026-06-07 `afdc091`：12 个新端点 + 单文件 Web UI）；但该单文件面板已被 B-049 的 Vue 管理台取代（[2026-07-17-admin-console-vue-security-monitoring-design.md](./2026-07-17-admin-console-vue-security-monitoring-design.md)、[2026-07-18-admin-console-vue-frontend-design.md](./2026-07-18-admin-console-vue-frontend-design.md)），旧工具已于 2026-07-18 全部迁移到 Vue，旧面板仅作 `/admin-ui-legacy` 兜底保留（`src/main.py`），视觉验收后将删除（见 [BACKLOG.md](../../BACKLOG.md) B-049 尾项）。
+> 归档日期：2026-11-08。已执行或被后续方案取代；剩余实际事项以当前 BACKLOG 为准。
+> 下文保留原设计／实施过程，仅调整相对链接；不要按旧步骤再次执行迁移、导入或部署。当前入口见 [文档索引](../../../README.md)。
+
+> **状态**：已实施（部分被取代） —— B-035 已完成（[BACKLOG-archive.md](../../../BACKLOG-archive.md)，2026-06-07 `afdc091`：12 个新端点 + 单文件 Web UI）；但该单文件面板已被 B-049 的 Vue 管理台取代（[2026-07-17-admin-console-vue-security-monitoring-design.md](../../../superpowers/specs/2026-07-17-admin-console-vue-security-monitoring-design.md)、[2026-07-18-admin-console-vue-frontend-design.md](../../../superpowers/specs/2026-07-18-admin-console-vue-frontend-design.md)），旧工具已于 2026-07-18 全部迁移到 Vue，旧面板仅作 `/admin-ui-legacy` 兜底保留（`src/main.py`），视觉验收后将删除（见 [BACKLOG.md](../../../BACKLOG.md) B-049 尾项）。
 > 本文件是**设计稿**，记录当时的设计意图与取舍；实现细节可能已演进。状态核对于 2026-08-31。
 
 > 创建日期：2026-06-07
@@ -33,7 +36,7 @@ Web UI 的处理：
 
 ### 3.1 同步管理
 
-详见 [mongodb-sync-design.md](./2026-06-07-mongodb-sync-design.md) §六。
+详见 [mongodb-sync-design.md](../../../superpowers/specs/2026-06-07-mongodb-sync-design.md) §六。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -232,6 +235,6 @@ Web UI 为静态 HTML，不进入自动化测试（手工验收）。
 
 ## 七、关联文档
 
-- MongoDB 同步设计：[`docs/superpowers/specs/2026-06-07-mongodb-sync-design.md`](./2026-06-07-mongodb-sync-design.md)
+- MongoDB 同步设计：[`docs/superpowers/specs/2026-06-07-mongodb-sync-design.md`](../../../superpowers/specs/2026-06-07-mongodb-sync-design.md)
 - 现有管理端代码：`src/apps/admin/router.py`、`src/apps/admin/service.py`
 - BACKLOG 追踪：新增 B-034（admin panel）

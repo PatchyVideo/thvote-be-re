@@ -92,6 +92,44 @@ async def _seed_work_and_voteable(session):
 
 
 @pytest.mark.asyncio
+async def test_candidate_search_http_contract(app):
+    from src.common.config import get_settings
+
+    a, maker = app
+    settings = get_settings().model_copy(update={"vote_year": 2026})
+    a.dependency_overrides[get_settings] = lambda: settings
+    async with maker() as session:
+        await _seed_work_and_voteable(session)
+        await session.execute(text(
+            "INSERT INTO candidate_character (vote_year, voteable_id) VALUES (2026, 11)"
+        ))
+        await session.commit()
+        cid = (await session.execute(text(
+            "SELECT id FROM candidate_character WHERE vote_year=2026 AND voteable_id=11"
+        ))).scalar_one()
+    url = "/api/v1/autocomplete/search"
+    async with AsyncClient(transport=ASGITransport(app=a), base_url="http://test") as client:
+        result = await client.post(url, json={"category": "character", "query": " MLS "})
+        assert result.status_code == 200
+        assert result.json() == {
+            "category": "character",
+            "query": "mls",
+            "vote_year": 2026,
+            "candidate_ids": [cid],
+        }
+        other = await client.post(url, json={
+            "category": "character", "query": "mls", "vote_year": 2027,
+        })
+        assert other.json()["vote_year"] == 2027
+        assert other.json()["candidate_ids"] == []
+        for fields in ({"category": "cp"}, {"query": "x" * 65}, {"vote_year": 0}):
+            response = await client.post(url, json={
+                "category": "character", "query": "x", **fields,
+            })
+            assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_characters_grouped_by_work(app):
     a, maker = app
     async with maker() as s:
