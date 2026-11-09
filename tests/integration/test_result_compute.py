@@ -111,6 +111,40 @@ async def _seed_data(session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
+async def test_completion_batch_keeps_other_valid_questionnaires(session):
+    from src.apps.questionnaire.dao import QuestionnaireDAO
+
+    await QuestionnaireDAO(session).replace_structure_tree({"questionnaires": [
+        {"id": 1, "key": "required", "required": True, "questionGroups": [
+            {"id": 10, "order": 1, "questions": [
+                {"id": 100, "type": "Single", "options": [
+                    {"id": 1000}, {"id": 1001},
+                ]},
+            ]},
+        ]},
+        {"id": 2, "key": "optional", "questionGroups": [
+            {"id": 20, "order": 1, "questions": [
+                {"id": 200, "type": "Input", "options": []},
+            ]},
+        ]},
+    ]})
+    session.add_all([
+        PaperAnswer(vote_id="valid", vote_year=2026, attempt=1,
+                    questionnaire_id=1, group_id=10, active_question_id=100,
+                    selected_option_ids=[1000]),
+        PaperAnswer(vote_id="legacy-invalid", vote_year=2026, attempt=1,
+                    questionnaire_id=1, group_id=10, active_question_id=100,
+                    selected_option_ids=[1000, 1001]),
+        PaperAnswer(vote_id="legacy-invalid", vote_year=2026, attempt=1,
+                    questionnaire_id=2, group_id=20, active_question_id=200,
+                    selected_option_ids=[], input_text="合法文本"),
+    ])
+    await session.commit()
+    completed = await ComputeDAO(session).load_questionnaire_completion(2026)
+    assert completed == {"required": {"valid"}, "optional": {"legacy-invalid"}}
+
+
+@pytest.mark.asyncio
 async def test_compute_and_read_ranking(session, fake_redis, settings):
     await _seed_data(session)
     wl = await load_whitelist_db(session, "character", 2026)

@@ -40,3 +40,9 @@
 - [已完成或被取代的计划](../archive/README.md)：保留执行过程；B-037 的展示差异与历史对比等真实残留继续由 BACKLOG 跟踪。
 - [最近变更](../CHANGELOG.md)、[2026Q3](../CHANGELOG-archive-2026Q3.md)、[2026H1](../CHANGELOG-archive-2026H1.md)：按发生日期追溯，不作为当前数据或部署结论。
 - [官方需求原文](../requirements/) 保留原始依据，不参与过程文档精简。
+
+## 问卷作答规则（2026-11-09 本地实现）
+
+`StructureIndex → rules → validation → completion → service`：rules 是无 IO 的纯计算，validation 先检查结构/引用并复用分支评估，completion 使用同一结果计算完成集合。提交只保存合法快照，未完成不等于非法；统计和门禁复用相同语义及现有历史兼容。投票门禁将预读答案传入 service，避免重复查询；未新增结构缓存、表或接口。
+
+关联推进有界且从默认可见组开始，结果不能由隐藏组答案自行解锁。详细规则、错误契约与临时性能/SQL 观察见[实施记录](../superpowers/plans/2026-11-09-questionnaire-answer-rules.md)。没有核验线上题库、部署或重算。

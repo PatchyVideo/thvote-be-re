@@ -4,7 +4,10 @@ from __future__ import annotations
 from src.apps.questionnaire.assembler import assemble_structure
 from src.apps.questionnaire.completion import is_complete
 from src.apps.questionnaire.dao import QuestionnaireDAO
-from src.apps.questionnaire.validation import INVALID_ANSWER, validate_answer_rows
+from src.apps.questionnaire.structure_index import StructureIndex
+from src.apps.questionnaire.validation import (
+    INVALID_ANSWER, assess_answers, require_valid,
+)
 from src.common.exceptions import ValidationError
 
 
@@ -21,10 +24,9 @@ class QuestionnaireService:
     ) -> int:
         """Flatten a flat answer array into paper_answer rows.
 
-        Every row is checked against the stored structure first
-        (``validation.validate_answer_rows``) — an opaque JSON payload must not
-        be able to write rows that alias another questionnaire's group or
-        reference options that do not exist (R-01/D-08).
+        One structure index and rule assessment validate references, answer
+        types, branches and exclusions. Partial but legal snapshots may be
+        saved; rejected snapshots never reach the append-only DAO.
         """
         rows = _flatten_answer_state(answers)
         if not rows:
@@ -32,15 +34,19 @@ class QuestionnaireService:
             # 旧实现的"空提交=清空整卷"语义已不可表达;完成度门禁本就要求答
             # 满,清空不是产品流程,显式拒绝好过静默泄漏旧答案。
             raise ValidationError("EMPTY_PAPER_SUBMIT", details=422)
-        validate_answer_rows(await self.get_structure(), rows)
+        index = StructureIndex(await self.get_structure())
+        require_valid(assess_answers(index, rows))
         return await self.dao.replace_answers(vote_id, vote_year, rows)
 
     async def get_answers(self, vote_id: str, vote_year: int) -> list[dict]:
         return await self.dao.get_answers(vote_id, vote_year)
 
-    async def is_complete(self, vote_id: str, vote_year: int) -> bool:
+    async def is_complete(
+        self, vote_id: str, vote_year: int, *, answers: list[dict] | None = None,
+    ) -> bool:
         structure = await self.get_structure()
-        answers = await self.dao.get_answers(vote_id, vote_year)
+        if answers is None:
+            answers = await self.dao.get_answers(vote_id, vote_year)
         return is_complete(structure, answers)
 
     async def import_structure(self, tree: dict) -> int:
@@ -66,11 +72,12 @@ def _flatten_answer_state(answers: list[dict]) -> list[dict]:
                 details=422,
                 human_readable_message="问卷作答格式不正确",
             )
+        options = a.get("selectedOptionIds")
         rows.append({
             "questionnaire_id": a.get("questionnaireId"),
             "group_id": a.get("groupId"),
             "active_question_id": a.get("activeQuestionId"),
-            "selected_option_ids": a.get("selectedOptionIds") or [],
+            "selected_option_ids": options if options is not None else [],
             "input_text": a.get("input"),
         })
     return rows

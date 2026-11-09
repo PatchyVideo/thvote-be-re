@@ -248,7 +248,7 @@ class SubmitService:
         year = get_settings().vote_year
         qsvc = QuestionnaireService(QuestionnaireDAO(self.submit_dao.session))
         answers = await qsvc.get_answers(vote_id, year)
-        if not answers or not await qsvc.is_complete(vote_id, year):
+        if not answers or not await qsvc.is_complete(vote_id, year, answers=answers):
             raise QuestionnaireNotCompletedError(vote_id)
 
     async def _require_candidates(self, category: str, tokens: list[str]) -> None:
