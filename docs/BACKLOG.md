@@ -10,6 +10,8 @@
 
 2026-11-09 补充：[问卷审查与后端化缺口](migration/questionnaire-audit-2026-11-09.md)。用户指定第一阶段统一填写/结果的后端题库来源，并补齐 id/code/管理台衔接；[实施计划](superpowers/plans/2026-11-09-questionnaire-backend-source.md)已执行并完成相关本地验证，尚未部署；特殊图表/趋势代理绑定仍保留。其余门禁、作答规则、监控和跨届模型差异登记后另行处理。
 
+问卷第二阶段：[答案合法性与完成度计划](superpowers/plans/2026-11-09-questionnaire-answer-rules.md)本地已实现，相关验证与测量见计划；服务端题型/互斥/分支校验、共用完成语义与重复查询清理已接入，未部署。整套完成产品规则、legacy 门禁、V2监控/作废及跨届模型继续待办。
+
 | 编号 | 当前事实 | 剩余范围／边界 | 证据 |
 |---|---|---|---|
 | **B-037** | 提名校验响应、待审核提示及问卷门禁已接入前端；“前端待做”失实 | 原计划逐条 index 提示与现有合并原因／重复数量展示有差异，是否调整待产品判断；可选 approved 列表不自动变为需求 | [前端计划](archive/superpowers/plans/2026-06-08-security-frontend.md)；`Touhou-Vote/packages/vote/src/vote-doujin/VoteDoujin.vue` |

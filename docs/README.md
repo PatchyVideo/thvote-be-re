@@ -21,6 +21,7 @@
 | **了解当前后端结构与数据来源** | [`architecture/backend-overview.md`](architecture/backend-overview.md) —— 当前模块职责、候选／问卷／计票与缓存边界 |
 | **核对历史待办是否仍成立** | [`migration/backlog-audit-2026-11-08.md`](migration/backlog-audit-2026-11-08.md) —— 源码、历史需求与外部状态分开判断，避免重复实施 |
 | **实施问卷定义来源统一** | [`问卷实施计划`](superpowers/plans/2026-11-09-questionnaire-backend-source.md) —— 填写与结果读取后端、管理台编码维护；本地已实现，未部署 |
+| **完善问卷答案校验与完成判断** | [`作答规则实施计划`](superpowers/plans/2026-11-09-questionnaire-answer-rules.md) —— 共用规则计算、提交校验与查询复用；本地已实现，未部署 |
 
 ---
 

@@ -31,6 +31,22 @@ def test_incomplete_when_required_group_missing():
     assert is_complete(s, [{"questionnaire_id": 1, "group_id": 10}]) is False
 
 
+def test_unconfigured_stored_rows_keep_coverage_even_with_old_question_ids():
+    import pytest
+
+    from src.apps.questionnaire.completion import is_complete
+    from src.apps.questionnaire.validation import validate_answer_rows
+    from src.common.exceptions import ValidationError
+
+    s = _structure([10])
+    historical = {"questionnaire_id": 1, "group_id": 10,
+                  "active_question_id": 100, "selected_option_ids": [1000]}
+    assert is_complete(s, [historical, dict(historical)]) is True
+    # The fallback belongs only to stored completion, never new submissions.
+    with pytest.raises(ValidationError):
+        validate_answer_rows(s, [historical])
+
+
 def test_non_required_questionnaire_ignored():
     from src.apps.questionnaire.completion import is_complete
     s = _structure([10])
@@ -149,3 +165,38 @@ def test_row_for_unknown_group_is_ignored():
     s = real_structure()
     rows = _answered_all(s) + [_row(999, None, [], "")]
     assert is_complete(s, rows) is True
+
+
+def test_illegal_questionnaire_does_not_hide_other_valid_completions():
+    from copy import deepcopy
+
+    from src.apps.questionnaire.completion import completed_questionnaire_ids
+    from src.apps.questionnaire.structure_index import StructureIndex
+
+    s = real_structure()
+    s["questionnaires"][0]["questionGroups"][0]["questions"][0]["options"].append(
+        {"id": 1001, "relatedQuestionIds": []}
+    )
+    optional = deepcopy(s["questionnaires"][0])
+    optional.update(id=2, required=False)
+    optional["questionGroups"] = [{"id": 20, "order": 1, "questions": [
+        {"id": 200, "type": "Input", "options": []},
+    ]}]
+    s["questionnaires"].append(optional)
+    rows = [_row(10, 100, [1000, 1001]), _row(11, 110, text="文本"),
+            {"questionnaire_id": 2, "group_id": 20, "active_question_id": 200,
+             "selected_option_ids": [], "input_text": "另一份合法回答"}]
+    assert completed_questionnaire_ids(StructureIndex(s), rows) == {2}
+
+
+def test_completion_rejects_untriggered_variant_and_mutex_conflict():
+    from src.apps.questionnaire.completion import is_complete
+
+    s = real_structure()
+    target = s["questionnaires"][0]["questionGroups"][1]
+    target["questions"].append({"id": 111, "type": "Input", "options": []})
+    assert is_complete(s, [_row(10, 100, [1000]), _row(11, 111, text="错误分支")]) is False
+    target["questions"] = [{"id": 110, "type": "Single", "options": [{"id": 1100}]}]
+    source = s["questionnaires"][0]["questionGroups"][0]["questions"][0]["options"][0]
+    source["mutexOptionIds"] = [1100]
+    assert is_complete(s, [_row(10, 100, [1000]), _row(11, 110, [1100])]) is False

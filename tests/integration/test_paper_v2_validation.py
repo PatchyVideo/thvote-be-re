@@ -264,6 +264,39 @@ async def test_graphql_forged_answers_return_invalid_paper_answer(gql, session):
 
 
 @pytest.mark.asyncio
+async def test_graphql_illegal_resubmit_keeps_old_batch(gql, session):
+    from sqlalchemy import select
+    from src.db_model.questionnaire_def import PaperAnswer
+
+    await seed_structure(session)
+    token = _vote_token("u-resubmit")
+    await _qsvc(session).submit_answers("u-resubmit", VOTE_YEAR, [answer()])
+    before = await _qsvc(session).get_answers("u-resubmit", VOTE_YEAR)
+    result = await gql.execute(SUBMIT_PAPER_V2, variable_values={
+        "voteToken": token,
+        "answers": [answer(selected_option_ids=[OPTION_A, OPTION_B])],
+    }, context_value={})
+    assert result.errors
+    assert result.errors[0].extensions["error_kind"] == "INVALID_PAPER_ANSWER"
+    assert "单选" in result.errors[0].extensions["human_readable_message"]
+    assert await _qsvc(session).get_answers("u-resubmit", VOTE_YEAR) == before
+    rows = (await session.execute(select(PaperAnswer).where(
+        PaperAnswer.vote_id == "u-resubmit",
+    ))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].attempt == 1
+
+
+@pytest.mark.asyncio
+async def test_false_options_rejected_without_becoming_empty_draft(session):
+    await seed_structure(session)
+    payload = answer()
+    payload["selectedOptionIds"] = False
+    with pytest.raises(ValidationError):
+        await _qsvc(session).submit_answers("u-false", VOTE_YEAR, [payload])
+
+
+@pytest.mark.asyncio
 async def test_graphql_empty_answers_rejected(gql, session):
     await seed_structure(session)
     token = _vote_token("gql-empty")
