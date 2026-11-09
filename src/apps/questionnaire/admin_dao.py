@@ -98,6 +98,15 @@ class QuestionnaireAdminDAO:
         res = await self.session.execute(stmt)
         return res.scalar_one_or_none() is not None
 
+    async def code_exists(
+        self, kind: str, code: str, exclude_id: int | None = None,
+    ) -> bool:
+        model = QuestionDef if kind == "question" else OptionDef
+        statement = select(model.id).where(model.code == code)
+        if exclude_id is not None:
+            statement = statement.where(model.id != exclude_id)
+        return (await self.session.execute(statement.limit(1))).first() is not None
+
     # --------------------------------------------------------------------- read
     async def get_questionnaire_tree(self, qid: int) -> dict | None:
         res = await self.session.execute(

@@ -15,6 +15,7 @@ from src.apps.questionnaire.admin_service import (
     ParentNotFoundError,
     QuestionnaireAdminService,
 )
+from src.apps.questionnaire.code_validation import CodeConflictError, InvalidCodeError
 from src.apps.questionnaire.dao import QuestionnaireDAO
 from src.apps.questionnaire.service import QuestionnaireService
 from src.common.cache import invalidate_prefix
@@ -35,6 +36,12 @@ def _check_admin_secret(settings: Settings, secret: Optional[str]) -> None:
         not secret or not secrets.compare_digest(secret, settings.admin_secret)
     ):
         raise HTTPException(status_code=403, detail="FORBIDDEN")
+
+
+def _code_http_error(error: InvalidCodeError | CodeConflictError) -> HTTPException:
+    if isinstance(error, CodeConflictError):
+        return HTTPException(status_code=409, detail="QUESTIONNAIRE_CODE_CONFLICT")
+    return HTTPException(status_code=422, detail="INVALID_QUESTIONNAIRE_CODE")
 
 
 async def _svc(session: AsyncSession) -> QuestionnaireAdminService:
@@ -193,6 +200,8 @@ async def create_question(
     await invalidate_prefix(redis, "questionnaire:")
     try:
         new_id = await (await _svc(session)).create_question(body)
+    except (InvalidCodeError, CodeConflictError) as exc:
+        raise _code_http_error(exc) from exc
     except ParentNotFoundError:
         raise HTTPException(status_code=404, detail="PARENT_NOT_FOUND")
     await invalidate_prefix(redis, "questionnaire:")
@@ -210,7 +219,11 @@ async def update_question(
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
     await invalidate_prefix(redis, "questionnaire:")
-    if not await (await _svc(session)).update_question(qid, body):
+    try:
+        found = await (await _svc(session)).update_question(qid, body)
+    except (InvalidCodeError, CodeConflictError) as exc:
+        raise _code_http_error(exc) from exc
+    if not found:
         raise HTTPException(status_code=404, detail="NOT_FOUND")
     await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True}
@@ -247,6 +260,8 @@ async def create_option(
     await invalidate_prefix(redis, "questionnaire:")
     try:
         new_id = await (await _svc(session)).create_option(body)
+    except (InvalidCodeError, CodeConflictError) as exc:
+        raise _code_http_error(exc) from exc
     except ParentNotFoundError:
         raise HTTPException(status_code=404, detail="PARENT_NOT_FOUND")
     await invalidate_prefix(redis, "questionnaire:")
@@ -264,7 +279,11 @@ async def update_option(
 ) -> dict:
     _check_admin_secret(settings, x_admin_secret)
     await invalidate_prefix(redis, "questionnaire:")
-    if not await (await _svc(session)).update_option(oid, body):
+    try:
+        found = await (await _svc(session)).update_option(oid, body)
+    except (InvalidCodeError, CodeConflictError) as exc:
+        raise _code_http_error(exc) from exc
+    if not found:
         raise HTTPException(status_code=404, detail="NOT_FOUND")
     await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True}
@@ -304,6 +323,9 @@ async def import_structure(
     _check_admin_secret(settings, x_admin_secret)
     await invalidate_prefix(redis, "questionnaire:")
     svc = QuestionnaireService(QuestionnaireDAO(session))
-    count = await svc.import_structure(body)
+    try:
+        count = await svc.import_structure(body)
+    except (InvalidCodeError, CodeConflictError) as exc:
+        raise _code_http_error(exc) from exc
     await invalidate_prefix(redis, "questionnaire:")
     return {"ok": True, "imported_questionnaires": count}

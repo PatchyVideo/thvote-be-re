@@ -151,6 +151,9 @@ class QuestionnaireDAO:
         the tree are honored (preserves related/mutex cross-references); when
         absent, the DB assigns ids. Returns the questionnaire count.
         """
+        from src.apps.questionnaire.code_validation import validate_tree_codes
+
+        tree = validate_tree_codes(tree)
         await self._delete_all_structure()
         count = 0
         for qn in tree.get("questionnaires", []):
