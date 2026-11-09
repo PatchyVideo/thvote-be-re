@@ -695,32 +695,11 @@ class ResultCompatQuery:
         vote_year: Optional[int] = None,
         query: Optional[str] = None,
     ) -> list[Trends]:
-        """按 ``questionIds`` 顺序返回每道题的 trend 序列——**近似口径**。
+        """按 questionIds 顺序返回每道题的回答人数净增量趋势。
 
-        ``compute_paper_results`` 按"每条问卷回答行的 ``created_at``"分桶，
-        与角色/音乐 trend（``compute_ranking``）用的是同一套 vote_start/
-        total_hours 钳位规则、同一个近似口径：与 legacy Rust 网关一致，都是
-        "该时刻收到了这条提交"，不是"该时刻这道题的净增量"——问卷题允许改
-        答案（同一 ``vote_id``+``group_id`` 在 ``paper_answer`` 里只留一行,
-        以最新一次提交时间为准),所以这里的 trend 反映的是"提交行的时间分布"
-        而不是"选项计数随时间的真实增量"。真实净增量需要 append-only 的提交
-        历史存储（BACKLOG 同一项存储改造）落地后才能给出，属于 Step 2，尚未
-        实现。
-
-        ``trendFirst`` 恒为空列表——问卷题没有"本命"这个概念（本命只对角色/
-        音乐排名有意义），不是退化，是本字段永久的形状。
-
-        真实前端（`QuestionnaireDetail.vue`）与旧 Rust 网关
-        （`gateway/src/schema.rs`）都按 ``[Trends!]!`` 消费这个字段
-        （`entries[0].trend`/`.trendFirst`），返回列表长度与 ``questionIds``
-        一致、顺序保留；某道题从未被算过时该条目退化成
-        ``Trends(trend=[], trend_first=[])``，不中断其余题目。
-
-        （早期实现曾把这里当 ``queryQuestionnaire`` 的别名、返回
-        ``QueryQuestionnaireResponse``——这是对 task-6-brief.md/设计稿字面
-        要求的忠实执行，但两份规划文档在这一点上判断有误：它们从"后端现有
-        ``get_questionnaire_trend`` 是别名"反推字段契约，而不是从真实前端
-        消费方反推；已更正。）
+        计票已使用 append-only 提交历史；本接口读取计票快照，筛选时走
+        既有高级搜索计算。缺少某题结果时返回对应空序列；整届未计算仍报错。
+        trendFirst 恒为空，因为问卷题没有本命。列表顺序与输入一致。
         """
         async with map_app_errors(service=_SERVICE):
             return await _query_questionnaire_trend_entries(

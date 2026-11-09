@@ -437,24 +437,34 @@ GET /vote-objects/{category}/{candidateId}
 
 ### `GET /questionnaire/structure`
 
-```typescript
-// Response 200:
+无年度参数，返回后台当前维护的定义。以下 ID/code 为格式示例，不代表线上题库：
+
+```json
 {
-  "voteYear": 2025,
-  "groups": [{
-    "id": "g1",
-    "title": "基本信息",
-    "order": 1,
-    "questions": [{
-      "id": "q1",
-      "text": "性别",
-      "type": "single",
-      "order": 1,
-      "options": [{ "id": "o1", "text": "男", "order": 1 }]
+  "questionnaires": [{
+    "id": 1, "key": "main_required", "title": "基础问卷",
+    "introduction": "说明", "category": "main", "required": true, "order": 1,
+    "questionGroups": [{
+      "id": 10, "order": 1, "hiddenByDefault": false,
+      "questions": [{
+        "id": 100, "code": "11011", "order": 1, "type": "Single",
+        "content": "题干", "introduction": "", "maxInputLen": 1000,
+        "options": [{
+          "id": 200, "code": "1101101", "order": 1, "content": "选项",
+          "relatedQuestionIds": [], "mutexOptionIds": [], "optionGroup": 0
+        }]
+      }]
     }]
   }]
 }
 ```
+
+- id 为内部关联键；作答、related/mutex 保存真实 id。code 是可空字符串，结果查询/DSL 使用它，不按 id 截取层级或补造 code。
+- 问卷结构后端缓存 1800 秒，管理写入触发失效。填写与结果应用各自运行期间内存复用；刷新重新请求，不用 sessionStorage 旧题库兜底。个人答案草稿继续单独存 localStorage。
+- 管理题目/选项接口支持 code；省略字段的局部更新保留原值，null/空白清空；非空题目须 5 位 ASCII 数字、选项须 7 位。格式错误返回 `422 INVALID_QUESTIONNAIRE_CODE`，同表非空编码重复返回 `409 QUESTIONNAIRE_CODE_CONFLICT`。整树导入先检查编码再替换原树；仅应用层检查，无新增数据库约束。
+- 缺 code 的题目仍可填写，结果和管理页提示其统计配置缺失；高级搜索不提供无法生成编码条件的题目/选项。无自动编号、回填或重算。
+- `queryQuestionnaire` 返回计数/文本，不附题干与选项文案。结果端以结构的 code 映射关联，已计票但某题无数据时补零；整届未计票保留 RESULT_NOT_COMPUTED 错误。
+- 修改 code 或题目含义后须人工核对旧结果与链接；结构编辑不自动更新计票快照。结构不分届次，未新增历史定义版本。
 
 ---
 

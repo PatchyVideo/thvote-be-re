@@ -212,6 +212,7 @@ export interface QuestionnaireListItem {
 }
 export interface OptionNode {
   id: number
+  code: string | null
   order: number
   content: string
   relatedQuestionIds: number[]
@@ -220,6 +221,7 @@ export interface OptionNode {
 }
 export interface QuestionNode {
   id: number
+  code: string | null
   order: number
   type: QuestionType
   content: string

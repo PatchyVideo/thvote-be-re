@@ -1,8 +1,8 @@
 """Questionnaire structure models (B-039).
 
-Mirrors the frontend ``questionnaireV2`` shape so the structure endpoint can
-feed the frontend parser directly. Numeric ids follow the frontend's
-structured-encoding convention. related/mutex rules are stored as JSON arrays.
+Mirrors the frontend ``questionnaireV2`` shape. Numeric ids are internal
+keys; semantic ``code`` values address result queries and shared links.
+related/mutex rules are stored as JSON arrays.
 """
 from __future__ import annotations
 

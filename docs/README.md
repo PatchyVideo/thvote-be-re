@@ -20,6 +20,7 @@
 | **维护详情页人群筛选** | [`api/result-detail-filters.md`](./api/result-detail-filters.md) —— 原约束、目标交集及组合 DSL |
 | **了解当前后端结构与数据来源** | [`architecture/backend-overview.md`](architecture/backend-overview.md) —— 当前模块职责、候选／问卷／计票与缓存边界 |
 | **核对历史待办是否仍成立** | [`migration/backlog-audit-2026-11-08.md`](migration/backlog-audit-2026-11-08.md) —— 源码、历史需求与外部状态分开判断，避免重复实施 |
+| **实施问卷定义来源统一** | [`问卷实施计划`](superpowers/plans/2026-11-09-questionnaire-backend-source.md) —— 填写与结果读取后端、管理台编码维护；本地已实现，未部署 |
 
 ---
 
