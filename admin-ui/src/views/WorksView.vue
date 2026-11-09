@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError } from '@/api/client'
+import { downloadCatalog } from '@/api/exportCatalog'
 import { useAsync } from '@/composables/useAsync'
 import { usePagination } from '@/composables/usePagination'
 import { useToast } from '@/composables/useToast'
@@ -18,6 +19,19 @@ import {
 } from '@/api/works'
 
 const { toast } = useToast()
+const exporting = ref(false)
+
+async function exportJson(): Promise<void> {
+  exporting.value = true
+  try {
+    await downloadCatalog('work')
+    toast('已开始下载', 'success')
+  } catch (e) {
+    toast(errMsg(e), 'error')
+  } finally {
+    exporting.value = false
+  }
+}
 
 const TYPE_OPTIONS = [
   { label: '全部', value: '' },
@@ -156,6 +170,9 @@ async function confirmDelete(w: WorkRow): Promise<void> {
     <template #actions>
       <button class="btn" @click="search">搜索</button>
       <button class="btn" @click="openCreate">新增作品</button>
+      <button class="btn" :disabled="exporting" @click="exportJson">
+        {{ exporting ? '导出中…' : '导出全部作品 JSON' }}
+      </button>
     </template>
   </FilterBar>
 

@@ -24,12 +24,15 @@ from src.db_model.work import Work
 
 # 行里可以直接写到 voteable_* 表的字段（work/work_type/sort_order/voteable_id
 # 走各自的专属处理，不在这份列表里）。
-_VOTEABLE_FIELDS = ("name", "name_jp", "type", "first_appearance", "aliases", "old_id")
+_VOTEABLE_FIELDS = (
+    "name", "name_jp", "type", "first_appearance", "aliases", "old_id",
+    "image_url", "music_url", "include",
+)
 _INT_FIELDS = ("voteable_id", "sort_order")
 
 
-def _normalize_aliases(value: Any) -> list[str]:
-    """aliases 列：JSON 数组字符串或 ';' 分隔字符串 → list[str]；已是 list 原样返回。"""
+def _normalize_string_list(value: Any) -> list[str]:
+    """列表字段：接受原生数组、JSON 数组字符串或 ';' 分隔字符串。"""
     if isinstance(value, list):
         return [str(v) for v in value]
     if not isinstance(value, str) or not value.strip():
@@ -78,8 +81,9 @@ def _parse(fmt: str, content: str) -> list[dict] | str:
     parsed_rows: list[dict] = []
     for idx, raw in enumerate(rows):
         row = _drop_blank(raw)
-        if "aliases" in row:
-            row["aliases"] = _normalize_aliases(row["aliases"])
+        for field in ("aliases", "include"):
+            if field in row:
+                row[field] = _normalize_string_list(row[field])
         for field in _INT_FIELDS:
             if field not in row:
                 continue
@@ -120,6 +124,10 @@ class VoteableImportService:
 
         v_model = VoteableCharacter if category == "character" else VoteableMusic
         c_model = CandidateCharacter if category == "character" else CandidateMusic
+        if category == "character":
+            for row in rows:
+                row.pop("music_url", None)
+                row.pop("include", None)
 
         by_id, by_old_id, by_name = await self._load_voteable_index(v_model)
         work_by_name = await self._load_work_index()

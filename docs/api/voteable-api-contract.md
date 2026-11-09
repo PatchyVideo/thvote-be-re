@@ -651,6 +651,53 @@ Query: category=character|music（必填）, q?, page?, page_size?
 
 > 鉴权：`/admin/*` 路由级 `require_admin`，`X-Admin-Secret` 必填且受 `ADMIN_ALLOWED_IPS` 白名单约束（fail-closed）。
 
+#### `POST /admin/voteables/import`
+
+批量维护角色或音乐基本资料，支持 JSON 对象数组与带表头的 CSV。
+请求包含 `category=character|music`、`format=json|csv`、文本 `content`、
+`dry_run`（默认 true）与可选 `vote_year`。只维护基础资料时不传届次或传 null。
+
+除名称、日文名、分类、首次登场日期、别名和旧 ID 外，导入支持：
+
+| 字段 | 适用对象 | 含义 |
+|---|---|---|
+| `image_url` | 角色、音乐 | 图片或封面 URL |
+| `music_url` | 音乐 | 试听 URL |
+| `include` | 音乐 | 收录专辑名称列表，整体替换 |
+
+`aliases` / `include` 接受 JSON 数组；CSV 单元格可使用 JSON 数组文本，
+也可使用分号分隔名称。显式 `[]` 清空列表。
+沿用批量导入规则：省略字段、null、空白字符串均不更新原值，URL 按提供值保存。
+角色导入忽略 `music_url` / `include`。
+
+`work` 为首次登场作品名称，查找同名作品后写入其 ID；不存在时按
+`work_type` 创建（默认 others），不会更新已有作品分类。
+匹配顺序为 `voteable_id`、`old_id`、名称，未匹配才新建；指定不存在的
+`voteable_id` 返回冲突。预览响应中的 `create` / `update[].diff` 包含资源字段；
+`dry_run=true` 不写库，实际写入后沿用现有候选读取及自动补全缓存失效逻辑。
+
+#### `GET /admin/export/catalog`
+
+`category=work|character|music` 为必填参数，沿用管理员鉴权。
+下载完整基础清单，不受搜索、分页或届次影响；空库返回 `[]`。
+响应为 UTF-8、中文可读的 JSON 对象数组，附 `Content-Disposition: attachment`。
+
+| category | 文件名 | 字段 |
+|---|---|---|
+| work | works.json | name、type，含没有关联对象的作品 |
+| character | characters.json | name、name_jp、type、first_appearance、aliases、old_id、image_url、work、work_type |
+| music | music.json | 同角色，另含 music_url、include |
+
+每个对象为一条记录，按名称及内部 ID 排序；列表保留为数组，空值为 null。
+`work` 为首次登场作品名称，`work_type` 为作品分类；没有作品归属时两者为 null。
+资源保留 URL，不下载文件本体；不包含自增 ID、created_at 或 candidate 数据。
+
+管理台作品页、投票对象资源页提供“导出全部… JSON”按钮。
+角色/音乐清单适配 `POST /admin/voteables/import` 的 content：选择对应 category、
+format=json、vote_year=null 即可预览后导入；内部 ID 可以变化。
+既有目标记录的 null/空白字段仍沿用“不更新”规则，不保证清空原值。
+作品清单对应现有作品管理的 name/type 字段，目前尚无独立的作品批量导入入口。
+
 #### `POST /admin/voteables/{id}`
 
 ```typescript

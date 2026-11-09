@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { voteablesApi, type VoteableRow } from '@/api/voteables'
+import { downloadCatalog } from '@/api/exportCatalog'
 import { ApiError } from '@/api/client'
 import { useAsync } from '@/composables/useAsync'
 import { usePagination } from '@/composables/usePagination'
@@ -30,7 +31,7 @@ function errMsg(e: unknown): string {
   return e instanceof ApiError ? e.detail : (e as Error).message
 }
 
-const filters = reactive<{ category: string; q: string }>({
+const filters = reactive<{ category: 'character' | 'music'; q: string }>({
   category: 'character',
   q: '',
 })
@@ -38,6 +39,19 @@ const { data, loading, run } = useAsync<{ items: VoteableRow[]; total: number }>
 const { page, size, total, pageCount, hasPrev, hasNext, setTotal, next, prev, reset } =
   usePagination(50)
 const { toast } = useToast()
+const exporting = ref(false)
+
+async function exportJson(): Promise<void> {
+  exporting.value = true
+  try {
+    await downloadCatalog(filters.category)
+    toast('已开始下载', 'success')
+  } catch (e) {
+    toast(errMsg(e), 'error')
+  } finally {
+    exporting.value = false
+  }
+}
 
 async function load(): Promise<void> {
   const r = await run(() =>
@@ -135,6 +149,10 @@ async function save(): Promise<void> {
     </div>
     <template #actions>
       <button class="btn" @click="search">搜索</button>
+      <button class="btn" :disabled="exporting" @click="exportJson">
+        {{ exporting ? '导出中…' : filters.category === 'character'
+          ? '导出全部角色 JSON' : '导出全部音乐 JSON' }}
+      </button>
     </template>
   </FilterBar>
 

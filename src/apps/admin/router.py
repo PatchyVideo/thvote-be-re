@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 from typing import Optional
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.apps.admin.deps import require_admin
+from src.apps.admin.catalog_export_service import (
+    CatalogCategory,
+    CatalogExportService,
+)
 from src.apps.admin.schemas import (
     ActivityLogResponse,
     BanResponse,
@@ -473,6 +478,23 @@ async def list_activity_logs(
         for r in data["items"]
     ]
     return ActivityLogResponse(items=items, total=data["total"])
+
+
+@router.get("/export/catalog")
+async def export_catalog(
+    category: CatalogCategory,
+    session: AsyncSession = Depends(get_db_session),
+) -> Response:
+    rows = await CatalogExportService(session).export(category)
+    filename = {
+        "work": "works.json", "character": "characters.json",
+        "music": "music.json",
+    }[category]
+    return Response(
+        content=json.dumps(rows, ensure_ascii=False, indent=2) + "\n",
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/export/votes")
