@@ -17,6 +17,7 @@
 | **对接后端接口** | [`api/voteable-api-contract.md`](./api/voteable-api-contract.md) |
 | **下载作品、角色与音乐的业务资料 JSON** | [导出接口及字段](api/voteable-api-contract.md#get-adminexportcatalog)；[实施与验证记录](superpowers/plans/2026-11-10-catalog-json-export.md) |
 | **批量恢复作品资料** | [作品导入契约](api/voteable-api-contract.md#post-adminworksimport)；[实施与验证记录](superpowers/plans/2026-11-10-work-bulk-import.md) |
+| **查看测试数据清理、接续旧问卷退出** | [Actions核查与授权清理记录](operations/test-data-cleanup-preflight-2026-11-10.md)：24行答卷和47个旧结果键已备份删除，基础资料保留，raw_paper代码退出待做 |
 | **维护结果趋势时间轴** | [`api/result-timeline.md`](./api/result-timeline.md) —— 快照日期、GraphQL 字段及前后端发布顺序 |
 | **核对结果统计口径** | [`api/result-statistics.md`](./api/result-statistics.md) —— 部门有效票与逐问卷完成情况 |
 | **维护详情页人群筛选** | [`api/result-detail-filters.md`](./api/result-detail-filters.md) —— 原约束、目标交集及组合 DSL |
