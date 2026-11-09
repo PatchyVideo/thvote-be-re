@@ -696,7 +696,43 @@ Query: category=character|music（必填）, q?, page?, page_size?
 角色/音乐清单适配 `POST /admin/voteables/import` 的 content：选择对应 category、
 format=json、vote_year=null 即可预览后导入；内部 ID 可以变化。
 既有目标记录的 null/空白字段仍沿用“不更新”规则，不保证清空原值。
-作品清单对应现有作品管理的 name/type 字段，目前尚无独立的作品批量导入入口。
+作品清单使用 name/type 字段，可通过 `POST /admin/works/import` 预览并批量导回。
+
+#### `POST /admin/works/import`
+
+作品批量维护入口，复用管理员鉴权。作品页“批量导入”支持选择文件或粘贴文本，
+导入前预览新增、分类更新、跳过及错误；修改内容后需重新预览。
+
+```json
+{
+  "format": "auto",
+  "content": "[{\"name\":\"东方红魔乡\",\"type\":\"new\"}]",
+  "dry_run": true
+}
+```
+
+- format 可为 auto（默认）、json、csv；JSON 须为对象数组，CSV 须包含 name/type 表头。
+- name/type 均为必填字符串，去除首尾空白；name 不超过255字符，type 为 old/new/CD/book/others。
+- 按完整名称匹配：不存在则新增，同名同分类跳过，同名不同分类更新现有行，保留 ID 和关联。
+- 文件内重复名称、空名称、非法分类或文件格式错误均记录错误；任何错误都使整批不写入。
+- dry_run 默认 true，不写库；false 且无错误时一次提交，只在有实际新增/更新后刷新既有读取缓存。
+- 未列出的作品保留，不支持通过改文件名称批量改名；改名继续使用已有编辑入口。
+- JSON [] 或仅有完整 CSV 表头表示空清单，不删除任何记录。额外字段忽略。
+
+```json
+{
+  "create": [{"name": "东方红魔乡", "type": "new"}],
+  "update": [{"name": "某作品", "previous_type": "others", "type": "book"}],
+  "unchanged": [{"name": "另一作品", "type": "CD"}],
+  "errors": [],
+  "applied": false
+}
+```
+
+响应为检查/执行报告，行错误时也返回 HTTP 200，applied=false；调用方须检查 errors/applied。
+errors 项为 `{row, reason}`，row 是从1开始的记录序号，文件级错误为0。
+只在无错误且实际请求 dry_run=false 时 applied=true；无需修改数据库 schema。
+恢复业务资料时先导入 works.json，再导入角色和音乐清单；内部 ID 可重新分配。
 
 #### `POST /admin/voteables/{id}`
 

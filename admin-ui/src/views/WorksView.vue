@@ -14,6 +14,8 @@ import {
   createWork,
   updateWork,
   deleteWork,
+  importWorks,
+  type WorkImportResponse,
   type WorkListResponse,
   type WorkRow,
 } from '@/api/works'
@@ -152,6 +154,84 @@ async function confirmDelete(w: WorkRow): Promise<void> {
     toast(errMsg(e), 'error')
   }
 }
+
+const importOpen = ref(false)
+const importBusy = ref(false)
+const importContent = ref('')
+const importFilename = ref('')
+const importReport = ref<WorkImportResponse | null>(null)
+const canImport = computed(() => importReport.value
+  && !importReport.value.errors.length
+  && importReport.value.create.length + importReport.value.update.length > 0)
+const importRows = computed(() => {
+  const report = importReport.value
+  if (!report) return []
+  return [
+    ...report.create.map((row) => ({ ...row, action: '新增', previous_type: '' })),
+    ...report.update.map((row) => ({ ...row, action: '更新' })),
+    ...report.unchanged.map((row) => ({ ...row, action: '跳过', previous_type: '' })),
+  ]
+})
+
+function openImport(): void {
+  importContent.value = ''
+  importFilename.value = ''
+  importReport.value = null
+  importOpen.value = true
+}
+
+function closeImport(): void {
+  if (!importBusy.value) importOpen.value = false
+}
+
+async function readImportFile(event: Event): Promise<void> {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  importReport.value = null
+  importBusy.value = true
+  try {
+    importContent.value = await file.text()
+    importFilename.value = file.name
+  } catch (e) {
+    importContent.value = ''
+    toast(errMsg(e), 'error')
+  } finally {
+    importBusy.value = false
+  }
+}
+
+async function previewImport(): Promise<void> {
+  importReport.value = null
+  importBusy.value = true
+  try {
+    importReport.value = await importWorks({ content: importContent.value, dry_run: true })
+  } catch (e) {
+    toast(errMsg(e), 'error')
+  } finally {
+    importBusy.value = false
+  }
+}
+
+async function applyImport(): Promise<void> {
+  if (!canImport.value) return
+  importBusy.value = true
+  try {
+    const result = await importWorks({ content: importContent.value, dry_run: false })
+    importReport.value = result
+    if (result.applied) {
+      toast(`已新增 ${result.create.length} 个作品，更新 ${result.update.length} 个`, 'success')
+      importOpen.value = false
+      search()
+    } else {
+      toast('请修正导入错误后重新预览', 'error')
+    }
+  } catch (e) {
+    importReport.value = null
+    toast(errMsg(e), 'error')
+  } finally {
+    importBusy.value = false
+  }
+}
 </script>
 
 <template>
@@ -170,6 +250,7 @@ async function confirmDelete(w: WorkRow): Promise<void> {
     <template #actions>
       <button class="btn" @click="search">搜索</button>
       <button class="btn" @click="openCreate">新增作品</button>
+      <button class="btn" @click="openImport">批量导入</button>
       <button class="btn" :disabled="exporting" @click="exportJson">
         {{ exporting ? '导出中…' : '导出全部作品 JSON' }}
       </button>
@@ -197,6 +278,62 @@ async function confirmDelete(w: WorkRow): Promise<void> {
       <button class="icobtn danger" @click="confirmDelete(row)">删除</button>
     </template>
   </DataTable>
+
+  <Modal v-if="importOpen" title="批量导入作品" @close="closeImport">
+    <div class="muted small" style="margin-bottom: 0.6rem">
+      选择 JSON 或 CSV 文件，使用 name、type 字段。同名作品更新分类，清单外作品保留。
+    </div>
+    <input
+      type="file" accept=".json,.csv,application/json,text/csv"
+      :disabled="importBusy" @change="readImportFile"
+    />
+    <div v-if="importFilename" class="small muted">{{ importFilename }}</div>
+    <label class="lbl" style="margin-top: 0.7rem">文件内容，也可直接粘贴</label>
+    <textarea
+      class="field" style="width: 100%; min-height: 140px"
+      v-model="importContent" :disabled="importBusy"
+      placeholder='[{"name":"东方红魔乡","type":"new"}]'
+      @input="importReport = null"
+    ></textarea>
+    <div v-if="importReport" style="margin-top: 0.7rem">
+      <div class="row small">
+        <span>新增 {{ importReport.create.length }}</span>
+        <span>更新 {{ importReport.update.length }}</span>
+        <span>跳过 {{ importReport.unchanged.length }}</span>
+        <span>错误 {{ importReport.errors.length }}</span>
+      </div>
+      <div v-for="error in importReport.errors" :key="error.row" class="small">
+        {{ error.row ? `第 ${error.row} 条` : '文件' }}：{{ error.reason }}
+      </div>
+      <div v-if="importReport.errors.length" class="small muted">
+        请修正错误后重新预览，当前整批不会写入。
+      </div>
+      <table v-if="importRows.length" class="tbl" style="margin-top: 0.6rem">
+        <thead><tr><th>操作</th><th>作品名</th><th>分类</th></tr></thead>
+        <tbody>
+          <tr v-for="(row, index) in importRows" :key="index">
+            <td>{{ row.action }}</td>
+            <td>{{ row.name }}</td>
+            <td>
+              <span v-if="row.previous_type">{{ TYPE_LABELS[row.previous_type] ?? row.previous_type }} → </span>
+              {{ TYPE_LABELS[row.type] ?? row.type }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="row" style="margin-top: 1rem">
+      <button
+        class="btn ghost" :disabled="importBusy || !importContent.trim()"
+        @click="previewImport"
+      >预览</button>
+      <button class="btn" :disabled="importBusy || !canImport" @click="applyImport">
+        {{ importBusy ? '处理中…' : '确认导入' }}
+      </button>
+      <span class="spacer" />
+      <button class="btn ghost" :disabled="importBusy" @click="closeImport">取消</button>
+    </div>
+  </Modal>
 
   <Modal v-if="modalOpen" :title="editingId ? '编辑作品' : '新增作品'" @close="modalOpen = false">
     <div style="margin-bottom: 0.7rem">
