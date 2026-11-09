@@ -19,7 +19,7 @@ from src.apps.submit.schemas import (
     VotingStatistics,
     VotingStatus,
 )
-from src.apps.submit.service import SubmitService
+from src.apps.submit.service import QuestionnaireNotCompletedError, SubmitService
 from src.apps.user.deps import get_client_ip
 from src.common.cache import cache_get_json, cache_set_json
 from src.common.database import get_db_session
@@ -103,6 +103,10 @@ async def submit_character_v1(
     lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
     try:
         await service.submit_character(body)
+    except QuestionnaireNotCompletedError as exc:
+        raise HTTPException(
+            status_code=422, detail="QUESTIONNAIRE_NOT_COMPLETED"
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:
@@ -122,6 +126,10 @@ async def submit_music_v1(
     lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
     try:
         await service.submit_music(body)
+    except QuestionnaireNotCompletedError as exc:
+        raise HTTPException(
+            status_code=422, detail="QUESTIONNAIRE_NOT_COMPLETED"
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:
@@ -141,6 +149,10 @@ async def submit_cp_v1(
     lock_key, lock_value = await _acquire_vote_lock(payload.user_id)
     try:
         await service.submit_cp(body)
+    except QuestionnaireNotCompletedError as exc:
+        raise HTTPException(
+            status_code=422, detail="QUESTIONNAIRE_NOT_COMPLETED"
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:

@@ -1,7 +1,7 @@
 """Completion consumes the same validated rule evaluation as submissions.
 
-Only the stored-read wrapper ignores orphaned groups and preserves row coverage
-for unconfigured questionnaires. New submissions still reject unknown IDs.
+The stored-read wrapper ignores orphaned groups. Questionnaires without
+answerable questions never count as complete; new submissions reject unknown IDs.
 """
 from __future__ import annotations
 
@@ -31,11 +31,6 @@ def completed_from_evaluation(
             continue
         groups = index.questionnaire_groups[qn_id]
         answerable = {g["id"] for g in groups if index.group_has_questions(g)}
-        if not answerable:
-            # Historical gate fallback only; statistics explicitly excludes these.
-            if all((qn_id, g["id"]) in evaluation.supplied_groups for g in groups):
-                completed.add(qn_id)
-            continue
         visible = evaluation.visible_group_ids & answerable
         if visible and visible <= evaluation.answered_group_ids:
             completed.add(qn_id)
@@ -45,12 +40,6 @@ def completed_from_evaluation(
 def completed_questionnaire_ids(index: StructureIndex, answers: list[dict]) -> set[int]:
     """Assess latest stored rows; a bad questionnaire cannot abort batch reports."""
     known_rows = []
-    unconfigured = {
-        qn["id"] for qn in index.questionnaires
-        if not any(index.group_has_questions(g)
-                   for g in index.questionnaire_groups[qn["id"]])
-    }
-    covered: set[tuple[int, int]] = set()
     for row in answers:
         if not isinstance(row, dict):
             continue
@@ -58,20 +47,23 @@ def completed_questionnaire_ids(index: StructureIndex, answers: list[dict]) -> s
         qn_id = _int_or_none(row.get("questionnaire_id"))
         if gid not in index.groups or qn_id is None:
             continue
-        if qn_id in unconfigured and index.group_questionnaire[gid] == qn_id:
-            # No definitions remain to interpret old payloads. Preserve only
-            # historical row coverage, including duplicate stored rows.
-            if (qn_id, gid) not in covered:
-                known_rows.append({"questionnaire_id": qn_id, "group_id": gid})
-                covered.add((qn_id, gid))
-        else:
-            known_rows.append({**row, "group_id": gid, "questionnaire_id": qn_id})
+        known_rows.append({**row, "group_id": gid, "questionnaire_id": qn_id})
     return completed_from_evaluation(index, assess_answers(index, known_rows))
+
+
+def meets_completion_policy(questionnaires: list[dict], completed: set[int]) -> bool:
+    """Overall voting policy: all required plus one optional extra questionnaire.
+
+    Keep this policy separate from per-questionnaire answer evaluation. See
+    docs/architecture/backend-overview.md for configuration and gate callers.
+    """
+    required = {qn["id"] for qn in questionnaires if qn.get("required")}
+    extra = {qn["id"] for qn in questionnaires
+             if qn.get("category") == "extra" and not qn.get("required")}
+    return bool(required) and required <= completed and bool(extra & completed)
 
 
 def is_complete(structure: dict[str, Any], answers: list[dict]) -> bool:
     index = StructureIndex(structure)
     completed = completed_questionnaire_ids(index, answers)
-    return all(
-        qn["id"] in completed for qn in index.questionnaires if qn.get("required")
-    )
+    return meets_completion_policy(index.questionnaires, completed)

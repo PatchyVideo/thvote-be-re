@@ -12,6 +12,10 @@
 
 - [2026-11-09 问卷答案合法性与完成度](2026-11-09-questionnaire-answer-rules.md)：复用索引与纯规则结果，已补齐题型/互斥/分支校验、完成判断和重复查询清理；本地实现与相关验证完成（99 passed），未部署。
 
+本轮第三阶段交付：
+
+- [2026-11-09 问卷整体完成闸门](2026-11-09-questionnaire-completion-gate.md)：沿用 main/extra 整体政策，移除 raw_paper 放行和无题目行数兜底，补齐 REST 未完成响应与前端提示。本地实现及相关验证完成，纳入本轮提交，未推送或部署。
+
 不要因归档中的空 checkbox 重新迁移数据或部署。
 
 当前源码入口见 [后端结构与数据来源](../../architecture/backend-overview.md)，归档索引见 [历史文档](../../archive/README.md)。

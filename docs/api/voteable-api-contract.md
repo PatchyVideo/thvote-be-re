@@ -468,7 +468,7 @@ GET /vote-objects/{category}/{candidateId}
 
 ### V2 答案提交与完成判断
 
-`submitPaperV2(voteToken, answers)` 的成功返回仍为 Boolean，answers 仍是全量题组行数组。请求可包含其他未完成问卷、可见未答题和空隐藏组；没有增加单独预校验接口或完成字段。
+`submitPaperV2(voteToken, answers)` 的成功返回仍为 Boolean，表示合法快照已保存，不表示整套已完成；answers 仍是全量题组行数组。请求可包含其他未完成问卷、可见未答题和空隐藏组；没有增加单独预校验接口或完成字段。
 
 - 后端一次加载定义、建立真实 ID 索引，检查 ID/归属、选项列表及文本类型、重复行/选项和长度，然后评估题型、分支及互斥。
 - Single 允许零/一项，Multiple 已选项必须属于同一 optionGroup；选择题不能携带非空文本，Input 不能携带选项。零选项/空文本表示未答，不等于非法。
@@ -476,8 +476,10 @@ GET /vote-objects/{category}/{candidateId}
 - 显式 mutex 按声明方向检查，不能同时提交互斥选项。后端不替用户删选项或换题后再保存。
 - 用户作答非法沿用 GraphQL `errors[].extensions.error_kind=INVALID_PAPER_ANSWER`，human_readable_message 提供题组及原因，error_message 提供内部原因码；不会写入新行或 attempt，旧批次保持。
 - 关联无法在有界轮数内稳定时返回 `QUESTIONNAIRE_CONFIGURATION_ERROR`，提示联系管理员，不能作为完成或成功保存。没有追加完整管理端题库治理或修改前端规则。
-- 合法部分答案可保存；完成判定按同一评估中可见且合法已答的组计算。整体投票条件仍采用现有 required 规则；legacy raw_paper 放行分支本轮保持，不能据此声称门禁兼容路径已统一。
-- 存量已知题组的错误分支/互斥/题型答案不计对应问卷完成；其他合法问卷独立计算。历史孤立组忽略和空配置门禁兜底保留，统计排除空配置；不清理旧数据或自动重算快照。
+- 合法部分答案可保存；完成判定按同一评估中可见且合法已答的组计算。整体投票条件为至少存在一份必填、全部required完成，并至少完成一份category=extra且非required的选填问卷；缺少配置不视为完成。raw_paper 不再授予投票资格。
+- 角色/音乐/组合提交由 `SubmitService._require_questionnaire` 对已保存答案执行闸门；前端按当前草稿的完成预判不表示已经保存。提名服务未调用同一闸门，不能宣称所有提交入口均受此服务端条件限制。
+- 问卷未完成时，角色/音乐/组合 REST 返回 HTTP 422，`detail=QUESTIONNAIRE_NOT_COMPLETED`；GraphQL 返回同名 `errors[].extensions.error_kind` 及中文补填提示，均在写票前拒绝。前端现有提交错误提示展示 human_readable_message。
+- 已知题组的错误分支/互斥/题型答案不计对应问卷完成；其他合法问卷独立计算。历史孤立组继续忽略；没有题目或题组的问卷不计完成。raw_paper 直接放行与空配置行数兜底已按[整体闸门计划](../superpowers/plans/2026-11-09-questionnaire-completion-gate.md)本地移除；不清库或自动重算快照，也不一并删除身份和 legacy 路由。
 
 ---
 

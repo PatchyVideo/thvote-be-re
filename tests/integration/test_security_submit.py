@@ -7,8 +7,12 @@ import pytest
 from src.apps.submit.schemas import (
     CharacterSubmit,
     CharacterSubmitRest,
+    CPSubmit,
+    CPSubmitRest,
     DojinSubmit,
     DojinSubmitRest,
+    MusicSubmit,
+    MusicSubmitRest,
     PaperSubmitRest,
     SubmitMetadata,
 )
@@ -53,9 +57,13 @@ async def test_character_gate_blocks_without_paper(session):
 
 
 @pytest.mark.asyncio
-async def test_character_gate_passes_with_paper(session):
+@pytest.mark.parametrize("kind", ["character", "music", "cp"])
+async def test_legacy_paper_does_not_unlock_voting_or_write_votes(session, kind):
+    from sqlalchemy import select
+
     from src.apps.submit.dao import SubmitDAO
-    from src.apps.submit.service import SubmitService
+    from src.apps.submit.service import QuestionnaireNotCompletedError, SubmitService
+    from src.db_model.raw_submit import RawCharacterSubmit, RawCPSubmit, RawMusicSubmit
 
     dao = SubmitDAO(session)
     svc = SubmitService(dao)
@@ -65,11 +73,15 @@ async def test_character_gate_passes_with_paper(session):
             meta=SubmitMetadata(vote_id="u2"),
         )
     )
-    data = CharacterSubmitRest(
-        characters=[CharacterSubmit(id="c1")],
-        meta=SubmitMetadata(vote_id="u2"),
-    )
-    assert await svc.submit_character(data) > 0
+    meta = SubmitMetadata(vote_id="u2")
+    data, model = {
+        "character": (CharacterSubmitRest(characters=[CharacterSubmit(id="c1")], meta=meta), RawCharacterSubmit),
+        "music": (MusicSubmitRest(music=[MusicSubmit(id="m1")], meta=meta), RawMusicSubmit),
+        "cp": (CPSubmitRest(cps=[CPSubmit(id_a="c1", id_b="c2")], meta=meta), RawCPSubmit),
+    }[kind]
+    with pytest.raises(QuestionnaireNotCompletedError):
+        await getattr(svc, f"submit_{kind}")(data)
+    assert (await session.execute(select(model))).scalars().all() == []
 
 
 @pytest.mark.asyncio
