@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apps.questionnaire.assembler import assemble_structure
 from src.apps.questionnaire.completion import completed_questionnaire_ids
-from src.apps.questionnaire.dao import QuestionnaireDAO, latest_batch
+from src.apps.questionnaire.dao import QuestionnaireDAO, effective_latest_batch
 from src.apps.questionnaire.structure_index import StructureIndex
 from src.db_model.candidate import CandidateCharacter, CandidateMusic, FinalRanking
 from src.db_model.questionnaire_def import OptionDef, PaperAnswer, QuestionDef
@@ -150,7 +150,7 @@ class ComputeDAO:
         (改票=追加新批次),按 vote_id 分组后先经 latest_batch 只取最新批,
         再对存活行做 code 映射(_answers_to_items)。
 
-        注意:paper_answer 没有 invalidated 标志,admin 作废动作触达不到问卷答案。
+        最新批次作废后整个账号退出问卷统计，不回退旧提交。
         """
         q_codes = dict(
             (await self.session.execute(select(QuestionDef.id, QuestionDef.code))).all()
@@ -175,7 +175,7 @@ class ComputeDAO:
         skipped_options = 0
         for vote_id, vote_rows in rows_by_vote.items():
             items, sq, so = self._answers_to_items(
-                latest_batch(vote_rows), q_codes, o_codes
+                effective_latest_batch(vote_rows), q_codes, o_codes
             )
             skipped_questions += sq
             skipped_options += so
@@ -216,7 +216,7 @@ class ComputeDAO:
         for vote_id, vote_rows in by_vote.items():
             rows = [
                 {key: getattr(row, key) for key in fields}
-                for row in latest_batch(vote_rows)
+                for row in effective_latest_batch(vote_rows)
             ]
             completed = completed_questionnaire_ids(index, rows) & configured_ids
             for qn_id in completed:
@@ -230,8 +230,8 @@ class ComputeDAO:
     ) -> list[tuple[str, datetime, int, list[dict]]]:
         """问卷回答按批次(attempt)输出全历史,每个批次一个元组。
 
-        paper_answer 没有 invalidated 标志,故无需比照 `_history_per_vote`
-        做选民排除;按 (vote_id, coalesce(attempt,0)) 分批(NULL attempt =
+        最新批次作废时排除整个账号；否则跳过作废历史批次。
+        按 (vote_id, coalesce(attempt,0)) 分批(NULL attempt =
         0017 迁移前存量,视为单一批次),批次 created_at 取组内行的最大值,
         items 复用 `_answers_to_items` 的 code 映射/跳过逻辑,与
         `load_questionnaire_votes` 完全一致。
@@ -251,13 +251,20 @@ class ComputeDAO:
         ).scalars().all()
 
         rows_by_batch: dict[tuple[str, int], list] = {}
+        rows_by_vote: dict[str, list] = {}
         for r in rows:
             rows_by_batch.setdefault((r.vote_id, r.attempt or 0), []).append(r)
+            rows_by_vote.setdefault(r.vote_id, []).append(r)
+        eligible = {
+            vid for vid, batch in rows_by_vote.items() if effective_latest_batch(batch)
+        }
 
         skipped_questions = 0
         skipped_options = 0
         history: list[tuple[str, datetime, int, list[dict]]] = []
         for (vote_id, attempt), batch_rows in rows_by_batch.items():
+            if vote_id not in eligible or any(r.invalidated for r in batch_rows):
+                continue
             items, sq, so = self._answers_to_items(batch_rows, q_codes, o_codes)
             skipped_questions += sq
             skipped_options += so
@@ -373,7 +380,7 @@ class ComputeDAO:
                 model.id, model.vote_year, model.voteable_id,
                 vmodel.name, vmodel.name_jp, vmodel.type,
                 vmodel.first_appearance,
-                Work.id, Work.name, Work.type,
+                Work.id, Work.name, Work.type, model.sort_order,
             )
             .outerjoin(vmodel, model.voteable_id == vmodel.id)
             .outerjoin(Work, vmodel.work_id == Work.id)
@@ -398,10 +405,31 @@ class ComputeDAO:
                 "type": r[5] or "", "first_appearance": r[6],
                 "work_id": r[7], "work_name": r[8] or "",
                 "work_type": r[9] or "",
+                "sort_order": r[10],
             }
             for r in rows
         ]
         return items, total
+
+    async def candidate_import_context(
+        self, category: str, vote_year: int, ids: list[int],
+    ) -> tuple[dict[int, dict], dict[int, int | None]]:
+        from src.db_model.voteable import VoteableCharacter, VoteableMusic
+        from src.db_model.work import Work
+
+        model = self._candidate_model(category)
+        vmodel = VoteableCharacter if category == "character" else VoteableMusic
+        rows = (await self.session.execute(
+            select(vmodel.id, vmodel.name, Work.name)
+            .outerjoin(Work, vmodel.work_id == Work.id).where(vmodel.id.in_(ids))
+        )).all()
+        objects = {r[0]: {"name": r[1], "work_name": r[2]} for r in rows}
+        candidates = dict((await self.session.execute(
+            select(model.voteable_id, model.sort_order).where(
+                model.vote_year == vote_year, model.voteable_id.in_(ids),
+            )
+        )).all())
+        return objects, candidates
 
     async def delete_candidate(self, candidate_id: int, category: str) -> bool:
         from sqlalchemy import delete
@@ -432,7 +460,23 @@ class ComputeDAO:
         if row is None:
             return "not_found"
 
-        new_voteable_id = fields.get("voteable_id")
+        from src.apps.admin.candidate_service import validate_items
+        from src.db_model.voteable import VoteableCharacter, VoteableMusic
+
+        valid, rejected = validate_items(category, [{
+            **fields, "voteable_id": fields.get("voteable_id", row.voteable_id),
+        }])
+        if rejected:
+            return "invalid_fields"
+        cleaned = {k: int(v) for k, v in valid[0].items() if k != "line"}
+        if "sort_order" in fields and (fields["sort_order"] is None
+                                       or str(fields["sort_order"]).strip() == ""):
+            cleaned["sort_order"] = None
+        vmodel = VoteableCharacter if category == "character" else VoteableMusic
+        if await self.session.get(vmodel, cleaned["voteable_id"]) is None:
+            return "invalid_fields"
+
+        new_voteable_id = cleaned.get("voteable_id")
         if new_voteable_id is not None:
             new_vid = int(new_voteable_id)
             if new_vid != row.voteable_id:
@@ -446,7 +490,7 @@ class ComputeDAO:
                 if dup is not None:
                     return "conflict"
 
-        for k, v in fields.items():
+        for k, v in cleaned.items():
             if k in valid_cols:
                 setattr(row, k, v)
         await self.session.commit()

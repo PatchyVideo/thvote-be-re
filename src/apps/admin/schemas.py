@@ -2,7 +2,7 @@
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CandidateItem(BaseModel):
@@ -114,6 +114,8 @@ class WorkImportResponse(BaseModel):
 class CandidateAdminItem(BaseModel):
     id: int
     vote_year: int
+    voteable_id: int
+    sort_order: int | None = None
     name: str
     name_jp: str = ""
     type: str = ""
@@ -198,7 +200,7 @@ class CandidateFieldsResponse(BaseModel):
 
 
 class CandidateImportRequest(BaseModel):
-    vote_year: int
+    vote_year: int = Field(gt=0)
     category: Literal["character", "music"]
     format: Literal["auto", "csv", "json"] = "auto"
     content: str
@@ -210,12 +212,25 @@ class CandidateRejected(BaseModel):
     reason: str
 
 
+class CandidateImportPreview(BaseModel):
+    line: int
+    voteable_id: int
+    sort_order: int | None
+    name: str
+    work_name: str | None
+    action: Literal["create", "update", "unchanged"]
+
+
 class CandidateImportResponse(BaseModel):
     ok: bool = True
     valid_count: int
     imported: int = 0
-    valid: list[dict] = []
+    valid: list[CandidateImportPreview] = []
     rejected: list[CandidateRejected] = []
+    create_count: int = 0
+    update_count: int = 0
+    unchanged_count: int = 0
+    applied: bool = False
 
 
 class CandidateUpdateRequest(BaseModel):

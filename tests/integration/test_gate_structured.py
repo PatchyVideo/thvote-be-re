@@ -8,28 +8,11 @@ from src.apps.submit.schemas import (
     SubmitMetadata,
 )
 from src.apps.submit.service import QuestionnaireNotCompletedError, SubmitService
-from src.db_model.questionnaire_def import (
-    OptionDef,
-    QuestionDef,
-    QuestionGroupDef,
-    QuestionnaireDef,
+from tests.integration.test_paper_v2_validation import (
+    OTHER_GROUP, OTHER_OPTION, OTHER_QN, OTHER_QUESTION, answer,
+    fixed_vote_year,  # noqa: F401 — reuse the gate's current-year fixture
+    seed_structure as _seed_required,
 )
-
-
-async def _seed_required(session, vote_year=2026):
-    session.add(QuestionnaireDef(
-        id=11, key="main_required", category="main",
-        title="必填", introduction="", required=True, order=1,
-    ))
-    session.add(QuestionGroupDef(
-        id=1101, questionnaire_id=11, order=1, hidden_by_default=False,
-    ))
-    session.add(QuestionDef(id=11011, group_id=1101, type="Single", order=1))
-    session.add(OptionDef(
-        id=1101101, question_id=11011, related_question_ids=[],
-        mutex_option_ids=[], option_group=0, order=1,
-    ))
-    await session.commit()
 
 
 def _char(vote_id):
@@ -55,8 +38,10 @@ async def test_gate_passes_when_structured_complete(session):
     await _seed_required(session)
     qsvc = QuestionnaireService(QuestionnaireDAO(session))
     await qsvc.submit_answers("u-complete", 2026, [
-        {"questionnaireId": 11, "groupId": 1101, "activeQuestionId": 11011,
-         "selectedOptionIds": [1101101], "input": ""},
+        answer(), answer(
+            questionnaire_id=OTHER_QN, group_id=OTHER_GROUP,
+            active_question_id=OTHER_QUESTION, selected_option_ids=[OTHER_OPTION],
+        ),
     ])
     svc = SubmitService(SubmitDAO(session))
     assert await svc.submit_character(_char("u-complete")) > 0

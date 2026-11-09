@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { adminApi } from '@/api/admin'
 import { candidatesApi } from '@/api/candidates'
 import { ApiError } from '@/api/client'
 import { useAsync } from '@/composables/useAsync'
@@ -12,7 +13,6 @@ import type {
   CandidateAdminItem,
   CandidateField,
   CandidateImportResult,
-  MergeItem,
   Paged,
 } from '@/api/types'
 import type { Column } from '@/components/types'
@@ -23,7 +23,9 @@ const CATEGORIES: Array<{ value: string; label: string }> = [
 ]
 
 const cols: Column[] = [
-  { key: 'id', label: 'ID', width: '70px' },
+  { key: 'id', label: '候选 ID', width: '90px' },
+  { key: 'voteable_id', label: '对象 ID', width: '90px' },
+  { key: 'sort_order', label: '排序', width: '70px' },
   { key: 'name', label: '名称' },
   { key: 'name_jp', label: '日文名' },
   { key: 'type', label: '类型' },
@@ -41,7 +43,7 @@ function errMsg(e: unknown): string {
 const filters = reactive<{ category: string; q: string; vote_year: number | undefined }>({
   category: 'character',
   q: '',
-  vote_year: new Date().getFullYear(),
+  vote_year: undefined,
 })
 const { data, loading, run } = useAsync<Paged<CandidateAdminItem>>()
 const { page, size, total, pageCount, hasPrev, hasNext, setTotal, next, prev, reset } =
@@ -72,7 +74,14 @@ function goNext(): void {
   next()
   load()
 }
-onMounted(load)
+onMounted(async () => {
+  try {
+    filters.vote_year = (await adminApi.stats()).vote_year
+    await load()
+  } catch (e) {
+    toast(errMsg(e), 'error')
+  }
+})
 
 async function deleteRow(row: CandidateAdminItem): Promise<void> {
   if (!confirm('确认删除此候选项？')) return
@@ -129,7 +138,7 @@ async function saveEdit(): Promise<void> {
     editOpen.value = false
     load()
   } catch (e) {
-    if (e instanceof ApiError && e.status === 409) toast('该名称已存在', 'error')
+    if (e instanceof ApiError && e.status === 409) toast('该投票对象已加入本届候选', 'error')
     else if (e instanceof ApiError && e.status === 404) toast('候选不存在', 'error')
     else toast(errMsg(e), 'error')
   }
@@ -153,20 +162,52 @@ async function deleteFromEdit(): Promise<void> {
 const importOpen = ref(false)
 const importFormat = ref<'auto' | 'csv' | 'json'>('auto')
 const importContent = ref('')
+const importTarget = reactive({ category: 'character', vote_year: 0 })
 const importBusy = ref(false)
 const importResult = ref<CandidateImportResult | null>(null)
+const actionLabels: Record<string, string> = { create: '新增', update: '更新', unchanged: '不变' }
+const fieldLabels: Record<string, string> = { voteable_id: '投票对象 ID', sort_order: '排序（留空清除）' }
+const readyToImport = computed(() => !!importResult.value?.valid_count &&
+  !importResult.value?.rejected.length && !importBusy.value)
+
+watch([importContent, importFormat, () => importTarget.category, () => importTarget.vote_year], () => {
+  importResult.value = null
+}, { flush: 'sync' })
 
 function openImport(): void {
   importFormat.value = 'auto'
   importContent.value = ''
   importResult.value = null
+  importTarget.category = filters.category
+  importTarget.vote_year = filters.vote_year || 0
   importOpen.value = true
+}
+
+async function readImportFile(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  importBusy.value = true
+  importResult.value = null
+  try {
+    importContent.value = await file.text()
+  } catch {
+    toast('文件读取失败，请重新选择', 'error')
+  } finally {
+    input.value = ''
+    importBusy.value = false
+  }
+}
+
+function useExample(): void {
+  importContent.value = importFormat.value === 'csv'
+    ? 'voteable_id,sort_order\n1,1\n2,2\n'
+    : JSON.stringify([{ voteable_id: 1, sort_order: 1 }, { voteable_id: 2, sort_order: 2 }], null, 2)
 }
 
 function importPayload(dryRun: boolean) {
   return {
-    vote_year: filters.vote_year || 2026,
-    category: filters.category,
+    ...importTarget,
     format: importFormat.value,
     content: importContent.value,
     dry_run: dryRun,
@@ -174,6 +215,10 @@ function importPayload(dryRun: boolean) {
 }
 
 async function previewImport(): Promise<void> {
+  if (!Number.isInteger(importTarget.vote_year) || importTarget.vote_year <= 0) {
+    toast('请输入有效届次', 'error')
+    return
+  }
   importBusy.value = true
   importResult.value = null
   try {
@@ -186,64 +231,24 @@ async function previewImport(): Promise<void> {
 }
 
 async function commitImport(): Promise<void> {
+  if (!readyToImport.value) return
   importBusy.value = true
   try {
     const r = await candidatesApi.import(importPayload(false))
-    toast('成功导入 ' + r.imported + ' 条', 'success')
+    importResult.value = r
+    if (!r.applied) {
+      toast('未导入，请检查预览中的错误', 'error')
+      return
+    }
+    toast(`已导入：新增 ${r.create_count}，更新 ${r.update_count}，不变 ${r.unchanged_count}`, 'success')
     importOpen.value = false
-    load()
+    filters.category = importTarget.category
+    filters.vote_year = importTarget.vote_year
+    search()
   } catch (e) {
     toast(errMsg(e), 'error')
   } finally {
     importBusy.value = false
-  }
-}
-
-// ── merges modal ─────────────────────────────────────────────────────────
-
-const mergesOpen = ref(false)
-const mergesLoading = ref(false)
-const mergesList = ref<MergeItem[]>([])
-const mergeTargets = reactive<Record<number, string>>({})
-
-async function loadMerges(): Promise<void> {
-  mergesLoading.value = true
-  try {
-    const r = await candidatesApi.merges(filters.category, filters.vote_year || undefined)
-    mergesList.value = r.items
-  } catch (e) {
-    toast(errMsg(e), 'error')
-  } finally {
-    mergesLoading.value = false
-  }
-}
-function openMerges(): void {
-  mergesOpen.value = true
-  loadMerges()
-}
-async function unmerge(item: MergeItem): Promise<void> {
-  if (!confirm('拆分此合并？')) return
-  try {
-    await candidatesApi.unmerge(item.id, filters.category)
-    toast('已拆分', 'success')
-    loadMerges()
-  } catch (e) {
-    toast(errMsg(e), 'error')
-  }
-}
-async function mergeInto(item: MergeItem): Promise<void> {
-  const targetId = Number(mergeTargets[item.id])
-  if (!Number.isFinite(targetId) || targetId <= 0) {
-    toast('请输入目标 ID', 'error')
-    return
-  }
-  if (!confirm(`确认将 ${item.id} 合并到 ${targetId}？`)) return
-  try {
-    await candidatesApi.mergeInto(item.id, targetId, filters.category)
-    toast('已合并', 'success')
-    loadMerges()
-  } catch (e) {
-    toast(errMsg(e), 'error')
   }
 }
 </script>
@@ -258,7 +263,7 @@ async function mergeInto(item: MergeItem): Promise<void> {
       </select>
     </div>
     <div>
-      <label class="lbl">年份</label>
+      <label class="lbl">届次</label>
       <input
         class="field"
         type="number"
@@ -273,7 +278,6 @@ async function mergeInto(item: MergeItem): Promise<void> {
     </div>
     <template #actions>
       <button class="btn" @click="search">搜索</button>
-      <button class="btn ghost" @click="openMerges">查看合并</button>
       <button class="btn ghost" @click="openImport">导入</button>
     </template>
   </FilterBar>
@@ -292,6 +296,7 @@ async function mergeInto(item: MergeItem): Promise<void> {
     @next="goNext"
   >
     <template #cell-name_jp="{ value }">{{ value || '—' }}</template>
+    <template #cell-sort_order="{ value }">{{ value ?? '—' }}</template>
     <template #cell-type="{ value }">{{ value || '—' }}</template>
     <template #cell-origin_album="{ row }">{{ row.origin || row.album || '—' }}</template>
     <template #cell-first_appearance="{ value }">{{ value || '—' }}</template>
@@ -304,7 +309,7 @@ async function mergeInto(item: MergeItem): Promise<void> {
   <Modal v-if="editOpen" :title="'编辑：' + (editRow?.name || '')" @close="editOpen = false">
     <div v-for="f in editSpec" :key="f.name" style="margin-bottom: 0.6rem">
       <label class="lbl">
-        {{ f.name }}<span v-if="f.required" class="mono"> *</span>
+        {{ fieldLabels[f.name] || f.name }}<span v-if="f.required" class="mono"> *</span>
       </label>
       <input class="field" style="width: 100%" v-model="editValues[f.name]" />
     </div>
@@ -316,102 +321,50 @@ async function mergeInto(item: MergeItem): Promise<void> {
     </div>
   </Modal>
 
-  <Modal v-if="importOpen" title="导入候选项" @close="importOpen = false">
-    <div class="row">
-      <select class="field" v-model="filters.category">
-        <option v-for="c in CATEGORIES" :key="c.value" :value="c.value">{{ c.label }}</option>
-      </select>
-      <input class="field" type="number" style="width: 90px" v-model.number="filters.vote_year" />
-      <select class="field" v-model="importFormat">
-        <option value="auto">自动</option>
-        <option value="csv">CSV</option>
-        <option value="json">JSON</option>
-      </select>
-    </div>
-    <div style="margin-top: 0.6rem">
-      <textarea
-        class="field"
-        style="width: 100%; min-height: 120px"
-        v-model="importContent"
-        placeholder="粘贴 CSV / JSON 文本…"
-      ></textarea>
-    </div>
+  <Modal v-if="importOpen" title="导入本届候选" @close="!importBusy && (importOpen = false)">
+    <p class="small muted">把已有角色或音乐加入指定届次。角色名称、作品和资源请在投票对象页面维护。</p>
+    <fieldset :disabled="importBusy" style="border: 0; padding: 0">
+      <div class="row">
+        <div><label class="lbl">类别</label><select class="field" v-model="importTarget.category">
+          <option v-for="c in CATEGORIES" :key="c.value" :value="c.value">{{ c.label }}</option>
+        </select></div>
+        <div><label class="lbl">届次</label><input class="field" type="number" min="1" style="width: 90px" v-model.number="importTarget.vote_year" /></div>
+        <div><label class="lbl">格式</label><select class="field" v-model="importFormat">
+          <option value="auto">自动识别</option><option value="csv">CSV</option><option value="json">JSON</option>
+        </select></div>
+      </div>
+      <p class="small muted">voteable_id 为投票对象 ID，必填；sort_order 为排序，可省略，已有候选会保留原排序。示例 ID 仅说明格式，请换成实际对象 ID。</p>
+      <div class="row" style="margin: 0.6rem 0">
+        <input type="file" accept=".json,.csv,application/json,text/csv" aria-label="选择候选文件" @change="readImportFile" />
+        <button class="btn ghost" @click="useExample">填入示例</button>
+      </div>
+      <textarea class="field" style="width: 100%; min-height: 150px" v-model="importContent" placeholder="粘贴 CSV / JSON 文本"></textarea>
+    </fieldset>
     <div class="row" style="margin-top: 0.6rem">
-      <button class="btn ghost" :disabled="importBusy" @click="previewImport">预览</button>
-      <button
-        class="btn"
-        :disabled="importBusy || !importResult || importResult.valid_count <= 0"
-        @click="commitImport"
-      >
-        确认导入{{ importResult ? ' ' + importResult.valid_count + ' 条' : '' }}
-      </button>
+      <button class="btn ghost" :disabled="importBusy || !importContent.trim()" @click="previewImport">预览</button>
+      <button class="btn" :disabled="!readyToImport" @click="commitImport">确认导入</button>
+      <button class="btn ghost" :disabled="importBusy" @click="importOpen = false">取消</button>
     </div>
-
     <div v-if="importResult" style="margin-top: 0.8rem">
       <div class="row">
-        <span class="badge ok">有效 {{ importResult.valid_count }}</span>
-        <span v-if="importResult.rejected.length" class="badge bad">
-          错误 {{ importResult.rejected.length }}
-        </span>
+        <span class="badge ok">新增 {{ importResult.create_count }}</span>
+        <span class="badge gray">更新 {{ importResult.update_count }}</span>
+        <span class="badge gray">不变 {{ importResult.unchanged_count }}</span>
+        <span v-if="importResult.rejected.length" class="badge bad">错误 {{ importResult.rejected.length }}</span>
       </div>
-      <div v-if="importResult.rejected.length" class="small muted" style="margin-top: 0.4rem">
-        <div v-for="(r, i) in importResult.rejected" :key="i">第{{ r.line }}行：{{ r.reason }}</div>
+      <div v-if="importResult.rejected.length" class="small" style="margin-top: 0.6rem">
+        <p>存在错误，整批未导入。修正后请重新预览。</p>
+        <div v-for="(r, i) in importResult.rejected" :key="i">第 {{ r.line }} 行：{{ r.reason }}</div>
       </div>
-      <table v-if="importResult.valid.length" class="tbl" style="margin-top: 0.6rem">
-        <thead>
-          <tr>
-            <th>名称</th>
-            <th>日文名</th>
-            <th>类型</th>
-            <th>出处/专辑</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(item, i) in importResult.valid.slice(0, 5)" :key="i">
-            <td>{{ item.name || '—' }}</td>
-            <td>{{ item.name_jp || '—' }}</td>
-            <td>{{ item.type || '—' }}</td>
-            <td>{{ item.origin || item.album || '—' }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div style="overflow: auto; max-height: 350px">
+        <table v-if="importResult.valid.length" class="tbl" style="margin-top: 0.6rem">
+          <thead><tr><th>行</th><th>对象 ID</th><th>名称</th><th>作品</th><th>排序</th><th>操作</th></tr></thead>
+          <tbody><tr v-for="item in importResult.valid" :key="item.line">
+            <td>{{ item.line }}</td><td>{{ item.voteable_id }}</td><td>{{ item.name }}</td>
+            <td>{{ item.work_name || '—' }}</td><td>{{ item.sort_order ?? '—' }}</td><td>{{ actionLabels[item.action] }}</td>
+          </tr></tbody>
+        </table>
+      </div>
     </div>
-  </Modal>
-
-  <Modal v-if="mergesOpen" title="合并关系" @close="mergesOpen = false">
-    <div class="muted small" style="margin-bottom: 0.6rem">被合并 → 主候选 id</div>
-    <div v-if="mergesLoading" class="loading">加载中…</div>
-    <table v-else class="tbl">
-      <thead>
-        <tr>
-          <th>id</th>
-          <th>名称</th>
-          <th>合并到</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="m in mergesList" :key="m.id">
-          <td class="mono">{{ m.id }}</td>
-          <td>{{ m.name }}</td>
-          <td class="mono">→ {{ m.merged_into }}</td>
-          <td>
-            <div class="row" style="gap: 0.3rem; flex-wrap: nowrap">
-              <button class="icobtn" @click="unmerge(m)">拆分</button>
-              <input
-                class="field"
-                style="width: 70px"
-                placeholder="目标ID"
-                v-model="mergeTargets[m.id]"
-              />
-              <button class="icobtn" @click="mergeInto(m)">合并到</button>
-            </div>
-          </td>
-        </tr>
-        <tr v-if="!mergesList.length">
-          <td colspan="4" class="muted" style="text-align: center">无合并</td>
-        </tr>
-      </tbody>
-    </table>
   </Modal>
 </template>
