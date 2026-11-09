@@ -2,7 +2,7 @@
 
 2026-11-09，用户已选择独立脚本方案，并授权先计划再实施。
 
-状态：本地实现、相关验证和独立审阅修正完成，纳入本轮提交；未对真实库运行，未推送或部署。实际命令见[操作说明](../../operations/questionnaire-check.md)，验证见[实施记录](../plans/2026-11-09-questionnaire-check.md#执行记录)。
+状态：实现、验证和独立审阅修正完成，后端已提交97e8fb4；未对真实库运行，未推送或部署。实际命令见[操作说明](../../operations/questionnaire-check.md)，验证见[实施记录](../plans/2026-11-09-questionnaire-check.md#执行记录)。
 
 ## 方案与边界
 

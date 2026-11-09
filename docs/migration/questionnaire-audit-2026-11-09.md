@@ -2,9 +2,18 @@
 
 ## 当前规则与剩余清单
 
-核对：2026-11-09，后端 e9dc072（包含 f12e3ce）、前端 4fda4ef；尚未推送或部署，线上数据未核验。下方首次审查表为历史记录，不能直接作为当前待办。
+核对：2026-11-09，会话收尾；后端功能提交基线97e8fb4，前端功能提交基线16be240，均在 feat/questionnaire-backend-source。本会话未推送或部署，真实题库与线上状态未核验。下方首次审查表为历史记录，不能直接作为当前待办。
 
-已完成：定义来源统一、结果端静态题库迁移、管理台 code 编辑与格式/重复检查、提交答案题型/互斥/分支校验、共用完成评估与重复查询清理。第二阶段经用户指定 Sol 审阅及相关99项测试，已提交。
+已完成并提交：定义来源统一、结果端静态题库迁移、管理台 code 编辑与格式/重复检查、提交答案题型/互斥/分支校验、共用完成评估与重复查询清理、main/extra 整体完成闸门、旧问卷放行退出、独立只读定义检查脚本。
+
+| 阶段 | 后端提交 | 前端提交 | 记录 |
+|---|---|---|---|
+| 定义来源统一、id/code及管理台 | f12e3ce | 4fda4ef | [第一阶段](../superpowers/plans/2026-11-09-questionnaire-backend-source.md) |
+| 答案合法性与单份完成评估 | e9dc072 | — | [第二阶段](../superpowers/plans/2026-11-09-questionnaire-answer-rules.md) |
+| 全部必填＋至少一份extra、退出旧放行 | 23fb761 | 16be240 | [整体闸门](../superpowers/plans/2026-11-09-questionnaire-completion-gate.md) |
+| 独立命令行定义检查 | 97e8fb4 | — | [检查脚本](../operations/questionnaire-check.md)、[验证记录](../superpowers/plans/2026-11-09-questionnaire-check.md#执行记录) |
+
+下次从本文剩余清单接手：先核对目标环境与真实A/B/C/D映射，再运行 `python -m scripts.check_questionnaire`；脚本尚未对真实库执行。后续开发重点为V2管理监控/作废；特殊图表绑定和跨届定义按实际需要决定。检查脚本不接后台保存或CI，不新增额外检查模块，这是用户已确认范围。
 
 ### 已确认的新完成条件（2026-11-09，本地已接入）
 
@@ -18,7 +27,7 @@ completed(A) AND (completed(B) OR completed(C) OR completed(D))
 
 这是本次最新产品规则，取代旧 PRD 的“必填＋分问卷＋额外问卷”整套组合要求；原始需求附件保留历史原文。A/B/C/D 暂为业务标签，具体题库身份绑定在实施时核对，不根据旧静态表推定数据库 ID/code。本轮复用现有 required/category 接入前后端判断与文案：A 为 main/required，B/C/D 为 extra/非required，至少一份配额写在整体政策函数。未新增表/接口、未修改真实题库，未部署。整体闸门与以后调整入口见[架构总览](../architecture/backend-overview.md#问卷整体完成闸门与配置入口)。
 
-整体政策先行验证为后端56 passed；本轮退出兼容后，6份相关后端文件集中检查85 passed，随后新增 GraphQL 拒绝反馈覆盖并重跑受影响文件26 passed。前端共享问卷/状态/结果索引三份文件6 passed，`pnpm vote:build` 通过；flake8及两仓库diff检查通过，独立只读审阅无修复项。命令和边界见[整体闸门实施记录](../superpowers/plans/2026-11-09-questionnaire-completion-gate.md#执行记录)。真实题库分类及账号操作未核验，无浏览器交互、真实数据改动、提交或部署。
+整体政策先行验证为后端56 passed；退出兼容后，6份相关后端文件集中检查85 passed，随后新增 GraphQL 拒绝反馈覆盖并重跑受影响文件26 passed。前端共享问卷/状态/结果索引三份文件6 passed，`pnpm vote:build` 通过；flake8及两仓库diff检查通过，独立只读审阅无修复项。命令和边界见[整体闸门实施记录](../superpowers/plans/2026-11-09-questionnaire-completion-gate.md#执行记录)。定义检查阶段相关测试58 passed，修复配置日志输出后受影响文件31 passed，详见其验证记录。真实题库分类及账号操作未核验，无浏览器交互、真实数据改动或部署。
 
 
 | 剩余事项 | 当前事实与影响 | 下一步边界 |
