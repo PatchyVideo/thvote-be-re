@@ -8,7 +8,7 @@
 
 **Tech Stack:** 现有 Vue 3、TypeScript、fetch/Apollo、Python >=3.12、FastAPI、SQLAlchemy、pytest、node:test/tsx；无新增依赖。
 
-**Spec:** [已确认方向与具体设计建议](../specs/2026-11-09-questionnaire-backend-source-design.md)。状态：用户已授权执行，2026-11-09 本地实现与验证完成，未提交或部署。
+**Spec:** [已确认方向与具体设计建议](../specs/2026-11-09-questionnaire-backend-source-design.md)。状态：2026-11-09 实现与验证完成，已提交后端f12e3ce、前端4fda4ef，未推送或部署。下文保留实施时范围和验证；后续阶段及当前剩余见[问卷清单](../../migration/questionnaire-audit-2026-11-09.md)。
 
 ## Global Constraints
 
