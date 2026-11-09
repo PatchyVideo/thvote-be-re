@@ -17,16 +17,14 @@ from src.db_model.raw_submit import (
     RawCPSubmit,
     RawDojinSubmit,
     RawMusicSubmit,
-    RawPaperSubmit,
 )
 from src.db_model.user import User
 
-# 参与监控的 5 类(raw_work 废弃,不含)。paper 用 papers_json,其余用 payload。
+# 四类原始投票；V2 答卷由 questionnaire-submissions 管理，不参与设备信号评分。
 CATEGORY_MODELS: dict[str, type] = {
     "character": RawCharacterSubmit,
     "music": RawMusicSubmit,
     "cp": RawCPSubmit,
-    "paper": RawPaperSubmit,
     "dojin": RawDojinSubmit,
 }
 _MODELS = tuple(CATEGORY_MODELS.values())
@@ -174,7 +172,6 @@ class MonitorDAO:
 
     @staticmethod
     def _row_full(category: str, o) -> dict:
-        payload = o.papers_json if category == "paper" else o.payload
         return {
             "id": o.id,
             "user_ip": o.user_ip,
@@ -184,7 +181,7 @@ class MonitorDAO:
             "attempt": o.attempt,
             "invalidated": o.invalidated,
             "created_at": o.created_at.isoformat() if o.created_at else None,
-            "payload": payload,
+            "payload": o.payload,
         }
 
     # ── 可疑打分:候选集 + 特征装配 ─────────────────────────────────────────

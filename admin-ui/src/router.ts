@@ -4,6 +4,7 @@ import UsersView from '@/views/UsersView.vue'
 import CandidatesView from '@/views/CandidatesView.vue'
 import NominationsView from '@/views/NominationsView.vue'
 import QuestionnaireView from '@/views/QuestionnaireView.vue'
+import QuestionnaireSubmissionsView from '@/views/QuestionnaireSubmissionsView.vue'
 import SyncView from '@/views/SyncView.vue'
 import LogsView from '@/views/LogsView.vue'
 import ExportView from '@/views/ExportView.vue'
@@ -22,6 +23,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/candidates', component: CandidatesView },
   { path: '/nominations', component: NominationsView },
   { path: '/questionnaires', component: QuestionnaireView },
+  { path: '/questionnaire-submissions', component: QuestionnaireSubmissionsView },
   { path: '/sync', component: SyncView },
   { path: '/logs', component: LogsView },
   { path: '/export', component: ExportView },

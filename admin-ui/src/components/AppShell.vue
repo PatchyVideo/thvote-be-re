@@ -15,6 +15,7 @@ const nav = [
   { to: '/voteable-resources', label: '投票对象资源' },
   { to: '/nominations', label: '提名审核' },
   { to: '/questionnaires', label: '问卷配置' },
+  { to: '/questionnaire-submissions', label: '答卷管理' },
   { to: '/sync', label: '数据同步' },
   { to: '/logs', label: '审计日志' },
   { to: '/export', label: '导出' },

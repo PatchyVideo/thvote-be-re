@@ -6,9 +6,11 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from src.db_model.voteable import VoteableCharacter, VoteableMusic
 from src.db_model.work import Work
@@ -53,6 +55,231 @@ async def _seed(db_session) -> dict:
 
 def _client(app) -> AsyncClient:
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("category", ["work", "character", "music"])
+async def test_export_catalog_business_facts_and_reimport(
+    app, db_session, admin_secret, category,
+):
+    from src.apps.admin.voteable_import_service import VoteableImportService
+
+    await _seed(db_session)
+    db_session.add(Work(name="未关联作品", type="book"))
+    await db_session.commit()
+    common = {
+        "name_jp": "", "type": "", "first_appearance": None,
+        "aliases": [], "old_id": None,
+    }
+    expected = {
+        "work": [
+            {"name": "东方风神录", "type": "old"},
+            {"name": "未关联作品", "type": "book"},
+        ],
+        "character": [
+            {
+                **common, "name": "东风谷早苗", "name_jp": "東風谷早苗",
+                "type": "new", "aliases": ["早苗", "sanae"],
+                "work": "东方风神录", "work_type": "old",
+                "image_url": "https://cdn.example.com/sanae.png",
+            },
+            {
+                **common, "name": "博丽灵梦", "work": None,
+                "work_type": None, "image_url": None,
+            },
+        ],
+        "music": [{
+            **common, "name": "信仰是为了虚幻之人",
+            "work": "东方风神录", "work_type": "old",
+            "image_url": "https://cdn.example.com/faith.jpg",
+            "music_url": "https://cdn.example.com/faith.mp3",
+            "include": ["东方风神录"],
+        }],
+    }[category]
+    filenames = {
+        "work": "works.json", "character": "characters.json",
+        "music": "music.json",
+    }
+    path = f"/api/v1/admin/export/catalog?category={category}"
+    headers = {"X-Admin-Secret": admin_secret}
+    async with _client(app) as ac:
+        response = await ac.get(path, headers=headers)
+    assert response.status_code == 200
+    assert response.json() == expected
+    assert "application/json" in response.headers["content-type"]
+    assert response.headers["content-disposition"] == (
+        f'attachment; filename="{filenames[category]}"'
+    )
+    assert "\\u" not in response.text
+
+    if category == "work":
+        for model in (VoteableCharacter, VoteableMusic, Work):
+            await db_session.execute(delete(model))
+        await db_session.commit()
+        async with _client(app) as ac:
+            imported = await ac.post(
+                "/api/v1/admin/works/import", headers=headers,
+                json={"content": response.text, "dry_run": False},
+            )
+        assert imported.status_code == 200
+        assert imported.json()["applied"] is True
+    else:
+        model = VoteableCharacter if category == "character" else VoteableMusic
+        await db_session.execute(delete(model))
+        await db_session.commit()
+        result = await VoteableImportService(db_session).run(
+            category, None, "json", json.dumps(response.json()), False,
+        )
+        assert result["conflicts"] == []
+    async with _client(app) as ac:
+        restored = await ac.get(path, headers=headers)
+    assert restored.json() == expected
+
+
+@pytest.mark.asyncio
+async def test_import_works_preview_apply_and_preserve_links(
+    app, db_session, admin_secret,
+):
+    ids = await _seed(db_session)
+    db_session.add_all([
+        Work(name="不变作品", type="CD"),
+        Work(name="清单外作品", type="others"),
+    ])
+    await db_session.commit()
+    body = {"content": json.dumps([
+        {"name": "新增作品", "type": "book"},
+        {"name": "东方风神录", "type": "new"},
+        {"name": "不变作品", "type": "CD"},
+    ])}
+    headers = {"X-Admin-Secret": admin_secret}
+    async with _client(app) as ac:
+        preview = await ac.post(
+            "/api/v1/admin/works/import", json=body, headers=headers,
+        )
+        assert preview.status_code == 200
+        assert preview.json() == {
+            "create": [{"name": "新增作品", "type": "book"}],
+            "update": [{
+                "name": "东方风神录", "type": "new", "previous_type": "old",
+            }],
+            "unchanged": [{"name": "不变作品", "type": "CD"}],
+            "errors": [], "applied": False,
+        }
+        before = (await db_session.execute(select(Work))).scalars().all()
+        assert {w.name: w.type for w in before} == {
+            "东方风神录": "old", "不变作品": "CD", "清单外作品": "others",
+        }
+        applied = await ac.post(
+            "/api/v1/admin/works/import",
+            json={**body, "dry_run": False}, headers=headers,
+        )
+    assert applied.status_code == 200
+    assert applied.json()["applied"] is True
+    db_session.expire_all()
+    works = (await db_session.execute(select(Work))).scalars().all()
+    assert {w.name: w.type for w in works} == {
+        "东方风神录": "new", "不变作品": "CD", "清单外作品": "others",
+        "新增作品": "book",
+    }
+    assert next(w.id for w in works if w.name == "东方风神录") == ids["work_id"]
+    assert (await db_session.get(VoteableCharacter, ids["sanae_id"])).work_id == (
+        ids["work_id"]
+    )
+    assert (await db_session.get(VoteableMusic, ids["faith_id"])).work_id == (
+        ids["work_id"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_import_works_csv(app, db_session, admin_secret):
+    async with _client(app) as ac:
+        response = await ac.post(
+            "/api/v1/admin/works/import",
+            headers={"X-Admin-Secret": admin_secret},
+            json={
+                "format": "csv", "dry_run": False,
+                "content": '\ufeffname,type\n"含,逗号作品",CD\n',
+            },
+        )
+    assert response.status_code == 200
+    assert response.json()["applied"] is True
+    work = (await db_session.execute(select(Work))).scalar_one()
+    assert (work.name, work.type) == ("含,逗号作品", "CD")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_row", [
+    {"name": "", "type": "new"},
+    {"name": "错误分类", "type": "invalid"},
+    {"name": "新增作品", "type": "CD"},
+])
+async def test_import_works_errors_reject_entire_batch(
+    app, db_session, admin_secret, bad_row,
+):
+    db_session.add(Work(name="已有作品", type="old"))
+    await db_session.commit()
+    async with _client(app) as ac:
+        response = await ac.post(
+            "/api/v1/admin/works/import",
+            headers={"X-Admin-Secret": admin_secret},
+            json={"dry_run": False, "content": json.dumps([
+                {"name": "已有作品", "type": "new"},
+                {"name": "新增作品", "type": "book"}, bad_row,
+            ])},
+        )
+    assert response.status_code == 200
+    assert response.json()["errors"][0]["row"] == 3
+    assert response.json()["applied"] is False
+    db_session.expire_all()
+    works = (await db_session.execute(select(Work))).scalars().all()
+    assert [(w.name, w.type) for w in works] == [("已有作品", "old")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content", ["{", "{}", "name\n作品\n"])
+async def test_import_works_document_errors(app, admin_secret, content):
+    async with _client(app) as ac:
+        response = await ac.post(
+            "/api/v1/admin/works/import",
+            headers={"X-Admin-Secret": admin_secret},
+            json={"content": content},
+        )
+    assert response.status_code == 200
+    assert response.json()["errors"][0]["row"] == 0
+    assert response.json()["applied"] is False
+
+
+@pytest.mark.asyncio
+async def test_import_works_requires_admin(app, admin_secret):
+    async with _client(app) as ac:
+        response = await ac.post(
+            "/api/v1/admin/works/import", json={"content": "[]"},
+        )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_export_catalog_empty_and_invalid_category(app, admin_secret):
+    async with _client(app) as ac:
+        headers = {"X-Admin-Secret": admin_secret}
+        empty = await ac.get(
+            "/api/v1/admin/export/catalog?category=character", headers=headers,
+        )
+        invalid = await ac.get(
+            "/api/v1/admin/export/catalog?category=unknown", headers=headers,
+        )
+    assert empty.status_code == 200
+    assert empty.json() == []
+    assert invalid.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_export_catalog_requires_admin(app, admin_secret):
+    async with _client(app) as ac:
+        response = await ac.get(
+            "/api/v1/admin/export/catalog?category=character",
+        )
+    assert response.status_code == 403
 
 
 @pytest.mark.asyncio

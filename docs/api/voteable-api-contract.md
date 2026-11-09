@@ -15,12 +15,13 @@
 1. [公共接口](#一公共接口)
 2. [用户与认证](#二用户与认证)
 3. [投票提交](#三投票提交)
-4. [投票结果](#四投票结果)
-5. [问卷](#五问卷)
-6. [自动补全](#六自动补全)
-7. [爬虫](#七爬虫)
-8. [Admin 管理后台](#八admin-管理后台)
-9. [改动标记](#九改动标记)
+4. [投票对象](#四投票对象vote-objects)
+5. [投票结果](#五投票结果)
+6. [问卷](#六问卷)
+7. [自动补全](#七自动补全)
+8. [爬虫](#八爬虫)
+9. [Admin 管理后台](#九admin-管理后台)
+10. [改动标记](#十改动标记)
 
 ---
 
@@ -437,24 +438,49 @@ GET /vote-objects/{category}/{candidateId}
 
 ### `GET /questionnaire/structure`
 
-```typescript
-// Response 200:
+无年度参数，返回后台当前维护的定义。以下 ID/code 为格式示例，不代表线上题库：
+
+```json
 {
-  "voteYear": 2025,
-  "groups": [{
-    "id": "g1",
-    "title": "基本信息",
-    "order": 1,
-    "questions": [{
-      "id": "q1",
-      "text": "性别",
-      "type": "single",
-      "order": 1,
-      "options": [{ "id": "o1", "text": "男", "order": 1 }]
+  "questionnaires": [{
+    "id": 1, "key": "main_required", "title": "基础问卷",
+    "introduction": "说明", "category": "main", "required": true, "order": 1,
+    "questionGroups": [{
+      "id": 10, "order": 1, "hiddenByDefault": false,
+      "questions": [{
+        "id": 100, "code": "11011", "order": 1, "type": "Single",
+        "content": "题干", "introduction": "", "maxInputLen": 1000,
+        "options": [{
+          "id": 200, "code": "1101101", "order": 1, "content": "选项",
+          "relatedQuestionIds": [], "mutexOptionIds": [], "optionGroup": 0
+        }]
+      }]
     }]
   }]
 }
 ```
+
+- id 为内部关联键；作答、related/mutex 保存真实 id。code 是可空字符串，结果查询/DSL 使用它，不按 id 截取层级或补造 code。
+- 问卷结构后端缓存 1800 秒，管理写入触发失效。填写与结果应用各自运行期间内存复用；刷新重新请求，不用 sessionStorage 旧题库兜底。个人答案草稿继续单独存 localStorage。
+- 管理题目/选项接口支持 code；省略字段的局部更新保留原值，null/空白清空；非空题目须 5 位 ASCII 数字、选项须 7 位。格式错误返回 `422 INVALID_QUESTIONNAIRE_CODE`，同表非空编码重复返回 `409 QUESTIONNAIRE_CODE_CONFLICT`。整树导入先检查编码再替换原树；仅应用层检查，无新增数据库约束。
+- 缺 code 的题目仍可填写，结果和管理页提示其统计配置缺失；高级搜索不提供无法生成编码条件的题目/选项。无自动编号、回填或重算。
+- `queryQuestionnaire` 返回计数/文本，不附题干与选项文案。结果端以结构的 code 映射关联，已计票但某题无数据时补零；整届未计票保留 RESULT_NOT_COMPUTED 错误。
+- 修改 code 或题目含义后须人工核对旧结果与链接；结构编辑不自动更新计票快照。结构不分届次，未新增历史定义版本。
+
+### V2 答案提交与完成判断
+
+`submitPaperV2(voteToken, answers)` 的成功返回仍为 Boolean，表示合法快照已保存，不表示整套已完成；answers 仍是全量题组行数组。请求可包含其他未完成问卷、可见未答题和空隐藏组；没有增加单独预校验接口或完成字段。
+
+- 后端一次加载定义、建立真实 ID 索引，检查 ID/归属、选项列表及文本类型、重复行/选项和长度，然后评估题型、分支及互斥。
+- Single 允许零/一项，Multiple 已选项必须属于同一 optionGroup；选择题不能携带非空文本，Input 不能携带选项。零选项/空文本表示未答，不等于非法。
+- 当前题必须属于实际可见分支；隐藏题组只接受空状态。related 仅由同一问卷内当前可见且分支匹配的作答触发，隐藏组不能自触发。多来源命中同组时，当前题在命中集合内可保留；无触发则采用默认题或隐藏。
+- 显式 mutex 按声明方向检查，不能同时提交互斥选项。后端不替用户删选项或换题后再保存。
+- 用户作答非法沿用 GraphQL `errors[].extensions.error_kind=INVALID_PAPER_ANSWER`，human_readable_message 提供题组及原因，error_message 提供内部原因码；不会写入新行或 attempt，旧批次保持。
+- 关联无法在有界轮数内稳定时返回 `QUESTIONNAIRE_CONFIGURATION_ERROR`，提示联系管理员，不能作为完成或成功保存。没有追加完整管理端题库治理或修改前端规则。
+- 合法部分答案可保存；完成判定按同一评估中可见且合法已答的组计算。整体投票条件为至少存在一份必填、全部required完成，并至少完成一份category=extra且非required的选填问卷；缺少配置不视为完成。raw_paper 不再授予投票资格。
+- 角色/音乐/组合提交由 `SubmitService._require_questionnaire` 对已保存答案执行闸门；前端按当前草稿的完成预判不表示已经保存。提名服务未调用同一闸门，不能宣称所有提交入口均受此服务端条件限制。
+- 问卷未完成时，角色/音乐/组合 REST 返回 HTTP 422，`detail=QUESTIONNAIRE_NOT_COMPLETED`；GraphQL 返回同名 `errors[].extensions.error_kind` 及中文补填提示，均在写票前拒绝。前端现有提交错误提示展示 human_readable_message。
+- 已知题组的错误分支/互斥/题型答案不计对应问卷完成；其他合法问卷独立计算。历史孤立组继续忽略；没有题目或题组的问卷不计完成。raw_paper 直接放行与空配置行数兜底已按[整体闸门计划](../superpowers/plans/2026-11-09-questionnaire-completion-gate.md)本地移除；不清库或自动重算快照，也不一并删除身份和 legacy 路由。
 
 ---
 
@@ -538,61 +564,39 @@ GET /vote-objects/{category}/{candidateId}
 | `PATCH /admin/users/{user_id}/ban` | → `{ "ok": true }` |
 | `PATCH /admin/users/{user_id}/unban` | → `{ "ok": true }` |
 
-### 9.4 Candidate 管理 🚧
+### 9.4 Candidate 管理（2026-11-10 本地实现，未部署）
+
+候选仅维护某届次与已有角色/音乐的引用和排序；创建、更新角色/音乐基本事实请使用 voteable 业务导入。业务归档 JSON 不含 ID，不能直接作为候选清单导入。
 
 #### `GET /admin/candidates`
 
-```
-Query: category=character|music, voteYear=int, page, pageSize
-```
+参数：`category=character|music`、`vote_year`（省略使用当前配置）、`q`、`page`、`page_size`。实际使用 snake_case。
 
-```typescript
-// Response 200:
-{
-  "items": [{ "candidateId": 42, "voteYear": 2025, "voteableId": 5, "name": "博麗靈夢" }],
-  "total": 120
-}
+响应 `{items,total}`，每条包含 `id`（候选记录 ID）、`vote_year`、`voteable_id`（投票对象 ID）、`sort_order`，以及关联对象的 `name/name_jp/type/origin/first_appearance/album`。两类 ID 不可互换。
+
+#### `POST /admin/candidates/import`
+
+```json
+{"vote_year":12,"category":"character","format":"json","content":"[{\"voteable_id\":1,\"sort_order\":10}]","dry_run":true}
 ```
 
-#### `POST /admin/candidates/import` 🚧
+`format` 为 auto/json/csv；CSV 表头 `voteable_id,sort_order`。支持 UTF-8 BOM。`voteable_id` 必填，须为当前数据库该类别中存在的正整数 ID；`sort_order` 可省略，须为 PostgreSQL Integer 范围内的整数。省略/null/空白排序时，已有候选保留原值，新候选为 null。
 
-```typescript
-// Request:
-{
-  "voteYear": 2025,
-  "category": "character" | "music",
-  "format": "csv" | "json" | "auto",
-  "content": "...",       // 原始文本
-  "dryRun": true          // true=仅预览
-}
+响应保留 `ok/valid_count/imported/valid/rejected`，增加 `create_count/update_count/unchanged_count/applied`。`valid` 每行含 `line/voteable_id/name/work_name/sort_order/action`，action 为 create/update/unchanged；错误行含 line/reason，line 为数据记录序号（从 1 开始，不含 CSV 表头）。
 
-// Response:
-{
-  "valid": [{ ... }],
-  "validCount": 10,
-  "rejected": [{ "line": 3, "reason": "缺少 name" }],
-  "createdVoteables": 3,   // 🆕 dryRun=false 时
-  "linkedExisting": 7,     // 🆕
-  "imported": 10
-}
-```
+只关联已有对象，不创建 voteable；按 `(vote_year,voteable_id)` 新增/更新，不删除清单外候选。文件内重复 ID、非法整数、缺失对象等任何错误均使整批不写入。`dry_run=true` 不写；确认请求重新校验。`imported` 为实际新增或更新数量，不含不变项；合法全不变确认仍可 `applied=true`。
 
-#### `POST /admin/candidates/{id}/relink` 🆕
+管理台支持文件或粘贴、示例、可读预览；修改输入或目标后清除旧预览。只有成功写入时失效现有候选/自动补全缓存。
 
-```typescript
-// Request: { "voteableId": 99 }
-// Response 200: { "ok": true }
-// Response 404: { "detail": "NOT_FOUND" }
-// Response 409: { "detail": "CONFLICT" }
-```
+#### `PUT /admin/candidates/{id}`
+
+输入 `{ "category":"character", "fields": {"voteable_id":"99","sort_order":"3"} }`。字段接口 `GET /admin/candidates/fields?category=character` 仍可使用。编辑排序留空/null清除；导入排序留空则保留，两者用途不同。
+
+候选不存在返回 404，同届引用冲突返回 409，对象不存在或整数非法返回 422。成功返回 `{ "ok":true }`。没有新增 relink 端点。
 
 #### `DELETE /admin/candidates/{id}`
 
-```
-Response 200: { "ok": true }
-```
-
-> 只删 candidate 行，不删 voteable。其余 candidate 管理端点（fields/merges/merge-into/unmerge）🚧废弃。
+参数 `category`；只删候选关系，不删投票对象，成功返回 `{ "ok":true }`。候选合并入口已从管理台移除；旧 merges/merge-into/unmerge API 暂保留，后续统一退出。
 
 ### 9.5 Voteable 管理 🆕（0019 起含资源配置）
 
@@ -624,6 +628,89 @@ Query: category=character|music（必填）, q?, page?, page_size?
 ```
 
 > 鉴权：`/admin/*` 路由级 `require_admin`，`X-Admin-Secret` 必填且受 `ADMIN_ALLOWED_IPS` 白名单约束（fail-closed）。
+
+#### `POST /admin/voteables/import`
+
+批量维护角色或音乐基本资料，支持 JSON 对象数组与带表头的 CSV。
+请求包含 `category=character|music`、`format=json|csv`、文本 `content`、
+`dry_run`（默认 true）与可选 `vote_year`。只维护基础资料时不传届次或传 null。
+
+除名称、日文名、分类、首次登场日期、别名和旧 ID 外，导入支持：
+
+| 字段 | 适用对象 | 含义 |
+|---|---|---|
+| `image_url` | 角色、音乐 | 图片或封面 URL |
+| `music_url` | 音乐 | 试听 URL |
+| `include` | 音乐 | 收录专辑名称列表，整体替换 |
+
+`aliases` / `include` 接受 JSON 数组；CSV 单元格可使用 JSON 数组文本，
+也可使用分号分隔名称。显式 `[]` 清空列表。
+沿用批量导入规则：省略字段、null、空白字符串均不更新原值，URL 按提供值保存。
+角色导入忽略 `music_url` / `include`。
+
+`work` 为首次登场作品名称，查找同名作品后写入其 ID；不存在时按
+`work_type` 创建（默认 others），不会更新已有作品分类。
+匹配顺序为 `voteable_id`、`old_id`、名称，未匹配才新建；指定不存在的
+`voteable_id` 返回冲突。预览响应中的 `create` / `update[].diff` 包含资源字段；
+`dry_run=true` 不写库，实际写入后沿用现有候选读取及自动补全缓存失效逻辑。
+
+#### `GET /admin/export/catalog`
+
+`category=work|character|music` 为必填参数，沿用管理员鉴权。
+下载完整基础清单，不受搜索、分页或届次影响；空库返回 `[]`。
+响应为 UTF-8、中文可读的 JSON 对象数组，附 `Content-Disposition: attachment`。
+
+| category | 文件名 | 字段 |
+|---|---|---|
+| work | works.json | name、type，含没有关联对象的作品 |
+| character | characters.json | name、name_jp、type、first_appearance、aliases、old_id、image_url、work、work_type |
+| music | music.json | 同角色，另含 music_url、include |
+
+每个对象为一条记录，按名称及内部 ID 排序；列表保留为数组，空值为 null。
+`work` 为首次登场作品名称，`work_type` 为作品分类；没有作品归属时两者为 null。
+资源保留 URL，不下载文件本体；不包含自增 ID、created_at 或 candidate 数据。
+
+管理台作品页、投票对象资源页提供“导出全部… JSON”按钮。
+角色/音乐清单适配 `POST /admin/voteables/import` 的 content：选择对应 category、
+format=json、vote_year=null 即可预览后导入；内部 ID 可以变化。
+既有目标记录的 null/空白字段仍沿用“不更新”规则，不保证清空原值。
+作品清单使用 name/type 字段，可通过 `POST /admin/works/import` 预览并批量导回。
+
+#### `POST /admin/works/import`
+
+作品批量维护入口，复用管理员鉴权。作品页“批量导入”支持选择文件或粘贴文本，
+导入前预览新增、分类更新、跳过及错误；修改内容后需重新预览。
+
+```json
+{
+  "format": "auto",
+  "content": "[{\"name\":\"东方红魔乡\",\"type\":\"new\"}]",
+  "dry_run": true
+}
+```
+
+- format 可为 auto（默认）、json、csv；JSON 须为对象数组，CSV 须包含 name/type 表头。
+- name/type 均为必填字符串，去除首尾空白；name 不超过255字符，type 为 old/new/CD/book/others。
+- 按完整名称匹配：不存在则新增，同名同分类跳过，同名不同分类更新现有行，保留 ID 和关联。
+- 文件内重复名称、空名称、非法分类或文件格式错误均记录错误；任何错误都使整批不写入。
+- dry_run 默认 true，不写库；false 且无错误时一次提交，只在有实际新增/更新后刷新既有读取缓存。
+- 未列出的作品保留，不支持通过改文件名称批量改名；改名继续使用已有编辑入口。
+- JSON [] 或仅有完整 CSV 表头表示空清单，不删除任何记录。额外字段忽略。
+
+```json
+{
+  "create": [{"name": "东方红魔乡", "type": "new"}],
+  "update": [{"name": "某作品", "previous_type": "others", "type": "book"}],
+  "unchanged": [{"name": "另一作品", "type": "CD"}],
+  "errors": [],
+  "applied": false
+}
+```
+
+响应为检查/执行报告，行错误时也返回 HTTP 200，applied=false；调用方须检查 errors/applied。
+errors 项为 `{row, reason}`，row 是从1开始的记录序号，文件级错误为0。
+只在无错误且实际请求 dry_run=false 时 applied=true；无需修改数据库 schema。
+恢复业务资料时先导入 works.json，再导入角色和音乐清单；内部 ID 可重新分配。
 
 #### `POST /admin/voteables/{id}`
 
@@ -737,12 +824,12 @@ Query: category?, vote_year?
 | `GET /vote-objects/{category}/{id}` | 🚧 | 字段 camelCase；0019 增 `imageUrl`/`aliases`（音乐含 `musicUrl`/`include`） |
 | `PUT /admin/voteables/{id}/resources` | 🆕 0019 | 资源类字段编辑 |
 | `GET /admin/cache/stats`、`POST /admin/cache/flush` | 🆕 | 缓存计数/手动失效 |
-| `POST /admin/candidates/import` | 🚧 | response 新增 `createdVoteables`/`linkedExisting` |
-| `GET /admin/candidates` | 🚧 | response 精简 |
-| `POST /admin/candidates/{id}/relink` | 🆕 | |
+| `POST /admin/candidates/import` | 已实现（本地） | 引用既有对象、整批校验、可读预览；见 §9.4 |
+| `GET /admin/candidates` | 已实现（本地） | 补齐 voteable_id、sort_order；snake_case |
+| `PUT /admin/candidates/{id}` | 已实现（本地） | 编辑对象引用和排序，无独立 relink API |
 | `GET /admin/voteables` | 🆕 | |
 | `POST /admin/voteables/{id}` | 🆕 | |
-| `GET /admin/candidates/fields` | 🚧 废弃 | 改为 `/admin/voteables/fields` 或从 voteable 推导 |
+| `GET /admin/candidates/fields` | 保留 | 推导候选引用和排序字段 |
 | `GET /admin/candidates/merges` | 🚧 废弃 | |
 | `POST /admin/candidates/{id}/merge-into/{target}` | 🚧 废弃 | |
 | `POST /admin/candidates/{id}/unmerge` | 🚧 废弃 | |

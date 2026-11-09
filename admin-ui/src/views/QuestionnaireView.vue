@@ -105,7 +105,7 @@ async function saveCreate(): Promise<void> {
     createOpen.value = false
     await loadList()
   } catch (e) {
-    toast(errMsg(e), 'error')
+    toast(codeErrorMessage(e), 'error')
   }
 }
 
@@ -116,7 +116,7 @@ async function deleteQuestionnaire(item: QuestionnaireListItem): Promise<void> {
     toast('已删除', 'success')
     await loadList()
   } catch (e) {
-    toast(errMsg(e), 'error')
+    toast(codeErrorMessage(e), 'error')
   }
 }
 
@@ -150,7 +150,7 @@ async function saveMeta(): Promise<void> {
     metaOpen.value = false
     await loadTree(currentId.value)
   } catch (e) {
-    toast(errMsg(e), 'error')
+    toast(codeErrorMessage(e), 'error')
   }
 }
 
@@ -181,7 +181,7 @@ async function runImport(): Promise<void> {
     importOpen.value = false
     await loadList()
   } catch (e) {
-    toast(errMsg(e), 'error')
+    toast(codeErrorMessage(e), 'error')
   }
 }
 
@@ -228,7 +228,7 @@ async function saveGroup(): Promise<void> {
     groupOpen.value = false
     await loadTree(currentId.value)
   } catch (e) {
-    toast(errMsg(e), 'error')
+    toast(codeErrorMessage(e), 'error')
   }
 }
 async function deleteGroup(g: GroupNode): Promise<void> {
@@ -239,12 +239,20 @@ async function deleteGroup(g: GroupNode): Promise<void> {
     toast('已删除', 'success')
     await loadTree(currentId.value)
   } catch (e) {
-    toast(errMsg(e), 'error')
+    toast(codeErrorMessage(e), 'error')
   }
+}
+
+function codeErrorMessage(error: unknown): string {
+  const message = errMsg(error)
+  if (message === 'INVALID_QUESTIONNAIRE_CODE') return '题目编号须为5位数字，选项编号须为7位数字。'
+  if (message === 'QUESTIONNAIRE_CODE_CONFLICT') return '编号已被其他题目或选项使用，请核对。'
+  return message
 }
 
 // ── 问题 ─────────────────────────────────────────────────────────────────
 interface QuestionFormState {
+  code: string
   type: QuestionType
   content: string
   introduction: string
@@ -252,7 +260,7 @@ interface QuestionFormState {
   order: number
 }
 function blankQuestionForm(): QuestionFormState {
-  return { type: 'Single', content: '', introduction: '', max_input_len: 1000, order: 0 }
+  return { code: '', type: 'Single', content: '', introduction: '', max_input_len: 1000, order: 0 }
 }
 
 const questionOpen = ref(false)
@@ -269,6 +277,7 @@ function openCreateQuestion(groupId: number): void {
 function openEditQuestion(q: QuestionNode, groupId: number): void {
   questionEditingId.value = q.id
   questionGroupId.value = groupId
+  questionForm.code = q.code ?? ''
   questionForm.type = q.type
   questionForm.content = q.content
   questionForm.introduction = q.introduction
@@ -282,6 +291,7 @@ async function saveQuestion(): Promise<void> {
     if (questionEditingId.value === null) {
       await questionnaireApi.createQuestion({
         group_id: questionGroupId.value,
+        code: questionForm.code.trim() || null,
         type: questionForm.type,
         content: questionForm.content,
         introduction: questionForm.introduction,
@@ -290,6 +300,7 @@ async function saveQuestion(): Promise<void> {
       })
     } else {
       await questionnaireApi.updateQuestion(questionEditingId.value, {
+        code: questionForm.code.trim() || null,
         type: questionForm.type,
         content: questionForm.content,
         introduction: questionForm.introduction,
@@ -301,7 +312,7 @@ async function saveQuestion(): Promise<void> {
     questionOpen.value = false
     await loadTree(currentId.value)
   } catch (e) {
-    toast(errMsg(e), 'error')
+    toast(codeErrorMessage(e), 'error')
   }
 }
 async function deleteQuestion(q: QuestionNode): Promise<void> {
@@ -312,12 +323,13 @@ async function deleteQuestion(q: QuestionNode): Promise<void> {
     toast('已删除', 'success')
     await loadTree(currentId.value)
   } catch (e) {
-    toast(errMsg(e), 'error')
+    toast(codeErrorMessage(e), 'error')
   }
 }
 
 // ── 选项 ─────────────────────────────────────────────────────────────────
 interface OptionFormState {
+  code: string
   content: string
   option_group: number
   order: number
@@ -325,7 +337,7 @@ interface OptionFormState {
   mutex_option_ids: number[]
 }
 function blankOptionForm(): OptionFormState {
-  return { content: '', option_group: 0, order: 0, related_question_ids: [], mutex_option_ids: [] }
+  return { code: '', content: '', option_group: 0, order: 0, related_question_ids: [], mutex_option_ids: [] }
 }
 
 const optionOpen = ref(false)
@@ -342,6 +354,7 @@ function openCreateOption(questionId: number): void {
 function openEditOption(o: OptionNode, questionId: number): void {
   optionEditingId.value = o.id
   optionQuestionId.value = questionId
+  optionForm.code = o.code ?? ''
   optionForm.content = o.content
   optionForm.option_group = o.optionGroup
   optionForm.order = o.order
@@ -355,6 +368,7 @@ async function saveOption(): Promise<void> {
     if (optionEditingId.value === null) {
       await questionnaireApi.createOption({
         question_id: optionQuestionId.value,
+        code: optionForm.code.trim() || null,
         content: optionForm.content,
         related_question_ids: optionForm.related_question_ids,
         mutex_option_ids: optionForm.mutex_option_ids,
@@ -363,6 +377,7 @@ async function saveOption(): Promise<void> {
       })
     } else {
       await questionnaireApi.updateOption(optionEditingId.value, {
+        code: optionForm.code.trim() || null,
         content: optionForm.content,
         related_question_ids: optionForm.related_question_ids,
         mutex_option_ids: optionForm.mutex_option_ids,
@@ -374,7 +389,7 @@ async function saveOption(): Promise<void> {
     optionOpen.value = false
     await loadTree(currentId.value)
   } catch (e) {
-    toast(errMsg(e), 'error')
+    toast(codeErrorMessage(e), 'error')
   }
 }
 async function deleteOption(o: OptionNode): Promise<void> {
@@ -385,7 +400,7 @@ async function deleteOption(o: OptionNode): Promise<void> {
     toast('已删除', 'success')
     await loadTree(currentId.value)
   } catch (e) {
-    toast(errMsg(e), 'error')
+    toast(codeErrorMessage(e), 'error')
   }
 }
 
@@ -487,6 +502,7 @@ function onMutexChange(e: Event): void {
           >
             <div class="row">
               <span class="mono">#{{ q.order }}</span>
+              <span class="small muted">{{ q.code || '未设置统计编号' }}</span>
               <span class="badge gray">{{ questionTypeLabel(q.type) }}</span>
               <span>{{ q.content || '（无题面）' }}</span>
               <span class="spacer"></span>
@@ -521,6 +537,7 @@ function onMutexChange(e: Event): void {
                 "
               >
                 <span class="mono">#{{ o.order }}</span>
+                <span class="small muted">{{ o.code || '未设置统计编号' }}</span>
                 <span>{{ o.content }}</span>
                 <span class="small muted">分组 {{ o.optionGroup }}</span>
                 <span v-if="o.relatedQuestionIds.length" class="small mono">
@@ -650,6 +667,12 @@ function onMutexChange(e: Event): void {
   <!-- ══════════ 弹窗:问题 ══════════ -->
   <Modal v-if="questionOpen" :title="questionEditingId === null ? '新建问题' : '编辑问题'" @close="questionOpen = false">
     <div style="margin-bottom: 0.6rem">
+      <div v-if="questionEditingId !== null" class="small muted">内部 ID：{{ questionEditingId }}</div>
+      <label class="lbl">统计编号 code（5位数字）</label>
+      <input class="field" v-model="questionForm.code" inputmode="numeric" />
+      <div class="small muted">用于统计查询和分享链接，排序变化时无需改号。留空将无法统计对应回答。</div>
+    </div>
+    <div style="margin-bottom: 0.6rem">
       <label class="lbl">类型</label>
       <select class="field" v-model="questionForm.type">
         <option v-for="t in QUESTION_TYPES" :key="t" :value="t">{{ questionTypeLabel(t) }}</option>
@@ -680,6 +703,12 @@ function onMutexChange(e: Event): void {
 
   <!-- ══════════ 弹窗:选项 ══════════ -->
   <Modal v-if="optionOpen" :title="optionEditingId === null ? '新建选项' : '编辑选项'" @close="optionOpen = false">
+    <div style="margin-bottom: 0.6rem">
+      <div v-if="optionEditingId !== null" class="small muted">内部 ID：{{ optionEditingId }}</div>
+      <label class="lbl">统计编号 code（7位数字）</label>
+      <input class="field" v-model="optionForm.code" inputmode="numeric" />
+      <div class="small muted">用于统计查询和分享链接，排序变化时无需改号。留空将无法统计对应回答。</div>
+    </div>
     <div style="margin-bottom: 0.6rem">
       <label class="lbl">内容</label>
       <input class="field" style="width: 100%" v-model="optionForm.content" />

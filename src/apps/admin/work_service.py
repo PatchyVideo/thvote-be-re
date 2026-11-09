@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import csv
+import io
+import json
 import logging
-from typing import Optional
+from typing import Any, Literal, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.apps.admin.schemas import (
+    WorkImportError,
+    WorkImportItem,
+    WorkImportResponse,
+    WorkImportUpdate,
+)
 from src.db_model.work import Work
 from src.db_model.voteable import VoteableCharacter, VoteableMusic
 
@@ -16,9 +25,88 @@ _logger = logging.getLogger(__name__)
 VALID_TYPES = {"old", "new", "CD", "book", "others"}
 
 
+def _parse_work_rows(fmt: str, content: str) -> list[Any]:
+    text = content.lstrip("\ufeff").strip()
+    if not text:
+        raise ValueError("导入内容不能为空")
+    if fmt == "auto":
+        fmt = "json" if text[0] in "[{" else "csv"
+    if fmt == "json":
+        try:
+            rows = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError("JSON 格式不正确") from exc
+        if not isinstance(rows, list):
+            raise ValueError("JSON 必须是作品对象数组")
+        return rows
+    if fmt != "csv":
+        raise ValueError("仅支持 JSON 或 CSV")
+    try:
+        reader = csv.DictReader(io.StringIO(text), strict=True)
+        if not {"name", "type"}.issubset(reader.fieldnames or []):
+            raise ValueError("CSV 表头必须包含 name 和 type")
+        return list(reader)
+    except csv.Error as exc:
+        raise ValueError("CSV 格式不正确") from exc
+
+
 class WorkService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def import_works(
+        self, fmt: Literal["auto", "json", "csv"], content: str,
+        dry_run: bool = True,
+    ) -> WorkImportResponse:
+        """Preview all changes; apply the batch only when every row is valid."""
+        report = WorkImportResponse(create=[], update=[], unchanged=[], errors=[])
+        try:
+            rows = _parse_work_rows(fmt, content)
+        except ValueError as exc:
+            report.errors.append(WorkImportError(row=0, reason=str(exc)))
+            return report
+
+        existing = (await self.session.execute(select(Work))).scalars().all()
+        by_name = {work.name: work for work in existing}
+        seen: set[str] = set()
+        for number, raw in enumerate(rows, 1):
+            reason = ""
+            if not isinstance(raw, dict):
+                reason = "每条作品记录必须是对象"
+            else:
+                name, wtype = raw.get("name"), raw.get("type")
+                if not isinstance(name, str) or not name.strip():
+                    reason = "作品名不能为空，且必须是字符串"
+                elif len(name.strip()) > 255:
+                    reason = "作品名不能超过 255 个字符"
+                elif name.strip() in seen:
+                    reason = f"作品名称重复：{name.strip()}"
+                elif not isinstance(wtype, str) or wtype.strip() not in VALID_TYPES:
+                    reason = "分类必须为 old、new、CD、book 或 others"
+            if reason:
+                report.errors.append(WorkImportError(row=number, reason=reason))
+                continue
+            name, wtype = name.strip(), wtype.strip()
+            seen.add(name)
+            item = WorkImportItem(name=name, type=wtype)
+            target = by_name.get(name)
+            if target is None:
+                report.create.append(item)
+            elif target.type == wtype:
+                report.unchanged.append(item)
+            else:
+                report.update.append(WorkImportUpdate(
+                    name=name, type=wtype, previous_type=target.type,
+                ))
+
+        if not dry_run and not report.errors:
+            for item in report.create:
+                self.session.add(Work(name=item.name, type=item.type))
+            for item in report.update:
+                by_name[item.name].type = item.type
+            await self.session.commit()
+            report.applied = True
+        return report
 
     async def list_works(
         self,

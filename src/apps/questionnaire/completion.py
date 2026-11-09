@@ -1,148 +1,69 @@
-"""Questionnaire completion check — pure logic, no DB.
+"""Completion consumes the same validated rule evaluation as submissions.
 
-Completion = every **visible** question group of every ``required=true``
-questionnaire has a substantive answer.  The previous rule ("a row exists for
-the group") let a caller submit structurally-valid-but-empty rows and unlock
-voting (R-01/D-08), so the gate now also requires real content.
-
-Visibility mirrors the frontend runner (``questionnaireV2Parser.ts``), otherwise
-the server would demand answers for groups the UI never shows:
-
-- a group whose ``order`` is 1 is always shown, with its first question;
-- other groups are shown by default unless ``hiddenByDefault`` is set;
-- a hidden group becomes visible when a selected option of a visible group in
-  the same questionnaire lists one of its questions in ``relatedQuestionIds``
-  (iterated to a fixpoint, like the frontend's normalisation loop).
-
-A group counts as answered when its active question carries real content:
-non-empty text for ``Input`` questions, at least one selected option otherwise
-(``validation.is_done_row``).
-
-Legacy fallback: a required questionnaire with no answerable group at all (no
-questions imported yet) keeps the old row-coverage rule, so a half-configured
-structure does not hard-block voting.
+The stored-read wrapper ignores orphaned groups. Questionnaires without
+answerable questions never count as complete; new submissions reject unknown IDs.
 """
 from __future__ import annotations
 
 from typing import Any
 
+from src.apps.questionnaire.rules import RuleEvaluation
 from src.apps.questionnaire.structure_index import StructureIndex
-from src.apps.questionnaire.validation import is_done_row
-
-_MAX_VISIBILITY_ROUNDS = 8
+from src.apps.questionnaire.validation import assess_answers
 
 
 def _int_or_none(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
-    if isinstance(value, int):
-        return value
     try:
         return int(value)
     except (TypeError, ValueError):
         return None
 
 
-def _rows_by_group(answers: list[dict]) -> dict[tuple, list[dict]]:
-    out: dict[tuple, list[dict]] = {}
-    for answer in answers:
-        if not isinstance(answer, dict):
-            continue
-        questionnaire_id = _int_or_none(answer.get("questionnaire_id"))
-        group_id = _int_or_none(answer.get("group_id"))
-        if questionnaire_id is None or group_id is None:
-            continue
-        out.setdefault((questionnaire_id, group_id), []).append(answer)
-    return out
-
-
-def _groups_of(questionnaire: dict) -> list[dict]:
-    return [
-        g for g in (questionnaire.get("questionGroups") or [])
-        if isinstance(g, dict)
-    ]
-
-
-def _visible_group_ids(
-    index: StructureIndex,
-    questionnaire: dict,
-    rows: dict[tuple, list[dict]],
+def completed_from_evaluation(
+    index: StructureIndex, evaluation: RuleEvaluation,
 ) -> set[int]:
-    """Group ids the frontend would currently render for this questionnaire."""
-    qn_id = questionnaire.get("id")
-    groups = [g for g in _groups_of(questionnaire) if index.group_has_questions(g)]
-    visible = {
-        g["id"]
-        for g in groups
-        if g.get("order") == 1 or not g.get("hiddenByDefault")
-    }
-
-    for _ in range(_MAX_VISIBILITY_ROUNDS):
-        added: set[int] = set()
-        for group_id in list(visible):
-            for row in rows.get((qn_id, group_id), []):
-                question_id = _int_or_none(row.get("active_question_id"))
-                if (
-                    question_id is None
-                    or index.question_group.get(question_id) != group_id
-                ):
-                    continue
-                options = index.question_options.get(question_id, {})
-                for raw_option in row.get("selected_option_ids") or []:
-                    option = options.get(_int_or_none(raw_option))
-                    if option is None:
-                        continue
-                    for related in option.get("relatedQuestionIds") or []:
-                        target = index.question_group.get(_int_or_none(related))
-                        if (
-                            target is not None
-                            and target != group_id
-                            and target not in visible
-                            and index.group_questionnaire.get(target) == qn_id
-                        ):
-                            added.add(target)
-        if not added:
-            break
-        visible |= added
-    return visible
-
-
-def completed_questionnaire_ids(
-    index: StructureIndex, answers: list[dict],
-) -> set[int]:
-    """Completed questionnaires, including optional ones, using the gate rules.
-
-    A caller aggregating statistics must exclude unconfigured questionnaires;
-    their legacy row-coverage fallback exists only to preserve gate behaviour.
-    """
-    rows = _rows_by_group(answers)
-    answered = {
-        (qn_id, group_id)
-        for (qn_id, group_id), group_rows in rows.items()
-        if any(is_done_row(index, row) for row in group_rows)
-    }
     completed: set[int] = set()
     for questionnaire in index.questionnaires:
         qn_id = questionnaire["id"]
-        groups = _groups_of(questionnaire)
-        answerable = [g for g in groups if index.group_has_questions(g)]
-        if not answerable:
-            # Preserve the gate's legacy fallback for unconfigured structures.
-            if all((qn_id, g.get("id")) in rows for g in groups):
-                completed.add(qn_id)
+        if qn_id in evaluation.invalid_questionnaire_ids:
             continue
-        visible = _visible_group_ids(index, questionnaire, rows) & {
-            g["id"] for g in answerable
-        }
-        if visible and all((qn_id, group_id) in answered for group_id in visible):
+        groups = index.questionnaire_groups[qn_id]
+        answerable = {g["id"] for g in groups if index.group_has_questions(g)}
+        visible = evaluation.visible_group_ids & answerable
+        if visible and visible <= evaluation.answered_group_ids:
             completed.add(qn_id)
     return completed
 
 
+def completed_questionnaire_ids(index: StructureIndex, answers: list[dict]) -> set[int]:
+    """Assess latest stored rows; a bad questionnaire cannot abort batch reports."""
+    known_rows = []
+    for row in answers:
+        if not isinstance(row, dict):
+            continue
+        gid = _int_or_none(row.get("group_id"))
+        qn_id = _int_or_none(row.get("questionnaire_id"))
+        if gid not in index.groups or qn_id is None:
+            continue
+        known_rows.append({**row, "group_id": gid, "questionnaire_id": qn_id})
+    return completed_from_evaluation(index, assess_answers(index, known_rows))
+
+
+def meets_completion_policy(questionnaires: list[dict], completed: set[int]) -> bool:
+    """Overall voting policy: all required plus one optional extra questionnaire.
+
+    Keep this policy separate from per-questionnaire answer evaluation. See
+    docs/architecture/backend-overview.md for configuration and gate callers.
+    """
+    required = {qn["id"] for qn in questionnaires if qn.get("required")}
+    extra = {qn["id"] for qn in questionnaires
+             if qn.get("category") == "extra" and not qn.get("required")}
+    return bool(required) and required <= completed and bool(extra & completed)
+
+
 def is_complete(structure: dict[str, Any], answers: list[dict]) -> bool:
-    """True if every required questionnaire is completed (see module docstring)."""
     index = StructureIndex(structure)
     completed = completed_questionnaire_ids(index, answers)
-    return all(
-        qn["id"] in completed for qn in index.questionnaires if qn.get("required")
-    )
+    return meets_completion_policy(index.questionnaires, completed)

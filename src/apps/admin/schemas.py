@@ -2,7 +2,7 @@
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CandidateItem(BaseModel):
@@ -81,11 +81,41 @@ class StatsResponse(BaseModel):
     submissions: dict[str, int]
 
 
+class WorkImportRequest(BaseModel):
+    format: Literal["auto", "json", "csv"] = "auto"
+    content: str
+    dry_run: bool = True
+
+
+class WorkImportItem(BaseModel):
+    name: str
+    type: str
+
+
+class WorkImportUpdate(WorkImportItem):
+    previous_type: str
+
+
+class WorkImportError(BaseModel):
+    row: int
+    reason: str
+
+
+class WorkImportResponse(BaseModel):
+    create: list[WorkImportItem]
+    update: list[WorkImportUpdate]
+    unchanged: list[WorkImportItem]
+    errors: list[WorkImportError]
+    applied: bool = False
+
+
 # ── Candidate admin schemas ────────────────────────────────────────────────────
 
 class CandidateAdminItem(BaseModel):
     id: int
     vote_year: int
+    voteable_id: int
+    sort_order: int | None = None
     name: str
     name_jp: str = ""
     type: str = ""
@@ -170,7 +200,7 @@ class CandidateFieldsResponse(BaseModel):
 
 
 class CandidateImportRequest(BaseModel):
-    vote_year: int
+    vote_year: int = Field(gt=0)
     category: Literal["character", "music"]
     format: Literal["auto", "csv", "json"] = "auto"
     content: str
@@ -182,12 +212,25 @@ class CandidateRejected(BaseModel):
     reason: str
 
 
+class CandidateImportPreview(BaseModel):
+    line: int
+    voteable_id: int
+    sort_order: int | None
+    name: str
+    work_name: str | None
+    action: Literal["create", "update", "unchanged"]
+
+
 class CandidateImportResponse(BaseModel):
     ok: bool = True
     valid_count: int
     imported: int = 0
-    valid: list[dict] = []
+    valid: list[CandidateImportPreview] = []
     rejected: list[CandidateRejected] = []
+    create_count: int = 0
+    update_count: int = 0
+    unchanged_count: int = 0
+    applied: bool = False
 
 
 class CandidateUpdateRequest(BaseModel):

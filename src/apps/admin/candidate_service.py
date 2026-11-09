@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 from typing import Any
 
 from src.db_model.candidate import CandidateCharacter, CandidateMusic
@@ -38,7 +39,7 @@ def parse_content(fmt: str, content: str) -> tuple[list[dict], list[dict]]:
     Returns (rows, parse_errors). parse_errors is non-empty only on a
     document-level failure (bad JSON, no CSV header, empty input).
     """
-    text = (content or "").strip()
+    text = (content or "").lstrip("\ufeff").strip()
     if not text:
         return [], [{"line": 0, "reason": "内容为空"}]
 
@@ -68,17 +69,14 @@ def parse_content(fmt: str, content: str) -> tuple[list[dict], list[dict]]:
 
 
 def validate_items(category: str, rows: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Validate + clean rows. insertSelective: drop empty values and unknown columns.
-
-    Returns (valid, rejected). A row is rejected only when ``name`` is
-    missing or blank. ``line`` in rejected is the 1-based row position.
-    """
+    """Validate integer references/sort and reject repeated IDs within a file."""
     model = _model_for(category)
     valid_cols = {
         c.key for c in model.__table__.columns if c.key not in ("id", "vote_year")
     }
     valid: list[dict] = []
     rejected: list[dict] = []
+    seen: set[int] = set()
     for idx, raw in enumerate(rows):
         cleaned: dict[str, Any] = {}
         for k, v in raw.items():
@@ -92,5 +90,24 @@ def validate_items(category: str, rows: list[dict]) -> tuple[list[dict], list[di
         if not cleaned.get("voteable_id"):
             rejected.append({"line": idx + 1, "reason": "缺少 voteable_id"})
             continue
-        valid.append(cleaned)
+        invalid = False
+        for field in ("voteable_id", "sort_order"):
+            value = cleaned.get(field)
+            if value is None:
+                continue
+            if (not re.fullmatch(r"[+-]?\d+", value)
+                    or not -(2**31) <= int(value) < 2**31
+                    or (field == "voteable_id" and int(value) <= 0)):
+                rejected.append({"line": idx + 1, "reason": f"{field} 需要合法整数"})
+                invalid = True
+                break
+            cleaned[field] = str(int(value))
+        if invalid:
+            continue
+        vid = int(cleaned["voteable_id"])
+        if vid in seen:
+            rejected.append({"line": idx + 1, "reason": f"重复的 voteable_id：{vid}"})
+            continue
+        seen.add(vid)
+        valid.append({"line": idx + 1, **cleaned})
     return valid, rejected

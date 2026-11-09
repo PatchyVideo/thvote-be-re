@@ -103,7 +103,7 @@ def test_validate_keeps_voteable_id():
     valid, rejected = validate_items("character", rows)
     # After refactor: only voteable_id is a valid column
     assert rejected == []
-    assert valid == [{"voteable_id": "10"}]
+    assert valid == [{"line": 1, "voteable_id": "10"}]
 
 
 def test_validate_missing_voteable_id_rejected():
@@ -114,3 +114,26 @@ def test_validate_missing_voteable_id_rejected():
     assert len(valid) == 1
     assert valid[0]["voteable_id"] == "10"
     assert len(rejected) == 2
+
+
+def test_validate_rejects_invalid_ids_sort_and_duplicate():
+    from src.apps.admin.candidate_service import validate_items
+
+    valid, rejected = validate_items("character", [
+        {"voteable_id": "10", "sort_order": "-2"},
+        {"voteable_id": "010"},
+        {"voteable_id": True},
+        {"voteable_id": "1.5"},
+        {"voteable_id": "0"},
+        {"voteable_id": "11", "sort_order": "abc"},
+    ])
+    assert valid == [{"line": 1, "voteable_id": "10", "sort_order": "-2"}]
+    assert [r["line"] for r in rejected] == [2, 3, 4, 5, 6]
+
+
+def test_parse_csv_with_bom():
+    from src.apps.admin.candidate_service import parse_content
+
+    rows, errors = parse_content("auto", "\ufeffvoteable_id,sort_order\n10,2\n")
+    assert errors == []
+    assert rows == [{"voteable_id": "10", "sort_order": "2"}]

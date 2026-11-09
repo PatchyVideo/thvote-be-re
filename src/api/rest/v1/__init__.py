@@ -7,6 +7,9 @@ from src.apps.admin.router import router as admin_router
 from src.apps.autocomplete.router import router as autocomplete_router
 from src.apps.questionnaire.admin_router import router as questionnaire_admin_router
 from src.apps.questionnaire.router import router as questionnaire_router
+from src.apps.questionnaire.submission_admin_router import (
+    router as questionnaire_submissions_router,
+)
 from src.apps.result.router import router as result_router
 from src.apps.scraper.router import router as scraper_router
 from src.apps.submit.router import router as submit_router
@@ -23,5 +26,6 @@ api_router.include_router(scraper_router)
 api_router.include_router(autocomplete_router)
 api_router.include_router(questionnaire_router)
 api_router.include_router(questionnaire_admin_router)
+api_router.include_router(questionnaire_submissions_router)
 api_router.include_router(admin_router)
 api_router.include_router(monitor_router)

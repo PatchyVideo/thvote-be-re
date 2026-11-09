@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 from typing import Optional
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.apps.admin.deps import require_admin
+from src.apps.admin.catalog_export_service import (
+    CatalogCategory,
+    CatalogExportService,
+)
 from src.apps.admin.schemas import (
     ActivityLogResponse,
     BanResponse,
@@ -34,6 +39,8 @@ from src.apps.admin.schemas import (
     UserDetailResponse,
     UserListResponse,
     VoteableResourceUpdate,
+    WorkImportRequest,
+    WorkImportResponse,
 )
 from src.apps.admin.service import AdminService, SyncService
 from src.apps.admin.sync.progress import set_current_run
@@ -254,6 +261,7 @@ async def list_candidates(
     items = [
         {
             "id": r["id"], "vote_year": r["vote_year"], "name": r["name"],
+            "voteable_id": r["voteable_id"], "sort_order": r["sort_order"],
             "name_jp": r.get("name_jp", ""),
             "type": r.get("type", ""),
             "origin": r.get("work_name", ""),
@@ -292,7 +300,7 @@ async def import_candidates_content(
     )
     if "parse_error" in result:
         raise HTTPException(status_code=400, detail=result["parse_error"])
-    if not body.dry_run:
+    if result.get("applied") and result.get("imported"):
         await _clear_vote_objects_cache(redis)
     return CandidateImportResponse(**result)
 
@@ -310,6 +318,8 @@ async def update_candidate(
     result = await service.update_candidate(candidate_id, body.category, body.fields)
     if result == "not_found":
         raise HTTPException(status_code=404, detail="CANDIDATE_NOT_FOUND")
+    if result == "invalid_fields":
+        raise HTTPException(status_code=422, detail="投票对象不存在或排序格式不正确")
     if result == "conflict":
         raise HTTPException(status_code=409, detail="CANDIDATE_NAME_CONFLICT")
     await _clear_vote_objects_cache(redis)
@@ -473,6 +483,23 @@ async def list_activity_logs(
         for r in data["items"]
     ]
     return ActivityLogResponse(items=items, total=data["total"])
+
+
+@router.get("/export/catalog")
+async def export_catalog(
+    category: CatalogCategory,
+    session: AsyncSession = Depends(get_db_session),
+) -> Response:
+    rows = await CatalogExportService(session).export(category)
+    filename = {
+        "work": "works.json", "character": "characters.json",
+        "music": "music.json",
+    }[category]
+    return Response(
+        content=json.dumps(rows, ensure_ascii=False, indent=2) + "\n",
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/export/votes")
@@ -740,6 +767,20 @@ async def create_work(
         return result
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post("/works/import", response_model=WorkImportResponse)
+async def import_works(
+    body: WorkImportRequest,
+    session: AsyncSession = Depends(get_db_session),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> WorkImportResponse:
+    report = await WorkService(session).import_works(
+        body.format, body.content, body.dry_run,
+    )
+    if report.applied and (report.create or report.update):
+        await _clear_vote_objects_cache(redis)
+    return report
 
 
 @router.post("/works/{work_id}")

@@ -35,7 +35,8 @@ async function saveReview(): Promise<void> {
 </script>
 
 <template>
-  <div class="h1">账号钻取 · <span class="mono">{{ voteId }}</span></div>
+  <div class="h1">账号详情 <span class="mono">{{ voteId }}</span></div>
+  <p><RouterLink :to="{ path: '/questionnaire-submissions', query: { vote_id: voteId } }">查看该账号的新版答卷</RouterLink></p>
   <div v-if="loading && !data" class="card loading">加载中…</div>
   <template v-else-if="data">
     <div class="card">

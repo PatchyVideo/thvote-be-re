@@ -151,3 +151,40 @@ def test_input_at_max_len_passes():
 @pytest.mark.parametrize("bad", ["1", 1.5, True, None])
 def test_non_integer_ids_rejected(bad):
     _assert_invalid([row(questionnaire_id=bad)])
+
+
+@pytest.mark.parametrize("over", [
+    {"selected_option_ids": [1000, 1001]},
+    {"input_text": "选择题不应携带文本"},
+    {"selected_option_ids": False},
+    {"selected_option_ids": 0},
+])
+def test_invalid_question_answer_shapes_rejected_without_mutation(over):
+    from copy import deepcopy
+
+    answers = [row(**over)]
+    before = deepcopy(answers)
+    _assert_invalid(answers)
+    assert answers == before
+
+
+def test_input_cannot_carry_options_even_if_defined():
+    s = structure()
+    question = s["questionnaires"][0]["questionGroups"][1]["questions"][0]
+    question["options"] = [{"id": 1100}]
+    with pytest.raises(ValidationError):
+        validate_answer_rows(s, [row(group_id=11, active_question_id=110,
+                                    selected_option_ids=[1100], input_text="文本")])
+
+
+def test_multiple_option_groups_are_exclusive():
+    s = structure()
+    question = s["questionnaires"][0]["questionGroups"][0]["questions"][0]
+    question["type"] = "Multiple"
+    question["options"][0]["optionGroup"] = 0
+    question["options"][1]["optionGroup"] = 1
+    with pytest.raises(ValidationError):
+        validate_answer_rows(s, [row(selected_option_ids=[1000, 1001])])
+    validate_answer_rows(s, [row(selected_option_ids=[])])
+    question["options"][1]["optionGroup"] = 0
+    validate_answer_rows(s, [row(selected_option_ids=[1000, 1001])])

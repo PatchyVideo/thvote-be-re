@@ -1,7 +1,7 @@
 # `docs/` 索引
 
 > 创建日期：2026-04-27
-> 最后更新：2026-11-08（当前数据来源入口、历史计划／设计归档、CHANGELOG 季度拆分）。
+> 最后更新：2026-11-09（问卷四阶段提交状态、检查脚本及会话接手入口）。
 
 从 [当前后端结构与数据来源](architecture/backend-overview.md) 开始阅读；接口字段查 API 契约及源码，开放事项查 BACKLOG。技术设计解释当时的取舍，归档保留过程，二者都不自动代表待实施需求或当前线上状态。
 
@@ -11,15 +11,24 @@
 
 | 我想…… | 去读 |
 |---|---|
-| **知道下一步做什么** | [`BACKLOG.md`](./BACKLOG.md) —— 单一仪表盘，所有 follow-up（B-001..B-063）收拢于此，按「🟢 可立即并行做 / ⏸ 等外部」分组 |
-| **知道最近发生了什么** | [`CHANGELOG.md`](./CHANGELOG.md) —— 2026-07 起；更早见 [`CHANGELOG-archive-2026H1.md`](./CHANGELOG-archive-2026H1.md) |
+| **知道下一步做什么** | [`BACKLOG.md`](./BACKLOG.md) —— 当前源码差异、待决定的行为及发布/运营事项 |
+| **知道最近发生了什么** | [`CHANGELOG.md`](./CHANGELOG.md) —— 当前记录；此前见季度/半年归档 |
 | **了解投票业务本身要什么** | [`requirements/`](./requirements/) —— VoileLabs 官方需求文档，**权威口径来源** |
 | **对接后端接口** | [`api/voteable-api-contract.md`](./api/voteable-api-contract.md) |
+| **下载作品、角色与音乐的业务资料 JSON** | [导出接口及字段](api/voteable-api-contract.md#get-adminexportcatalog)；[实施与验证记录](superpowers/plans/2026-11-10-catalog-json-export.md) |
+| **批量恢复作品资料** | [作品导入契约](api/voteable-api-contract.md#post-adminworksimport)；[实施与验证记录](superpowers/plans/2026-11-10-work-bulk-import.md) |
+| **查看测试数据清理、接续旧问卷退出** | [Actions核查与授权清理记录](operations/test-data-cleanup-preflight-2026-11-10.md)：24行答卷和47个旧结果键已备份删除，基础资料保留，raw_paper代码退出待做 |
+| **管理本届候选与新版答卷** | [候选导入契约](api/voteable-api-contract.md#94-candidate-管理2026-11-10-本地实现未部署)、[答卷接口与0023迁移](api/questionnaire-submissions.md)；[实施记录](superpowers/plans/2026-11-10-candidate-import-and-answer-admin.md) |
 | **维护结果趋势时间轴** | [`api/result-timeline.md`](./api/result-timeline.md) —— 快照日期、GraphQL 字段及前后端发布顺序 |
 | **核对结果统计口径** | [`api/result-statistics.md`](./api/result-statistics.md) —— 部门有效票与逐问卷完成情况 |
 | **维护详情页人群筛选** | [`api/result-detail-filters.md`](./api/result-detail-filters.md) —— 原约束、目标交集及组合 DSL |
 | **了解当前后端结构与数据来源** | [`architecture/backend-overview.md`](architecture/backend-overview.md) —— 当前模块职责、候选／问卷／计票与缓存边界 |
 | **核对历史待办是否仍成立** | [`migration/backlog-audit-2026-11-08.md`](migration/backlog-audit-2026-11-08.md) —— 源码、历史需求与外部状态分开判断，避免重复实施 |
+| **实施问卷定义来源统一** | [`问卷实施计划`](superpowers/plans/2026-11-09-questionnaire-backend-source.md) —— 填写与结果读取后端、管理台编码维护；本地已实现，未部署 |
+| **完善问卷答案校验与完成判断** | [`作答规则实施计划`](superpowers/plans/2026-11-09-questionnaire-answer-rules.md) —— 共用规则计算、提交校验与查询复用；本地已实现，未部署 |
+| **调整整体问卷完成规则、定位投票闸门** | [架构总览：问卷整体完成闸门与配置入口](architecture/backend-overview.md#问卷整体完成闸门与配置入口) —— required/category、单份完成、整体政策、服务端拦截及前端预判 |
+| **手动检查问卷定义、发布前检查** | [问卷定义检查](operations/questionnaire-check.md) —— 独立只读脚本、错误/警告及0/1/2退出码，不改后台保存流程 |
+| **接续本轮问卷工作** | [当前规则、提交与剩余清单](migration/questionnaire-audit-2026-11-09.md) —— 四阶段已提交，真实题库与V2管理监控等仍待处理 |
 
 ---
 
@@ -34,7 +43,7 @@
 
 ## 需求（`requirements/`）
 
-> 官方需求文档，非我方产出。涉及口径分歧时**以此为准**。md 为转换版本，同目录附 docx 原件。
+> 官方需求文档，非我方产出。md 为转换版本，同目录附 docx 原件；用户后续明确确认的规则优先。问卷整体完成条件已改为 A 必填、B/C/D 至少完成一份，见[当前规则与核验边界](migration/questionnaire-audit-2026-11-09.md#已确认的新完成条件2026-11-09本地已接入)，原始附件保留历史原文。
 
 | 文档 | 用途 |
 |---|---|
@@ -181,7 +190,7 @@
 
 ## 实施计划
 
-当前目录 [superpowers/plans/](superpowers/plans/README.md) 仅用于待执行的新计划。本轮核对的 8 份旧计划已迁入 [归档索引](archive/README.md)，不再同时列为现役待办。
+当前目录 [superpowers/plans/](superpowers/plans/README.md) 放待执行计划及本轮已完成的验收记录；四份问卷计划均已完成并提交，不作新待办。2026-11-08 核对的8份旧计划已迁入 [归档索引](archive/README.md)。
 
 - 已完成或被取代的执行过程查归档；真实剩余事项查 [BACKLOG](BACKLOG.md)。
 - 技术取舍查 [设计记录](superpowers/specs/README.md)，当前数据流查 [后端结构](architecture/backend-overview.md)。

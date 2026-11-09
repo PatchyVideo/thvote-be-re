@@ -19,6 +19,7 @@ class StructureIndex:
         self.questionnaires: list[dict] = []
         # group id → group dict
         self.groups: dict[int, dict] = {}
+        self.questionnaire_groups: dict[int, list[dict]] = {}
         # group id → owning questionnaire id
         self.group_questionnaire: dict[int, int] = {}
         # question id → question dict
@@ -33,7 +34,10 @@ class StructureIndex:
                 continue
             self.questionnaires.append(qn)
             qn_id = qn.get("id")
-            for group in qn.get("questionGroups") or []:
+            self.questionnaire_groups[qn_id] = [
+                g for g in qn.get("questionGroups") or [] if isinstance(g, dict)
+            ]
+            for group in self.questionnaire_groups[qn_id]:
                 if not isinstance(group, dict):
                     continue
                 gid = group.get("id")

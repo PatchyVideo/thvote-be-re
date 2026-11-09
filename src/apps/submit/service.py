@@ -230,17 +230,7 @@ class SubmitService:
         self.validator = SubmitValidator()
 
     async def _require_questionnaire(self, vote_id: str) -> None:
-        """Vote gate: the user must have completed the questionnaire.
-
-        Transition-safe:
-        - a legacy raw_paper submission counts as complete **only when it carries
-          real content** (R-03: ``"{}"`` and voided rows used to unlock voting);
-        - otherwise structured answers must exist AND satisfy completion
-          against the configured questionnaire structure (Block 3).
-        """
-        legacy = await self.submit_dao.latest_paper_json(vote_id)
-        if self.validator.is_paper_meaningful(legacy):
-            return
+        """Require current-year saved V2 answers to meet the completion policy."""
         from src.apps.questionnaire.dao import QuestionnaireDAO
         from src.apps.questionnaire.service import QuestionnaireService
         from src.common.config import get_settings
@@ -248,7 +238,7 @@ class SubmitService:
         year = get_settings().vote_year
         qsvc = QuestionnaireService(QuestionnaireDAO(self.submit_dao.session))
         answers = await qsvc.get_answers(vote_id, year)
-        if not answers or not await qsvc.is_complete(vote_id, year):
+        if not answers or not await qsvc.is_complete(vote_id, year, answers=answers):
             raise QuestionnaireNotCompletedError(vote_id)
 
     async def _require_candidates(self, category: str, tokens: list[str]) -> None:

@@ -19,6 +19,7 @@ from src.apps.admin.sync.progress import (
 )
 from src.apps.admin.sync.runner import COLLECTION_CONFIG
 from src.apps.result.compute_dao import ComputeDAO
+from src.apps.questionnaire.dao import QuestionnaireDAO
 from src.apps.result.compute_service import ComputeService
 from src.apps.result.dao import ResultNotComputedError
 from src.apps.user.dao import UserDAO
@@ -84,13 +85,16 @@ class AdminService:
         from src.apps.submit.dao import SubmitDAO
 
         submitted = await SubmitDAO(self._session).has_submit(user_id)
+        paper_answers = await QuestionnaireDAO(self._session).get_answers(
+            user_id, self.compute_service.settings.vote_year,
+        )
         return {
             "user": user,
             "vote_submitted": {
                 "character": submitted["characters"],
                 "music": submitted["musics"],
                 "cp": submitted["cps"],
-                "paper": submitted["papers"],
+                "paper": bool(paper_answers),
                 "dojin": submitted["dojin"],
             },
         }
@@ -144,19 +148,43 @@ class AdminService:
         if parse_errors:
             return {"parse_error": parse_errors[0]["reason"]}
         valid, rejected = validate_items(category, rows)
-        imported = 0
-        if not dry_run and valid:
-            imported = await self.compute_dao.upsert_candidates(
-                vote_year, category, valid
+        objects, existing = await self.compute_dao.candidate_import_context(
+            category, vote_year, [int(item["voteable_id"]) for item in valid],
+        )
+        preview = []
+        writes = []
+        counts = {"create": 0, "update": 0, "unchanged": 0}
+        for item in valid:
+            vid = int(item["voteable_id"])
+            line = item["line"]
+            if vid not in objects:
+                rejected.append({"line": line, "reason": f"投票对象不存在：{vid}"})
+                continue
+            sort = (
+                int(item["sort_order"]) if "sort_order" in item else existing.get(vid)
             )
-            # auto-merge name duplicates (no-op under UNIQUE(year,name); wired
-            # for cross-source dedup)
-            await self.compute_dao.auto_merge(category, vote_year)
+            action = ("create" if vid not in existing else
+                      "unchanged" if sort == existing[vid] else "update")
+            counts[action] += 1
+            preview.append({
+                **objects[vid], "line": line, "voteable_id": vid,
+                "sort_order": sort, "action": action,
+            })
+            if action != "unchanged":
+                writes.append({"voteable_id": vid, "sort_order": sort})
+        imported = 0
+        applied = not dry_run and not rejected and bool(preview)
+        if applied and writes:
+            imported = await self.compute_dao.upsert_candidates(
+                vote_year, category, writes
+            )
         return {
-            "valid": valid,
-            "valid_count": len(valid),
-            "rejected": rejected,
+            "valid": preview,
+            "valid_count": len(preview),
+            "rejected": sorted(rejected, key=lambda r: r["line"]),
             "imported": imported,
+            "applied": applied,
+            **{f"{key}_count": value for key, value in counts.items()},
         }
 
     async def update_candidate(
@@ -296,7 +324,7 @@ class AdminService:
         from src.db_model.user import User
         from src.db_model.raw_submit import (
             RawCharacterSubmit, RawMusicSubmit, RawCPSubmit,
-            RawPaperSubmit, RawDojinSubmit,
+            RawDojinSubmit,
         )
 
         year = vote_year or self.compute_service.settings.vote_year
@@ -334,7 +362,7 @@ class AdminService:
                 "character": await _count_distinct_voters(RawCharacterSubmit),
                 "music": await _count_distinct_voters(RawMusicSubmit),
                 "cp": await _count_distinct_voters(RawCPSubmit),
-                "paper": await _count_distinct_voters(RawPaperSubmit),
+                "paper": await QuestionnaireDAO(self._session).count_submitters(year),
                 "dojin": await _count_distinct_voters(RawDojinSubmit),
             },
         }

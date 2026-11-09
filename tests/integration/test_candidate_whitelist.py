@@ -18,7 +18,6 @@ from src.apps.submit.schemas import (
     CharacterSubmitRest,
     MusicSubmit,
     MusicSubmitRest,
-    PaperSubmitRest,
     SubmitMetadata,
 )
 from src.apps.submit.service import InvalidCandidateError, SubmitService
@@ -58,10 +57,19 @@ async def seed_candidates(session, vote_year=VOTE_YEAR):
 
 
 async def unlock_gate(svc: SubmitService, vote_id: str) -> None:
-    """Legacy paper with real content satisfies the gate (R-03)."""
-    await svc.submit_paper(PaperSubmitRest(
-        papers_json='{"q1": "a"}', meta=SubmitMetadata(vote_id=vote_id),
-    ))
+    """Use the shared real V2 structure and satisfy required + one extra."""
+    from src.apps.questionnaire.dao import QuestionnaireDAO
+    from src.apps.questionnaire.service import QuestionnaireService
+    from tests.integration.test_paper_v2_validation import (
+        OTHER_GROUP, OTHER_OPTION, OTHER_QN, OTHER_QUESTION, answer, seed_structure,
+    )
+
+    await seed_structure(svc.submit_dao.session)
+    qsvc = QuestionnaireService(QuestionnaireDAO(svc.submit_dao.session))
+    await qsvc.submit_answers(vote_id, VOTE_YEAR, [answer(), answer(
+        questionnaire_id=OTHER_QN, group_id=OTHER_GROUP,
+        active_question_id=OTHER_QUESTION, selected_option_ids=[OTHER_OPTION],
+    )])
 
 
 def _chars(vote_id: str, ids) -> CharacterSubmitRest:

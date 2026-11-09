@@ -68,6 +68,62 @@ _TREE = {"questionnaires": [
 
 
 @pytest.mark.asyncio
+async def test_admin_codes_roundtrip_validate_and_preserve_partial_update(app, admin_secret):
+    headers = {"X-Admin-Secret": admin_secret}
+    async with _client(app) as ac:
+        await ac.post("/api/v1/admin/questionnaire/import", json=_TREE, headers=headers)
+        base = "/api/v1/admin"
+        q = await ac.post(f"{base}/questions", headers=headers,
+                          json={"group_id": 10, "content": "新题", "code": " 11011 "})
+        assert q.status_code == 200
+        qid = q.json()["id"]
+        same = await ac.put(f"{base}/questions/{qid}", headers=headers,
+                            json={"code": "11011"})
+        assert same.status_code == 200
+        await ac.put(f"{base}/questions/{qid}", headers=headers, json={"content": "改题干"})
+        bad = await ac.post(f"{base}/questions", headers=headers,
+                            json={"group_id": 10, "code": "１２３４５"})
+        assert bad.status_code == 422
+        duplicate = await ac.post(f"{base}/questions", headers=headers,
+                                  json={"group_id": 10, "code": "11011"})
+        assert duplicate.status_code == 409
+        o = await ac.post(f"{base}/options", headers=headers,
+                          json={"question_id": qid, "content": "选项", "code": "1101101"})
+        assert o.status_code == 200
+        duplicate = await ac.post(f"{base}/options", headers=headers,
+                                  json={"question_id": qid, "code": "1101101"})
+        assert duplicate.status_code == 409
+        tree = (await ac.get("/api/v1/questionnaire/structure")).json()
+        questions = tree["questionnaires"][0]["questionGroups"][0]["questions"]
+        saved = next(q for q in questions if q["id"] == qid)
+        assert saved["code"] == "11011"
+        assert saved["content"] == "改题干"
+        assert saved["options"][0]["code"] == "1101101"
+
+
+@pytest.mark.asyncio
+async def test_invalid_code_import_keeps_original_tree(app, admin_secret):
+    from copy import deepcopy
+
+    headers = {"X-Admin-Secret": admin_secret}
+    async with _client(app) as ac:
+        await ac.post("/api/v1/admin/questionnaire/import", json=_TREE, headers=headers)
+        original = (await ac.get("/api/v1/questionnaire/structure")).json()
+        bad_tree = deepcopy(_TREE)
+        question = bad_tree["questionnaires"][0]["questionGroups"][0]["questions"][0]
+        question["code"] = "wrong"
+        result = await ac.post("/api/v1/admin/questionnaire/import", json=bad_tree, headers=headers)
+        assert result.status_code == 422
+        question["code"] = "11011"
+        other = deepcopy(question)
+        other["id"] = 101
+        bad_tree["questionnaires"][0]["questionGroups"][0]["questions"].append(other)
+        result = await ac.post("/api/v1/admin/questionnaire/import", json=bad_tree, headers=headers)
+        assert result.status_code == 409
+        assert (await ac.get("/api/v1/questionnaire/structure")).json() == original
+
+
+@pytest.mark.asyncio
 async def test_import_403_without_secret(app, admin_secret):
     async with _client(app) as ac:
         resp = await ac.post("/api/v1/admin/questionnaire/import", json=_TREE)
