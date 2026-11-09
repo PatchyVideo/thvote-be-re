@@ -16,6 +16,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    false,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -105,3 +106,6 @@ class PaperAnswer(Base):
     attempt: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )  # 批次标记——同一 vote_id 每次整卷提交递增;NULL=0017 前存量(单批)
+    invalidated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false(),
+    )

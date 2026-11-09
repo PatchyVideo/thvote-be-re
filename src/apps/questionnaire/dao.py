@@ -35,9 +35,22 @@ def latest_batch(rows: list) -> list:
     return [r for r in rows if r.attempt == top]
 
 
+def effective_latest_batch(rows: list) -> list:
+    """Select latest first; a voided snapshot never falls back to an older one."""
+    batch = latest_batch(rows)
+    return [] if any(r.invalidated for r in batch) else batch
+
+
 class QuestionnaireDAO:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def count_submitters(self, vote_year: int) -> int:
+        """Saved submitters, including incomplete/voided snapshots; not eligibility."""
+        return (await self.session.execute(
+            select(func.count(func.distinct(PaperAnswer.vote_id)))
+            .where(PaperAnswer.vote_year == vote_year)
+        )).scalar_one()
 
     async def load_structure_rows(
         self,
@@ -102,14 +115,17 @@ class QuestionnaireDAO:
         await self.session.commit()
         return len(rows)
 
-    async def get_answers(self, vote_id: str, vote_year: int) -> list[dict]:
+    async def get_answers(
+        self, vote_id: str, vote_year: int, *, effective: bool = False,
+    ) -> list[dict]:
         rows = (await self.session.execute(
             select(PaperAnswer).where(
                 PaperAnswer.vote_id == vote_id,
                 PaperAnswer.vote_year == vote_year,
             )
         )).scalars().all()
-        return [_row_to_dict(r) for r in latest_batch(rows)]
+        batch = effective_latest_batch(rows) if effective else latest_batch(rows)
+        return [_row_to_dict(r) for r in batch]
 
     async def _delete_all_structure(self) -> None:
         """Delete all questionnaires and their descendants (year-less structure)."""

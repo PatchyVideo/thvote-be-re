@@ -15,6 +15,7 @@
 | 角色、音乐候选 | 后端按年度读取 candidate／voteable／work，返回候选 ID、资源与筛选 metadata | [vote_objects](../../src/apps/vote_objects/) |
 | 名称、别名、图片与试听地址 | 数据库资料随候选接口下发；前端展示对象仍需加载，不再维护同一份静态资源表 | [vote_objects DAO](../../src/apps/vote_objects/dao.py) |
 | 候选拼音搜索 | 唯一 POST `/api/v1/autocomplete/search`；pypinyin＋项目内匹配，返回完整候选 ID 集合 | [autocomplete](../../src/apps/autocomplete/)；[匹配规则](../superpowers/specs/2026-11-08-pinyin-candidate-search-design.md) |
+| 新版答卷管理 | 独立列表/历史详情/整批作废恢复；0023新增invalidated，原始回填与有效资格分开，统计缓存仍手动重算 | [接口与迁移](../api/questionnaire-submissions.md) |
 | 问卷结构与提交 | 后端结构接口返回数组；GraphQL submitPaperV2／getPaperV2 提交及回填结构化答案 | [questionnaire](../../src/apps/questionnaire/) |
 | 计票与结果 | 读取真实提交批次，使用数据库候选白名单，计算主榜／净增量趋势／DSL 子集结果 | [result](../../src/apps/result/) |
 

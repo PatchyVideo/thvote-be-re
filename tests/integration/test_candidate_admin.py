@@ -93,13 +93,20 @@ async def test_update_candidate_ok(db_session):
         "INSERT INTO voteable_character (id, name, work_id) VALUES (11, '灵梦MarkII', 1)"
     ))
     await db_session.commit()
-    result = await dao.update_candidate(row_id, "character", {"voteable_id": "11"})
+    result = await dao.update_candidate(row_id, "character", {"voteable_id": "11", "sort_order": "0"})
     assert result == "ok"
 
     new_vid = (await db_session.execute(
         text("SELECT voteable_id FROM candidate_character WHERE id=:i"), {"i": row_id}
     )).scalar_one()
     assert new_vid == 11
+    assert (await db_session.execute(text(
+        "SELECT sort_order FROM candidate_character WHERE id=:i"
+    ), {"i": row_id})).scalar_one() == 0
+    assert await dao.update_candidate(row_id, "character", {"sort_order": ""}) == "ok"
+    assert (await db_session.execute(text(
+        "SELECT sort_order FROM candidate_character WHERE id=:i"
+    ), {"i": row_id})).scalar_one() is None
 
 
 @pytest.mark.asyncio
@@ -181,6 +188,9 @@ async def test_import_dry_run_then_commit(app, engine, admin_secret):
         assert d1["valid_count"] == 2
         assert d1["imported"] == 0
         assert len(d1["rejected"]) == 0
+        assert d1["create_count"] == 2
+        assert d1["valid"][0]["name"] == "A"
+        assert d1["valid"][0]["work_name"] == "w"
 
         payload["dry_run"] = False
         r2 = await ac.post("/api/v1/admin/candidates/import", json=payload,
@@ -193,6 +203,41 @@ async def test_import_dry_run_then_commit(app, engine, admin_secret):
             headers={"X-Admin-Secret": admin_secret},
         )
         assert r3.json()["total"] == 2
+        assert r3.json()["items"][0]["voteable_id"] == 10
+        assert r3.json()["items"][0]["sort_order"] is None
+
+
+@pytest.mark.asyncio
+async def test_import_errors_block_all_writes_and_keep_existing_sort(app, db_session, admin_secret):
+    import json
+
+    await db_session.execute(text(
+        "INSERT INTO voteable_music (id, name) VALUES (10, '曲目')"
+    ))
+    await db_session.execute(text(
+        "INSERT INTO candidate_music (vote_year, voteable_id, sort_order) VALUES (12, 10, 7)"
+    ))
+    await db_session.commit()
+    headers = {"X-Admin-Secret": admin_secret}
+    body = {"vote_year": 12, "category": "music", "dry_run": False}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        bad = await ac.post("/api/v1/admin/candidates/import", headers=headers, json={
+            **body, "content": json.dumps([
+                {"voteable_id": 10, "sort_order": 3}, {"voteable_id": 999},
+            ]),
+        })
+        assert bad.status_code == 200
+        assert bad.json()["imported"] == 0
+        assert bad.json()["applied"] is False
+        assert bad.json()["rejected"][0]["line"] == 2
+        ok = await ac.post("/api/v1/admin/candidates/import", headers=headers, json={
+            **body, "content": '[{"voteable_id":10}]',
+        })
+        assert ok.json()["unchanged_count"] == 1
+        assert ok.json()["valid"][0]["sort_order"] == 7
+    assert (await db_session.execute(text(
+        "SELECT sort_order FROM candidate_music WHERE vote_year=12 AND voteable_id=10"
+    ))).scalar_one() == 7
 
 
 @pytest.mark.asyncio

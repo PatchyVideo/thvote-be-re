@@ -46,7 +46,9 @@ class QuestionnaireService:
     ) -> bool:
         structure = await self.get_structure()
         if answers is None:
-            answers = await self.dao.get_answers(vote_id, vote_year)
+            answers = await self.dao.get_answers(vote_id, vote_year, effective=True)
+        if any(row.get("invalidated") for row in answers):
+            return False
         return is_complete(structure, answers)
 
     async def import_structure(self, tree: dict) -> int:

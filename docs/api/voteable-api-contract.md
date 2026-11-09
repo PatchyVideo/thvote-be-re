@@ -564,61 +564,39 @@ GET /vote-objects/{category}/{candidateId}
 | `PATCH /admin/users/{user_id}/ban` | → `{ "ok": true }` |
 | `PATCH /admin/users/{user_id}/unban` | → `{ "ok": true }` |
 
-### 9.4 Candidate 管理 🚧
+### 9.4 Candidate 管理（2026-11-10 本地实现，未部署）
+
+候选仅维护某届次与已有角色/音乐的引用和排序；创建、更新角色/音乐基本事实请使用 voteable 业务导入。业务归档 JSON 不含 ID，不能直接作为候选清单导入。
 
 #### `GET /admin/candidates`
 
-```
-Query: category=character|music, voteYear=int, page, pageSize
-```
+参数：`category=character|music`、`vote_year`（省略使用当前配置）、`q`、`page`、`page_size`。实际使用 snake_case。
 
-```typescript
-// Response 200:
-{
-  "items": [{ "candidateId": 42, "voteYear": 2025, "voteableId": 5, "name": "博麗靈夢" }],
-  "total": 120
-}
+响应 `{items,total}`，每条包含 `id`（候选记录 ID）、`vote_year`、`voteable_id`（投票对象 ID）、`sort_order`，以及关联对象的 `name/name_jp/type/origin/first_appearance/album`。两类 ID 不可互换。
+
+#### `POST /admin/candidates/import`
+
+```json
+{"vote_year":12,"category":"character","format":"json","content":"[{\"voteable_id\":1,\"sort_order\":10}]","dry_run":true}
 ```
 
-#### `POST /admin/candidates/import` 🚧
+`format` 为 auto/json/csv；CSV 表头 `voteable_id,sort_order`。支持 UTF-8 BOM。`voteable_id` 必填，须为当前数据库该类别中存在的正整数 ID；`sort_order` 可省略，须为 PostgreSQL Integer 范围内的整数。省略/null/空白排序时，已有候选保留原值，新候选为 null。
 
-```typescript
-// Request:
-{
-  "voteYear": 2025,
-  "category": "character" | "music",
-  "format": "csv" | "json" | "auto",
-  "content": "...",       // 原始文本
-  "dryRun": true          // true=仅预览
-}
+响应保留 `ok/valid_count/imported/valid/rejected`，增加 `create_count/update_count/unchanged_count/applied`。`valid` 每行含 `line/voteable_id/name/work_name/sort_order/action`，action 为 create/update/unchanged；错误行含 line/reason，line 为数据记录序号（从 1 开始，不含 CSV 表头）。
 
-// Response:
-{
-  "valid": [{ ... }],
-  "validCount": 10,
-  "rejected": [{ "line": 3, "reason": "缺少 name" }],
-  "createdVoteables": 3,   // 🆕 dryRun=false 时
-  "linkedExisting": 7,     // 🆕
-  "imported": 10
-}
-```
+只关联已有对象，不创建 voteable；按 `(vote_year,voteable_id)` 新增/更新，不删除清单外候选。文件内重复 ID、非法整数、缺失对象等任何错误均使整批不写入。`dry_run=true` 不写；确认请求重新校验。`imported` 为实际新增或更新数量，不含不变项；合法全不变确认仍可 `applied=true`。
 
-#### `POST /admin/candidates/{id}/relink` 🆕
+管理台支持文件或粘贴、示例、可读预览；修改输入或目标后清除旧预览。只有成功写入时失效现有候选/自动补全缓存。
 
-```typescript
-// Request: { "voteableId": 99 }
-// Response 200: { "ok": true }
-// Response 404: { "detail": "NOT_FOUND" }
-// Response 409: { "detail": "CONFLICT" }
-```
+#### `PUT /admin/candidates/{id}`
+
+输入 `{ "category":"character", "fields": {"voteable_id":"99","sort_order":"3"} }`。字段接口 `GET /admin/candidates/fields?category=character` 仍可使用。编辑排序留空/null清除；导入排序留空则保留，两者用途不同。
+
+候选不存在返回 404，同届引用冲突返回 409，对象不存在或整数非法返回 422。成功返回 `{ "ok":true }`。没有新增 relink 端点。
 
 #### `DELETE /admin/candidates/{id}`
 
-```
-Response 200: { "ok": true }
-```
-
-> 只删 candidate 行，不删 voteable。其余 candidate 管理端点（fields/merges/merge-into/unmerge）🚧废弃。
+参数 `category`；只删候选关系，不删投票对象，成功返回 `{ "ok":true }`。候选合并入口已从管理台移除；旧 merges/merge-into/unmerge API 暂保留，后续统一退出。
 
 ### 9.5 Voteable 管理 🆕（0019 起含资源配置）
 
@@ -846,12 +824,12 @@ Query: category?, vote_year?
 | `GET /vote-objects/{category}/{id}` | 🚧 | 字段 camelCase；0019 增 `imageUrl`/`aliases`（音乐含 `musicUrl`/`include`） |
 | `PUT /admin/voteables/{id}/resources` | 🆕 0019 | 资源类字段编辑 |
 | `GET /admin/cache/stats`、`POST /admin/cache/flush` | 🆕 | 缓存计数/手动失效 |
-| `POST /admin/candidates/import` | 🚧 | response 新增 `createdVoteables`/`linkedExisting` |
-| `GET /admin/candidates` | 🚧 | response 精简 |
-| `POST /admin/candidates/{id}/relink` | 🆕 | |
+| `POST /admin/candidates/import` | 已实现（本地） | 引用既有对象、整批校验、可读预览；见 §9.4 |
+| `GET /admin/candidates` | 已实现（本地） | 补齐 voteable_id、sort_order；snake_case |
+| `PUT /admin/candidates/{id}` | 已实现（本地） | 编辑对象引用和排序，无独立 relink API |
 | `GET /admin/voteables` | 🆕 | |
 | `POST /admin/voteables/{id}` | 🆕 | |
-| `GET /admin/candidates/fields` | 🚧 废弃 | 改为 `/admin/voteables/fields` 或从 voteable 推导 |
+| `GET /admin/candidates/fields` | 保留 | 推导候选引用和排序字段 |
 | `GET /admin/candidates/merges` | 🚧 废弃 | |
 | `POST /admin/candidates/{id}/merge-into/{target}` | 🚧 废弃 | |
 | `POST /admin/candidates/{id}/unmerge` | 🚧 废弃 | |

@@ -114,7 +114,7 @@ export interface ActionResult {
   detail: string
 }
 
-export const VOTE_CATEGORIES = ['character', 'music', 'cp', 'paper', 'dojin'] as const
+export const VOTE_CATEGORIES = ['character', 'music', 'cp', 'dojin'] as const
 export type VoteCategory = (typeof VOTE_CATEGORIES)[number]
 
 // 分页通用包装。
@@ -127,6 +127,8 @@ export interface Paged<T> {
 export interface CandidateAdminItem {
   id: number
   vote_year: number
+  voteable_id: number
+  sort_order: number | null
   name: string
   name_jp: string
   type: string
@@ -142,7 +144,11 @@ export interface CandidateImportResult {
   ok: boolean
   valid_count: number
   imported: number
-  valid: Record<string, string>[]
+  valid: { line: number; voteable_id: number; name: string; work_name: string | null; sort_order: number | null; action: string }[]
+  create_count: number
+  update_count: number
+  unchanged_count: number
+  applied: boolean
   rejected: { line: number; reason: string }[]
 }
 export interface MergeItem {

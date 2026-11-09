@@ -75,6 +75,67 @@ async def test_is_complete_gate(session):
     assert await svc.is_complete("u2", 2026) is True
 
 
+@pytest.mark.asyncio
+async def test_invalidated_batches_gate_feed_history_and_resubmit(session):
+    from sqlalchemy import update
+    from src.apps.questionnaire.dao import QuestionnaireDAO
+    from src.apps.questionnaire.service import QuestionnaireService
+    from src.apps.result.compute_dao import ComputeDAO
+    from src.db_model.questionnaire_def import PaperAnswer
+
+    await _seed(session)
+    await session.execute(update(QuestionDef).where(QuestionDef.id == 100).values(code="11011"))
+    await session.execute(update(OptionDef).where(OptionDef.id == 1000).values(code="1101101"))
+    await session.commit()
+    svc = QuestionnaireService(QuestionnaireDAO(session))
+    compute = ComputeDAO(session)
+    answers = [
+        {"questionnaireId": 1, "groupId": 10, "activeQuestionId": 100,
+         "selectedOptionIds": [1000]},
+        {"questionnaireId": 2, "groupId": 20, "activeQuestionId": 200,
+         "input": "回答"},
+    ]
+    await svc.submit_answers("u1", 12, answers)
+    await svc.submit_answers("u1", 12, answers)
+    await svc.submit_answers("u1", 11, answers)
+    await session.execute(update(PaperAnswer).where(
+        PaperAnswer.vote_id == "u1", PaperAnswer.vote_year == 12,
+        PaperAnswer.attempt == 2,
+    ).values(invalidated=True))
+    await session.commit()
+
+    # Raw readback still permits editing, but cannot satisfy the voting gate.
+    raw = await svc.get_answers("u1", 12)
+    assert len(raw) == 2
+    assert await svc.is_complete("u1", 12) is False
+    assert await svc.is_complete("u1", 12, answers=raw) is False
+    assert await svc.is_complete("u1", 11) is True
+    assert await compute.load_questionnaire_votes(12) == []
+    assert await compute.load_questionnaire_history(12) == []
+    assert await compute.load_questionnaire_completion(12) == {"main_required": set(), "extra": set()}
+
+    await session.execute(update(PaperAnswer).where(
+        PaperAnswer.vote_year == 12, PaperAnswer.attempt == 2,
+    ).values(invalidated=False))
+    await session.execute(update(PaperAnswer).where(
+        PaperAnswer.vote_year == 12, PaperAnswer.attempt == 1,
+    ).values(invalidated=True))
+    await session.commit()
+    assert await svc.is_complete("u1", 12) is True
+    assert [row[2] for row in await compute.load_questionnaire_history(12)] == [2]
+    assert dict(await compute.load_questionnaire_votes(12))["u1"][0]["answer"] == ["1101101"]
+    assert (await compute.load_questionnaire_completion(12))["extra"] == {"u1"}
+
+    # A new legal submission is effective even after the previous latest was voided.
+    await session.execute(update(PaperAnswer).where(
+        PaperAnswer.vote_year == 12, PaperAnswer.attempt == 2,
+    ).values(invalidated=True))
+    await session.commit()
+    await svc.submit_answers("u1", 12, answers)
+    assert await svc.is_complete("u1", 12) is True
+    assert [row[2] for row in await compute.load_questionnaire_history(12)] == [3]
+
+
 def _row(group_id: int, opts: list[int]) -> dict:
     """paper_answer 行字典(与 replace_answers 期望的形状一致)。"""
     return {

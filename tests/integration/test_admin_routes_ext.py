@@ -158,6 +158,25 @@ async def test_stats_shape(app, admin_secret):
 
 
 @pytest.mark.asyncio
+async def test_stats_and_account_use_v2_questionnaire_submissions(app, db_session, admin_secret):
+    from src.common.config import get_settings
+    from src.db_model.questionnaire_def import PaperAnswer
+
+    await make_user(db_session, user_id="v2-user", email="v2@example.com", register_ip="")
+    year = get_settings().vote_year
+    db_session.add_all([
+        PaperAnswer(vote_id="v2-user", vote_year=year, questionnaire_id=1, group_id=1),
+        PaperAnswer(vote_id="other-year", vote_year=year + 1, questionnaire_id=1, group_id=1),
+    ])
+    await db_session.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        stats = await ac.get("/api/v1/admin/stats", headers={"X-Admin-Secret": admin_secret})
+        detail = await ac.get("/api/v1/admin/users/v2-user", headers={"X-Admin-Secret": admin_secret})
+    assert stats.json()["submissions"]["paper"] == 1
+    assert detail.json()["vote_submitted"]["paper"] is True
+
+
+@pytest.mark.asyncio
 async def test_list_candidates_empty(app, admin_secret):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         resp = await ac.get(

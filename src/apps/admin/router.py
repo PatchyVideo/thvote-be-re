@@ -261,6 +261,7 @@ async def list_candidates(
     items = [
         {
             "id": r["id"], "vote_year": r["vote_year"], "name": r["name"],
+            "voteable_id": r["voteable_id"], "sort_order": r["sort_order"],
             "name_jp": r.get("name_jp", ""),
             "type": r.get("type", ""),
             "origin": r.get("work_name", ""),
@@ -299,7 +300,7 @@ async def import_candidates_content(
     )
     if "parse_error" in result:
         raise HTTPException(status_code=400, detail=result["parse_error"])
-    if not body.dry_run:
+    if result.get("applied") and result.get("imported"):
         await _clear_vote_objects_cache(redis)
     return CandidateImportResponse(**result)
 
@@ -317,6 +318,8 @@ async def update_candidate(
     result = await service.update_candidate(candidate_id, body.category, body.fields)
     if result == "not_found":
         raise HTTPException(status_code=404, detail="CANDIDATE_NOT_FOUND")
+    if result == "invalid_fields":
+        raise HTTPException(status_code=422, detail="投票对象不存在或排序格式不正确")
     if result == "conflict":
         raise HTTPException(status_code=409, detail="CANDIDATE_NAME_CONFLICT")
     await _clear_vote_objects_cache(redis)
