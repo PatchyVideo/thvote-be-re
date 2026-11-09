@@ -81,6 +81,34 @@ class StatsResponse(BaseModel):
     submissions: dict[str, int]
 
 
+class WorkImportRequest(BaseModel):
+    format: Literal["auto", "json", "csv"] = "auto"
+    content: str
+    dry_run: bool = True
+
+
+class WorkImportItem(BaseModel):
+    name: str
+    type: str
+
+
+class WorkImportUpdate(WorkImportItem):
+    previous_type: str
+
+
+class WorkImportError(BaseModel):
+    row: int
+    reason: str
+
+
+class WorkImportResponse(BaseModel):
+    create: list[WorkImportItem]
+    update: list[WorkImportUpdate]
+    unchanged: list[WorkImportItem]
+    errors: list[WorkImportError]
+    applied: bool = False
+
+
 # ── Candidate admin schemas ────────────────────────────────────────────────────
 
 class CandidateAdminItem(BaseModel):

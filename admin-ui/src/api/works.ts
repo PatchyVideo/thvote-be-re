@@ -14,6 +14,26 @@ export interface WorkListResponse {
   total: number
 }
 
+export interface WorkImportItem {
+  name: string
+  type: string
+}
+
+export interface WorkImportResponse {
+  create: WorkImportItem[]
+  update: (WorkImportItem & { previous_type: string })[]
+  unchanged: WorkImportItem[]
+  errors: { row: number; reason: string }[]
+  applied: boolean
+}
+
+export async function importWorks(data: {
+  content: string
+  dry_run: boolean
+}): Promise<WorkImportResponse> {
+  return apiSend<WorkImportResponse>('/admin/works/import', 'POST', data)
+}
+
 export async function listWorks(params: {
   q?: string
   type?: string

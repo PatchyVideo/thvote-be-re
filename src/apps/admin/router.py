@@ -39,6 +39,8 @@ from src.apps.admin.schemas import (
     UserDetailResponse,
     UserListResponse,
     VoteableResourceUpdate,
+    WorkImportRequest,
+    WorkImportResponse,
 )
 from src.apps.admin.service import AdminService, SyncService
 from src.apps.admin.sync.progress import set_current_run
@@ -762,6 +764,20 @@ async def create_work(
         return result
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post("/works/import", response_model=WorkImportResponse)
+async def import_works(
+    body: WorkImportRequest,
+    session: AsyncSession = Depends(get_db_session),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> WorkImportResponse:
+    report = await WorkService(session).import_works(
+        body.format, body.content, body.dry_run,
+    )
+    if report.applied and (report.create or report.update):
+        await _clear_vote_objects_cache(redis)
+    return report
 
 
 @router.post("/works/{work_id}")
