@@ -5,13 +5,15 @@ sqlite in-memory session), per task-4-brief Step 1.
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from src.db_model.base import Base
@@ -235,3 +237,57 @@ async def test_non_integer_voteable_id_returns_400(app, admin_secret):
     rows = [{"name": "X", "voteable_id": "not-a-number"}]
     resp = await _post(app, admin_secret, _body(rows, dry_run=True))
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("category", "fmt"),
+    [("character", "json"), ("music", "json"), ("music", "csv")],
+)
+async def test_import_resources_preview_save_and_partial_update(
+    db_session, category, fmt,
+):
+    from src.apps.admin.voteable_import_service import VoteableImportService
+    from src.db_model.voteable import VoteableCharacter, VoteableMusic
+
+    model = VoteableCharacter if category == "character" else VoteableMusic
+    service = VoteableImportService(db_session)
+    row = {
+        "name": "资源导入示例",
+        "image_url": "https://example.com/image.png",
+        "music_url": "https://example.com/music.mp3",
+        "include": ["专辑甲", "专辑乙"],
+    }
+    expected = {"name": row["name"], "image_url": row["image_url"]}
+    if category == "music":
+        expected.update(music_url=row["music_url"], include=row["include"])
+    content = json.dumps([row], ensure_ascii=False)
+    if fmt == "csv":
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=list(row))
+        writer.writeheader()
+        writer.writerow({**row, "include": json.dumps(row["include"])})
+        content = output.getvalue()
+
+    preview = await service.run(category, None, fmt, content, True)
+    assert preview["create"] == [expected]
+    assert (await db_session.execute(select(model))).scalars().all() == []
+    await service.run(category, None, fmt, content, False)
+    saved = (await db_session.execute(select(model))).scalar_one()
+    assert {key: getattr(saved, key) for key in expected} == expected
+
+    update = {"name": row["name"], "image_url": "https://example.com/new.png"}
+    if category == "music":
+        update["include"] = []
+    content = json.dumps([update])
+    preview = await service.run(category, None, "json", content, True)
+    assert preview["update"] == [{
+        "voteable_id": saved.id,
+        "diff": {key: value for key, value in update.items() if key != "name"},
+    }]
+    await service.run(category, None, "json", content, False)
+    await db_session.refresh(saved)
+    assert saved.image_url == "https://example.com/new.png"
+    if category == "music":
+        assert saved.include == []
+        assert saved.music_url == "https://example.com/music.mp3"
