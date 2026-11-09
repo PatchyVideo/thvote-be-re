@@ -10,7 +10,9 @@
 
 2026-11-09 补充：[问卷审查与后端化缺口](migration/questionnaire-audit-2026-11-09.md)。用户指定第一阶段统一填写/结果的后端题库来源，并补齐 id/code/管理台衔接；[实施计划](superpowers/plans/2026-11-09-questionnaire-backend-source.md)已执行并完成相关本地验证，尚未部署；特殊图表/趋势代理绑定仍保留。其余门禁、作答规则、监控和跨届模型差异登记后另行处理。
 
-问卷第二阶段：[答案合法性与完成度计划](superpowers/plans/2026-11-09-questionnaire-answer-rules.md)已实现并提交 e9dc072，相关验证与测量见计划，未部署。后续已本地接入新的整套完成条件并[退出旧问卷门禁兼容](superpowers/plans/2026-11-09-questionnaire-completion-gate.md)；当前剩余为真实题库分类核验、V2监控/作废、后台定义完整性、特殊展示绑定及跨届定义，统一见[问卷清单文首](migration/questionnaire-audit-2026-11-09.md)，不再按首次审查表重复安排已完成校验。
+问卷第二阶段：[答案合法性与完成度计划](superpowers/plans/2026-11-09-questionnaire-answer-rules.md)已实现并提交 e9dc072，相关验证与测量见计划，未部署。后续已接入新的整套完成条件并[退出旧问卷门禁兼容](superpowers/plans/2026-11-09-questionnaire-completion-gate.md)，前后端分别提交23fb761/16be240；当前剩余为真实题库分类与检查、V2监控/作废、特殊展示绑定及跨届定义，统一见[问卷清单文首](migration/questionnaire-audit-2026-11-09.md)，不再按首次审查表重复安排已完成校验。
+
+2026-11-09 问卷定义检查：用户选择[单个命令行脚本](operations/questionnaire-check.md)手动/发布前运行，本地已实现，不新增后台检查模块、接口或保存闸门。真实题库尚未检查，检查范围不包含答案可解性求解或结果快照验收。
 
 2026-11-09 新完成条件本轮已本地接入、未部署：四份问卷 A/B/C/D，必须完成 A，并在 B/C/D 中至少完成一份，允许多填；不再沿用旧 PRD 的分问卷/额外问卷组合门槛。单份完成继续使用既有合法性和可见题组判定。采用现有 required/category，前后端政策与文案已同步；具体真实题库身份与分类尚未核验。整体闸门/以后调整入口见[架构总览](architecture/backend-overview.md#问卷整体完成闸门与配置入口)，不重新询问已确认产品条件。
 
