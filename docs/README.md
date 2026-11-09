@@ -23,6 +23,7 @@
 | **实施问卷定义来源统一** | [`问卷实施计划`](superpowers/plans/2026-11-09-questionnaire-backend-source.md) —— 填写与结果读取后端、管理台编码维护；本地已实现，未部署 |
 | **完善问卷答案校验与完成判断** | [`作答规则实施计划`](superpowers/plans/2026-11-09-questionnaire-answer-rules.md) —— 共用规则计算、提交校验与查询复用；本地已实现，未部署 |
 | **调整整体问卷完成规则、定位投票闸门** | [架构总览：问卷整体完成闸门与配置入口](architecture/backend-overview.md#问卷整体完成闸门与配置入口) —— required/category、单份完成、整体政策、服务端拦截及前端预判 |
+| **手动检查问卷定义、发布前检查** | [问卷定义检查](operations/questionnaire-check.md) —— 独立只读脚本、错误/警告及0/1/2退出码，不改后台保存流程 |
 
 ---
 

@@ -59,6 +59,8 @@
 
 本轮已按[整体闸门实施计划](../superpowers/plans/2026-11-09-questionnaire-completion-gate.md)移除 raw_paper 直接放行和空题库 row-coverage 完成兜底。角色/音乐/组合提交只按本届最新已保存的 V2 答案判断；REST 未完成返回 HTTP 422、detail=QUESTIONNAIRE_NOT_COMPLETED，GraphQL 使用同名 error_kind 及中文提示。不清库，也不一并删除身份或 legacy 路由。问卷提交本身仍允许合法未完成快照，不能在 submitPaperV2 中要求整套完成后才保存。
 
+定义编辑完成后可运行 `python -m scripts.check_questionnaire`，直接读取四张定义表检查结构与引用，错误退出1、警告不阻断、无法执行退出2。检查函数和入口都在单个脚本中，未接后台保存/发布状态或CI；与用户作答/投票完成闸门职责不同。规则及使用边界见[问卷定义检查](../operations/questionnaire-check.md)。
+
 ## 缓存与更新
 
 - `src/common/cache.py` 提供公共读缓存及前缀失效；管理写入复用既有失效路径。
