@@ -10,6 +10,8 @@
 
 **Spec:** [作答规则设计](../specs/2026-11-09-questionnaire-answer-rules-design.md)。状态：用户已授权实施，2026-11-09 本地实现与相关验证完成，未推送或部署；后端基线 f12e3ce，前端基线 4fda4ef。
 
+> 历史阶段说明：本计划已完成，下文“不改 required 产品规则”是当时的范围约束。后续整体条件已改为全部必填＋至少一份 extra 选填，当前状态见[架构总览](../../architecture/backend-overview.md#问卷整体完成闸门与配置入口)。
+
 ## Global Constraints
 
 - 命令和 BE 路径均相对 thvote-be-re；FE 为 `/data/sunyunbo/www/Touhou-Vote`。

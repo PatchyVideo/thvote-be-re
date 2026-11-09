@@ -19,6 +19,11 @@ async def _seed(session):
         id=1000, question_id=100, content="o1",
         related_question_ids=[], mutex_option_ids=[], option_group=0, order=1,
     ))
+    session.add(QuestionnaireDef(
+        id=2, key="extra", title="选填", category="extra", required=False, order=2,
+    ))
+    session.add(QuestionGroupDef(id=20, questionnaire_id=2, order=1))
+    session.add(QuestionDef(id=200, group_id=20, type="Input", content="选填题"))
     await session.commit()
 
 
@@ -60,6 +65,13 @@ async def test_is_complete_gate(session):
     await svc.submit_answers("u2", 2026, [
         {"questionnaireId": 1, "groupId": 10, "activeQuestionId": 100,
          "selectedOptionIds": [1000], "input": ""}])
+    assert await svc.is_complete("u2", 2026) is False
+    await svc.submit_answers("u2", 2026, [
+        {"questionnaireId": 1, "groupId": 10, "activeQuestionId": 100,
+         "selectedOptionIds": [1000], "input": ""},
+        {"questionnaireId": 2, "groupId": 20, "activeQuestionId": 200,
+         "selectedOptionIds": [], "input": "选填回答"},
+    ])
     assert await svc.is_complete("u2", 2026) is True
 
 

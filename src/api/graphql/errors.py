@@ -45,7 +45,7 @@ _HUMAN_READABLE_MESSAGES: dict[str, str] = {
     "QUESTIONNAIRE_CONFIGURATION_ERROR": "问卷规则配置异常，请联系管理员",
     "INVALID_PAPER_ANSWER": "问卷作答数据无效，请刷新页面后重试",
     "INVALID_CANDIDATE": "提交的作品/角色不在本届可选范围内，请刷新页面后重试",
-    "QUESTIONNAIRE_NOT_COMPLETED": "请先完成问卷，再参与投票",
+    "QUESTIONNAIRE_NOT_COMPLETED": "请先提交完成必填问卷，并至少完成一份选填问卷，再参与投票",
 }
 
 

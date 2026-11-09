@@ -69,8 +69,8 @@ async def seed_structure(session):
             order=order,
         ))
     session.add(QuestionnaireDef(
-        id=OTHER_QN, key="sub_optional", category="main",
-        title="分问卷", introduction="", required=False, order=2,
+        id=OTHER_QN, key="sub_optional", category="extra",
+        title="选填问卷", introduction="", required=False, order=2,
     ))
     session.add(QuestionGroupDef(
         id=OTHER_GROUP, questionnaire_id=OTHER_QN, order=1,
@@ -200,6 +200,13 @@ async def test_empty_answer_rows_do_not_unlock_voting(session):
 async def test_valid_answers_unlock_voting(session):
     await seed_structure(session)
     await _qsvc(session).submit_answers("u-ok", 2026, [answer()])
+    assert await _qsvc(session).is_complete("u-ok", 2026) is False
+    with pytest.raises(QuestionnaireNotCompletedError):
+        await SubmitService(SubmitDAO(session)).submit_character(_char("u-ok"))
+    await _qsvc(session).submit_answers("u-ok", 2026, [answer(), answer(
+        questionnaire_id=OTHER_QN, group_id=OTHER_GROUP,
+        active_question_id=OTHER_QUESTION, selected_option_ids=[OTHER_OPTION],
+    )])
     assert await _qsvc(session).is_complete("u-ok", 2026) is True
     assert await SubmitService(SubmitDAO(session)).submit_character(_char("u-ok")) > 0
 
@@ -315,7 +322,10 @@ async def test_graphql_valid_answers_persist_and_unlock(gql, session):
     token = _vote_token("gql-ok")
     result = await gql.execute(
         SUBMIT_PAPER_V2,
-        variable_values={"voteToken": token, "answers": [answer()]},
+        variable_values={"voteToken": token, "answers": [answer(), answer(
+            questionnaire_id=OTHER_QN, group_id=OTHER_GROUP,
+            active_question_id=OTHER_QUESTION, selected_option_ids=[OTHER_OPTION],
+        )]},
         context_value={},
     )
     assert result.errors is None, result.errors
@@ -325,7 +335,7 @@ async def test_graphql_valid_answers_persist_and_unlock(gql, session):
         GET_PAPER_V2, variable_values={"voteToken": token}, context_value={}
     )
     rows = read.data["getPaperV2"]
-    assert [r["selected_option_ids"] for r in rows] == [[OPTION_A]]
+    assert [r["selected_option_ids"] for r in rows] == [[OPTION_A], [OTHER_OPTION]]
 
     with_db = SubmitService(SubmitDAO(session))
     assert await with_db.submit_character(_char("gql-ok")) > 0
