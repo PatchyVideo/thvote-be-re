@@ -1,7 +1,7 @@
 # `docs/` 索引
 
 > 创建日期：2026-04-27
-> 最后更新：2026-11-09（问卷四阶段提交状态、检查脚本及会话接手入口）。
+> 最后更新：2026-11-19（生产部署、切流和灾备交接）。
 
 从 [当前后端结构与数据来源](architecture/backend-overview.md) 开始阅读；接口字段查 API 契约及源码，开放事项查 BACKLOG。技术设计解释当时的取舍，归档保留过程，二者都不自动代表待实施需求或当前线上状态。
 
@@ -13,6 +13,7 @@
 |---|---|
 | **知道下一步做什么** | [`BACKLOG.md`](./BACKLOG.md) —— 当前源码差异、待决定的行为及发布/运营事项 |
 | **知道最近发生了什么** | [`CHANGELOG.md`](./CHANGELOG.md) —— 当前记录；此前见季度/半年归档 |
+| **接续 v12 生产发布和灾备建设** | [生产部署与灾备交接](operations/v12-deployment/README.md) · [切流与回退手册](operations/v12-deployment/cutover-runbook.md) |
 | **了解投票业务本身要什么** | [`requirements/`](./requirements/) —— VoileLabs 官方需求文档，**权威口径来源** |
 | **对接后端接口** | [`api/voteable-api-contract.md`](./api/voteable-api-contract.md) |
 | **下载作品、角色与音乐的业务资料 JSON** | [导出接口及字段](api/voteable-api-contract.md#get-adminexportcatalog)；[实施与验证记录](superpowers/plans/2026-11-10-catalog-json-export.md) |
@@ -78,12 +79,11 @@
 | 文档 | 用途 |
 |---|---|
 | [`operations/nacos-config-center.md`](./operations/nacos-config-center.md) | Nacos 配置中心 + 服务注册接入说明（2026-05-12 替换原 Apollo；含双控制台访问、§八 事故记录） |
-| [`operations/cicd-pipeline.md`](./operations/cicd-pipeline.md) | CI/CD 流水线：当前唯一的 `deploy-test.yml` 拓扑、Nacos 配置交付路径、触发约定 |
-| [`operations/deploy-server-setup.md`](./operations/deploy-server-setup.md) | 部署机环境：仓库外维护的 `docker-compose.yml` 生命周期、Redis/Nacos 管理方式 |
+| [v12 生产部署与灾备交接](operations/v12-deployment/README.md) | 阿里云热备池、监控、自动切流、故障演练及三张架构图 |
+| [v12 切流与回退手册](operations/v12-deployment/cutover-runbook.md) | 后端发布与 Compose、前端代理、RDS 恢复、切流与回退 |
 | [`operations/aliyun-onboarding.md`](./operations/aliyun-onboarding.md) | 阿里云 PNVS + DirectMail 从零到上线接入手册（账号/RAM/域名验证/SMTP/smoke + 常见坑） |
 | [`operations/captcha-onboarding.md`](./operations/captcha-onboarding.md) | 验证码 2.0 人机验证接入手册（B-043：开通/建场景/RAM AK/Nacos 六键/smoke + **个人→公家账户切换清单**） |
 | [`operations/login-config-checklist.md`](./operations/login-config-checklist.md) | 🎯 登录模块所需 Nacos 配置项**待填清单**（按登录方式分组 + JSON 骨架 + 访问入口） |
-| [`operations/production-readiness-checklist.md`](./operations/production-readiness-checklist.md) | 🚨 **生产上线待办清单**：关 API 文档/GraphiQL、admin IP 白名单、强密钥、删测试旁路、CORS 收紧等硬性项 + 权限扫描的建议项（2026-09-13） |
 | [`operations/mock-vote-data.md`](./operations/mock-vote-data.md) | Mock 投票数据生成器手册（`scripts/generate_mock_votes.py`：一条命令灌几千合成投票供 result 联调，`mock-` 前缀可随时清理，**仅测试环境**） |
 
 ## 数据样本（`scraper/`）
@@ -234,7 +234,7 @@
 
 **准备上线 / 配置阿里云** → [`operations/aliyun-onboarding.md`](./operations/aliyun-onboarding.md)、[`operations/captcha-onboarding.md`](./operations/captcha-onboarding.md) 按章节顺序操作
 
-**改 CI/CD 或排障部署** → [`operations/cicd-pipeline.md`](./operations/cicd-pipeline.md) §七触发约定；配置问题看 [`operations/nacos-config-center.md`](./operations/nacos-config-center.md)
+**改 CI/CD 或排障部署** → [后端发布与 HTTPS 入口](operations/v12-deployment/cutover-runbook.md#32-先发布后端并建-https-入口)；配置问题看 [Nacos 配置指南](operations/nacos-config-center.md)
 
 **做 Schema 变更** → [`architecture/database-schema-management.md`](./architecture/database-schema-management.md)，按当前所处阶段决定是否需要 Alembic migration
 

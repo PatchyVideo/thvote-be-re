@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="942" viewBox="0 0 1400 942" role="img" aria-labelledby="title desc">
+  <title id="title">v12 上线窗口 · 自动切流</title>
+  <desc id="desc">主站服务，阿里云 ECS 弹性伸缩组热备。独立控制器验证两个源站，达条件后自动切换，测试服务器只提供辅助探测。 两池共享一个生产数据库写入入口。两池均不可用时进入独立维护端点。</desc>
+  <defs>
+    <marker id="greenTip" viewBox="0 0 9 10" markerWidth="8" markerHeight="8" refX="8" refY="5" orient="auto"><path d="M0 0L9 5L0 10Z" fill="#13766a"/></marker>
+    <marker id="mutedTip" viewBox="0 0 9 10" markerWidth="8" markerHeight="8" refX="8" refY="5" orient="auto"><path d="M0 0L9 5L0 10Z" fill="#768995"/></marker>
+    <style>
+      text { font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #182e38; }
+      .heading { font-size: 36px; font-weight: 700; }
+      .subtitle { font-size: 16px; fill: #425f6a; }
+      .pill { font-size: 15px; font-weight: 700; }
+      .label { font-size: 15px; font-weight: 700; letter-spacing: 1px; fill: #456675; }
+      .title { font-size: 22px; font-weight: 700; }
+      .body { font-size: 16px; fill: #364f5d; }
+      .caption { font-size: 14px; fill: #3f5d6a; }
+      .route { font-size: 14px; font-weight: 700; }
+      .activeText { fill: #105d55; }
+      .quietText { fill: #526773; }
+      .traffic { stroke: #13766a; stroke-width: 2.8; fill: none; marker-end: url(#greenTip); }
+      .idleline { stroke: #768995; stroke-width: 2; stroke-dasharray: 7 6; fill: none; marker-end: url(#mutedTip); }
+      .panel { fill: #fff; stroke: #c9d7da; stroke-width: 1.25; }
+      .edge { fill: #e7f3ef; stroke: #9abfb4; stroke-width: 1.3; }
+      .on { fill: #e7f4ee; stroke: #85b1a6; stroke-width: 1.4; }
+      .idle { fill: #fffaf0; stroke: #d4b17a; stroke-width: 1.4; }
+      .off { fill: #f1f3f4; stroke: #aebdc4; stroke-width: 1.4; }
+      .badge-on { fill: #146458; }
+      .badge-idle { fill: #85581b; }
+      .badge-off { fill: #512d29; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="942" fill="#f6f8f6"/>
+  <path d="M46 41v62" stroke="#18756c" stroke-width="5"/>
+  <text x="62" y="70" class="heading">v12 上线窗口 · 自动切流</text>
+  <text x="63" y="101" class="subtitle">建议部署拓扑 · 从主站服务到阿里云备池接管 · 2026-11-18</text>
+  <rect x="1187" y="53" width="167" height="40" rx="20" fill="#dbeae5"/>
+  <text x="1270.5" y="78" text-anchor="middle" class="pill activeText">上线窗口</text>
+
+  <text x="46" y="135" class="label">用户请求</text>
+  <path d="M381 197h68" class="traffic"/>
+  <path d="M935 197h72" class="idleline"/>
+  <rect x="46" y="151" width="334" height="92" rx="11" class="panel"/>
+  <text x="66" y="182" class="title">Vercel 投票页与结果页</text>
+  <text x="66" y="215" class="body">同源 API · /v12-be/* 和 /res-be/*</text>
+  <rect x="454" y="151" width="480" height="92" rx="11" class="edge"/>
+  <text x="475" y="182" class="title">Cloudflare LB · api.touhou.vote</text>
+  <text x="475" y="215" class="body">切换前：生产主池 · 故障判定后改选备池</text>
+  <rect x="1013" y="151" width="341" height="92" rx="11" class="panel"/>
+  <text x="1033" y="182" class="title">独立维护端点</text>
+  <text x="1033" y="215" class="body">无可用业务池时，返回 HTTP 503</text>
+
+  <path d="M673 244v30H324v26" class="traffic"/>
+  <path d="M715 244v30h361v26" class="idleline"/>
+  <text x="338" y="293" class="route activeText">v12 业务流量</text>
+  <text x="1090" y="293" class="route quietText">待命 · 达切流条件后接管</text>
+
+  <rect x="46" y="305" width="556" height="162" rx="13" class="on"/>
+  <text x="67" y="342" class="title">车万云 · 生产主池</text>
+  <text x="579" y="341" text-anchor="end" class="pill badge-on">服务中</text>
+  <text x="68" y="375" class="body">HTTPS 网关 → FastAPI</text>
+  <text x="68" y="404" class="body">负责 v12 投票与结果 API，写入当前生产主库</text>
+  <text x="68" y="433" class="body">探测 /readyz 与代表性 GraphQL 只读请求</text>
+  <rect x="798" y="305" width="556" height="162" rx="13" class="idle"/>
+  <text x="819" y="342" class="title">阿里云 · 生产备池</text>
+  <text x="1330" y="341" text-anchor="end" class="pill badge-idle">热备</text>
+  <text x="820" y="375" class="body">ALB → ECS 弹性伸缩组，后端同一发布 digest</text>
+  <text x="820" y="404" class="body">上线前达到压测确定的最小容量，持续就绪探测</text>
+  <text x="820" y="433" class="body">可补充生产巡检，监控与告警由独立服务常驻</text>
+
+  <path d="M323 468v91h78" class="traffic"/>
+  <path d="M1076 468v91h-77" class="idleline"/>
+  <text x="184" y="558" class="caption">读写生产数据</text>
+  <text x="1094" y="558" class="caption">连通性与就绪校验</text>
+  <rect x="406" y="514" width="588" height="115" rx="12" class="panel"/>
+  <text x="426" y="548" class="title">阿里云 RDS · prod_db</text>
+  <text x="426" y="578" class="body">两站共用同一个写入入口 · 托管 HA 单独验收</text>
+  <text x="426" y="604" class="body">共享库不可用时，两边封写并进入维护</text>
+
+  <text x="46" y="667" class="label">故障判定与报警 · 两个阶段均持续运行</text>
+  <rect x="46" y="684" width="716" height="144" rx="12" class="panel"/>
+  <text x="66" y="719" class="title">独立监控与切换控制</text>
+  <text x="67" y="749" class="body">多地探测主池 /readyz、备池 /readyz 与公开前端 API</text>
+  <text x="67" y="775" class="body">主池连续失败 + 备池达最小健康容量 → 自动切到备池</text>
+  <text x="67" y="801" class="body">单一控制器更新当前池，复查公开 API 并记录事件</text>
+  <rect x="784" y="684" width="570" height="144" rx="12" class="panel"/>
+  <text x="806" y="719" class="title">值班报警与测试机探测</text>
+  <text x="807" y="749" class="body">Cloudflare / CloudMonitor → 值班群 + 短信或邮件</text>
+  <text x="807" y="775" class="body">告警：主站故障、切换完成或失败、扩容失败</text>
+  <text x="807" y="801" class="body">测试机可从此刻持续探测公网，只给辅助信号</text>
+
+  <rect x="46" y="861" width="1308" height="48" rx="9" fill="#e7eeea"/>
+  <text x="65" y="891" class="pill activeText">自动接管</text>
+  <text x="154" y="891" class="body">确认主池故障 → 核对备池就绪和容量 → 切换业务路由 → 复验公开 API → 通知值班</text>
+</svg>

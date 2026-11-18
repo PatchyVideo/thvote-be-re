@@ -74,7 +74,7 @@
 
 当前本地 Alembic 图是单 head 0022；云端迁移状态未查询，新增迁移前重新核对。导入、回填、重算、部署与推送需用户当前授权，历史计划里的命令不构成执行许可。
 
-运维代码入口见 [CI/CD 说明](../operations/cicd-pipeline.md)，Nacos 限制见 [热更新限制](nacos-hot-reload-limits.md)。实际服务器操作先遵守项目 AGENTS 中的部署约定。
+运维入口见 [v12 切流与回退手册](../operations/v12-deployment/cutover-runbook.md)，Nacos 限制见 [热更新限制](nacos-hot-reload-limits.md)。
 
 ## 设计与历史资料
 

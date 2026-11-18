@@ -52,8 +52,6 @@
 | [`2026-06-08-vote-objects-backend.md`](./superpowers/plans/2026-06-08-vote-objects-backend.md) | 已实施 | B-040 后端，2026-07-14 合入 main |
 | [`2026-06-08-works-voting-backend.md`](./superpowers/plans/2026-06-08-works-voting-backend.md) | 已废弃 | B-038，2026-06-08 确认官方作品投票本届不做 |
 | [`2026-06-08-works-voting-frontend.md`](./superpowers/plans/2026-06-08-works-voting-frontend.md) | 已废弃 | B-038，同上 |
-| [`2026-06-09-frontend-api-version-upgrade.md`](./superpowers/plans/2026-06-09-frontend-api-version-upgrade.md) | 已实施 | v11→v12 前缀切换，2026-07-14 随 nginx v12 路由上线 |
-| [`2026-06-09-nginx-routing-fix.md`](./superpowers/plans/2026-06-09-nginx-routing-fix.md) | 已实施 | CHANGELOG 2026-07-14「nginx v12 路由部署」 |
 | [`2026-07-17-admin-console-security-monitoring-backend.md`](./superpowers/plans/2026-07-17-admin-console-security-monitoring-backend.md) | 已实施 | B-049 Plan 1，2026-07-17（migration 0014 + `src/apps/admin/monitor/`） |
 | [`2026-07-18-b050-result-recount-v1.md`](./superpowers/plans/2026-07-18-b050-result-recount-v1.md) | 已实施 | B-050 v1，2026-07-18 |
 | [`2026-07-19-result-graphql-compat.md`](./superpowers/plans/2026-07-19-result-graphql-compat.md) | 已实施 | B-052，2026-07-19（12 个 `query*` 契约层） |
@@ -75,7 +73,6 @@
 | [`2026-04-27-user-auth-implementation-report.md`](./superpowers/specs/2026-04-27-user-auth-implementation-report.md) | 已归档 | 实施过程事后记录，非设计文档；模块现状见 [migration/user-manager](../migration/user-manager.md) |
 | [`2026-06-08-works-voting-backend-design.md`](./superpowers/specs/2026-06-08-works-voting-backend-design.md) | 已废弃 | B-038，2026-06-08 确认官方作品投票本届不做 |
 | [`2026-06-08-works-voting-frontend-design.md`](./superpowers/specs/2026-06-08-works-voting-frontend-design.md) | 已废弃 | B-038，同上 |
-| [`2026-06-09-api-version-upgrade-and-nginx-routing-fix-design.md`](./superpowers/specs/2026-06-09-api-version-upgrade-and-nginx-routing-fix-design.md) | 已实施 | v12 路由已于 2026-07-14 上线；纯操作性设计，无长期参考价值 |
 
 
 ## 交接记录（`superpowers/handoffs/`）

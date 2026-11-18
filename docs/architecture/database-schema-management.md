@@ -142,7 +142,7 @@ psql ... -c "SELECT version_num FROM alembic_version;"   # 应该是 0002
 
 - 本表 §三 阶段 1 详细：[`docs/superpowers/specs/2026-04-27-user-auth-design.md`](../superpowers/specs/2026-04-27-user-auth-design.md) §五.2
 - 本表 §三 阶段 2 跟踪：spec §九 F-impl-5
-- CI 流水线：[`docs/operations/cicd-pipeline.md`](../operations/cicd-pipeline.md)
+- [CI/CD 与生产迁移入口](../operations/v12-deployment/cutover-runbook.md#32-先发布后端并建-https-入口)
 - 已知问题清单：[`docs/superpowers/specs/2026-04-27-user-auth-open-issues.md`](../superpowers/specs/2026-04-27-user-auth-open-issues.md) U-1
 
 ---
