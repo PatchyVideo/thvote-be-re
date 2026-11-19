@@ -3,7 +3,7 @@ nobody can use the server as a free proxy to hammer third-party sites
 (and burn the server's own Pixiv credentials)."""
 
 import os
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
@@ -31,9 +31,12 @@ async def client():
     app.dependency_overrides[get_scraper_service] = lambda: _StubScraper()
 
     import fakeredis.aioredis as fakeredis
+
     fake_redis = fakeredis.FakeRedis(decode_responses=True)
     with patch("src.apps.scraper.router.get_redis_client", return_value=fake_redis):
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as c:
             yield c
 
 
@@ -49,3 +52,35 @@ async def test_scrape_is_rate_limited_per_ip(client):
     resp = await client.post("/api/v1/scraper/scrape", json=body)
     assert resp.status_code == 429
     assert resp.json()["detail"] == "REQUEST_TOO_FREQUENT"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "reason", "public_message"),
+    [
+        ("apierr", "nicoseiga: upstream region restriction", ""),
+        ("err", "Pixiv credentials not configured: PIXIV_REFRESH_TOKEN", ""),
+        ("parsererr", "dlsite: work_name not found", ""),
+        ("except", "upstream connection details", "获取信息失败"),
+        ("warning", "may not touhou", ""),
+    ],
+)
+async def test_scrape_keeps_diagnostic_details_in_logs(
+    client, monkeypatch, caplog, status, reason, public_message
+):
+    data = ScrapeData(title="stub") if status == "warning" else None
+    result = RespBody(status=status, msg=reason, data=data)
+    monkeypatch.setattr(_StubScraper, "scrape_url", AsyncMock(return_value=result))
+
+    response = await client.post(
+        "/api/v1/scraper/scrape", json={"url": "https://example.com/work"}
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == status
+    assert payload["msg"] == public_message
+    assert payload["data"] == (data.model_dump() if data else None)
+    assert result.msg == reason
+    assert reason not in response.text
+    assert reason in caplog.text
