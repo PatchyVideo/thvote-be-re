@@ -6,7 +6,7 @@ B-063：`apps/scraper` 此前只有 URL 路由与限流测试，站点解析器�
 - Steam：HTML 选择器（标题/封面/开发商/发售日）；
 - THBWiki：MediaWiki ASK API 的 printouts 映射与无结果处理；
 - Bilibili：JSON API 字段映射、音乐分区判定、-352 风控错误；
-- Pixiv/YouTube：缺凭据时必须 fail-closed，不能打外网。
+- Pixiv：缺凭据时返回具体配置错误。YouTube：未配置 Data API key 时使用公开 oEmbed。
 
 所有网络、Redis 缓存、限流均 mock，测试不依赖外网。
 """
@@ -254,23 +254,107 @@ async def test_bilibili_opus_uses_article_metadata_only(monkeypatch):
 @pytest.mark.asyncio
 async def test_pixiv_without_credentials_fails_closed(monkeypatch):
     _silence_cache(monkeypatch, pixiv)
-    monkeypatch.setattr(pixiv, "_get_pixiv_token", AsyncMock(return_value=None))
+    monkeypatch.delenv("PIXIV_REFRESH_TOKEN", raising=False)
+    monkeypatch.delenv("PIXIV_CLIENT_SECRET", raising=False)
 
     result = await pixiv.pixdata("123456")
     assert result.status == "err"
-    assert result.msg == "Pixiv authentication failed"
+    assert result.msg == (
+        "Pixiv credentials not configured: PIXIV_REFRESH_TOKEN, PIXIV_CLIENT_SECRET"
+    )
 
 
 @pytest.mark.asyncio
-async def test_youtube_without_api_key_fails_closed(monkeypatch):
+async def test_youtube_without_api_key_uses_public_oembed(monkeypatch):
+    _silence_cache(monkeypatch, youtube)
     monkeypatch.setattr(
         "src.common.config.get_settings",
         lambda: SimpleNamespace(youtube_api_key=None),
     )
+    request = AsyncMock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "title": "Touhou Arrange",
+                "author_name": "Artist",
+                "thumbnail_url": "https://i.ytimg.com/vi/abc123/hqdefault.jpg",
+            },
+        )
+    )
+    monkeypatch.setattr(youtube, "request_abroad_website", request)
+    monkeypatch.setattr(youtube, "request_abroad_api", AsyncMock())
+
+    result = await youtube.ytbdata("abc123")
+    assert result.status == "ok"
+    assert result.data.udid == "youtube:abc123"
+    assert result.data.title == "Touhou Arrange"
+    assert result.data.author_name == ["Artist"]
+    assert result.data.cover == "https://i.ytimg.com/vi/abc123/hqdefault.jpg"
+    assert result.data.tname == "VIDEO"
+    request.assert_awaited_once_with(
+        "https://www.youtube.com/oembed",
+        params={"url": "https://www.youtube.com/watch?v=abc123", "format": "json"},
+    )
+    youtube.request_abroad_api.assert_not_awaited()
+    youtube.set_cache.assert_awaited_once_with("oembed:youtube:abc123", result)
+
+
+@pytest.mark.asyncio
+async def test_youtube_oembed_preserves_upstream_denial(monkeypatch):
+    _silence_cache(monkeypatch, youtube)
+    monkeypatch.setattr(
+        "src.common.config.get_settings",
+        lambda: SimpleNamespace(youtube_api_key=None),
+    )
+    monkeypatch.setattr(
+        youtube, "request_abroad_website", AsyncMock(return_value=httpx.Response(401))
+    )
 
     result = await youtube.ytbdata("abc123")
     assert result.status == "apierr"
-    assert "YOUTUBE_API_KEY" in result.msg
+    assert result.msg == "youtube: oEmbed returned HTTP 401"
+    youtube.set_cache.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_youtube_with_key_keeps_data_api_fields_and_cache(monkeypatch):
+    _silence_cache(monkeypatch, youtube)
+    monkeypatch.setattr(
+        "src.common.config.get_settings",
+        lambda: SimpleNamespace(youtube_api_key="test-key"),
+    )
+    monkeypatch.setattr(youtube, "request_abroad_website", AsyncMock())
+    monkeypatch.setattr(
+        youtube,
+        "request_abroad_api",
+        AsyncMock(
+            return_value={
+                "items": [
+                    {
+                        "snippet": {
+                            "title": "Touhou Arrange",
+                            "channelTitle": "Artist",
+                            "channelId": "UCabc",
+                            "description": "Full description",
+                            "publishedAt": "2025-01-01T00:00:00Z",
+                            "thumbnails": {
+                                "high": {"url": "https://i.ytimg.com/cover"}
+                            },
+                        }
+                    }
+                ]
+            }
+        ),
+    )
+
+    result = await youtube.ytbdata("abc123")
+
+    assert result.status == "ok"
+    assert result.data.desc == "Full description"
+    assert result.data.author == ["youtube-author:UCabc"]
+    assert result.data.ptime == "2025-01-01 08:00:00 +0800"
+    youtube.request_abroad_website.assert_not_awaited()
+    youtube.set_cache.assert_awaited_once_with("youtube:abc123", result)
 
 
 @pytest.mark.asyncio
@@ -633,6 +717,27 @@ async def test_nicoseiga_empty_response_has_a_structured_error(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_nicoseiga_reports_region_redirect_without_following(monkeypatch):
+    from src.apps.scraper.sites import nicoseiga
+
+    _silence_cache(monkeypatch, nicoseiga)
+    request = AsyncMock(
+        return_value=httpx.Response(
+            301,
+            headers={"Location": "https://www.nicovideo.jp/region_restriction"},
+        )
+    )
+    monkeypatch.setattr(nicoseiga, "request_abroad_website", request)
+
+    result = await nicoseiga.nicoseigadata("11217962")
+
+    assert result.status == "apierr"
+    assert result.msg == "nicoseiga: upstream region restriction"
+    request.assert_awaited_once_with("https://seiga.nicovideo.jp/seiga/im11217962")
+    nicoseiga.set_cache.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_tieba_missing_post_list(monkeypatch):
     from src.apps.scraper.sites import tieba
 
@@ -697,6 +802,19 @@ async def test_twitter_without_bearer_token(monkeypatch):
 @pytest.mark.asyncio
 async def test_pixiv_novel_without_credentials(monkeypatch):
     _silence_cache(monkeypatch, pixiv)
+    monkeypatch.setenv("PIXIV_REFRESH_TOKEN", "not-used")
+    monkeypatch.delenv("PIXIV_CLIENT_SECRET", raising=False)
+
+    result = await pixiv.pixndata("123")
+    assert result.status == "err"
+    assert result.msg == "Pixiv credentials not configured: PIXIV_CLIENT_SECRET"
+
+
+@pytest.mark.asyncio
+async def test_pixiv_auth_failure_with_both_credentials(monkeypatch):
+    _silence_cache(monkeypatch, pixiv)
+    monkeypatch.setenv("PIXIV_REFRESH_TOKEN", "not-used")
+    monkeypatch.setenv("PIXIV_CLIENT_SECRET", "not-used")
     monkeypatch.setattr(pixiv, "_get_pixiv_token", AsyncMock(return_value=None))
 
     result = await pixiv.pixndata("123")

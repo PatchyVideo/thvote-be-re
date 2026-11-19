@@ -50,7 +50,7 @@ async def pixdata(illust_id: str, udid: str | None = None) -> RespBody:
 
     access_token = await _get_pixiv_token()
     if not access_token:
-        return RespBody(status="err", msg="Pixiv authentication failed")
+        return _authentication_error()
 
     api_url = "https://app-api.pixiv.net/v1/illust/detail"
     params = {"illust_id": illust_id}
@@ -142,7 +142,7 @@ async def pixndata(novel_id: str, udid: str | None = None) -> RespBody:
 
     access_token = await _get_pixiv_token()
     if not access_token:
-        return RespBody(status="err", msg="Pixiv authentication failed")
+        return _authentication_error()
 
     api_url = "https://app-api.pixiv.net/v1/novel/detail"
     params = {"novel_id": novel_id}
@@ -198,6 +198,19 @@ async def pixndata(novel_id: str, udid: str | None = None) -> RespBody:
     return result
 
 
+def _authentication_error() -> RespBody:
+    missing = [
+        name
+        for name in ("PIXIV_REFRESH_TOKEN", "PIXIV_CLIENT_SECRET")
+        if not os.getenv(name)
+    ]
+    if missing:
+        return RespBody(
+            status="err", msg=f"Pixiv credentials not configured: {', '.join(missing)}"
+        )
+    return RespBody(status="err", msg="Pixiv authentication failed")
+
+
 async def _get_pixiv_token() -> str | None:
     """Get Pixiv access token using refresh token.
 
@@ -205,8 +218,9 @@ async def _get_pixiv_token() -> str | None:
         Access token or None if failed
     """
     refresh_token = os.getenv("PIXIV_REFRESH_TOKEN", "")
+    client_secret = os.getenv("PIXIV_CLIENT_SECRET", "")
 
-    if not refresh_token:
+    if not refresh_token or not client_secret:
         cached = await get_cache("pixiv_token")
         if cached:
             return cached
@@ -217,7 +231,7 @@ async def _get_pixiv_token() -> str | None:
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
         "client_id": "MOUbB1cFIWTf5UyK6gkV9fNPo8fLqxcT",
-        "client_secret": os.getenv("PIXIV_CLIENT_SECRET", ""),
+        "client_secret": client_secret,
     }
 
     try:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from urllib.parse import urlsplit
 
 from lxml import etree
 
@@ -23,6 +24,15 @@ async def nicoseigadata(imid: str, udid: str | None = None) -> RespBody:
 
     url = f"https://seiga.nicovideo.jp/seiga/im{imid}"
     r = await request_abroad_website(url)
+    if r.is_redirect:
+        target = urlsplit(r.headers.get("location", ""))
+        if (
+            target.hostname == "www.nicovideo.jp"
+            and target.path == "/region_restriction"
+        ):
+            return RespBody(
+                status="apierr", msg="nicoseiga: upstream region restriction"
+            )
     if not r.is_success:
         return RespBody(
             status="apierr", msg=f"nicoseiga: upstream HTTP {r.status_code}"
