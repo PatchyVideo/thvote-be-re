@@ -16,6 +16,7 @@ from src.apps.scraper.utils.network import (
 
 _API = "https://thwiki.cc/api.php"
 _UDID_FMT = "thbwiki:{entry}"
+_CACHE_KEY = "v2:thbwiki:{entry}"
 
 
 async def thbdata(entry: str, udid: str | None = None) -> RespBody:
@@ -33,7 +34,7 @@ async def thbdata(entry: str, udid: str | None = None) -> RespBody:
 
     if udid is None:
         udid = _UDID_FMT.format(entry=entry)
-    cached = await get_cache(udid)
+    cached = await get_cache(f"v2:{udid}")
     if cached:
         return cached
 
@@ -45,7 +46,7 @@ async def thbdata(entry: str, udid: str | None = None) -> RespBody:
             "formatversion": 2,
             "query": (
                 f"[[{entry}]]|?封面图片|?专辑名称|?同人志名称|?视频名称"
-                "|?软件名称|?发售日期|?制作方|?发售方|?出品方|?原画师|?模型名称"
+                "|?软件名称|?游戏类型|?发售日期|?制作方|?发售方|?出品方|?原画师|?模型名称"
             ),
         },
     )
@@ -57,7 +58,6 @@ async def thbdata(entry: str, udid: str | None = None) -> RespBody:
     data = list(results.values())[0]
     d = data["printouts"]
     title = data["fulltext"]
-    udid = _UDID_FMT.format(entry=title)
 
     cover = None
     if d.get("封面图片") and d["封面图片"][0].get("exists") == "1":
@@ -80,8 +80,7 @@ async def thbdata(entry: str, udid: str | None = None) -> RespBody:
     for x in [a["fulltext"] for a in author_list]:
         if x not in seen:
             seen.append(x)
-    author = seen
-    author_name = [f"thbwiki-author:{x}" for x in seen]
+    author = [f"thbwiki-author:{x}" for x in seen]
 
     tname = "OTHER"
     if d.get("专辑名称"):
@@ -90,7 +89,7 @@ async def thbdata(entry: str, udid: str | None = None) -> RespBody:
         tname = "DRAWING"
     elif d.get("视频名称"):
         tname = "VIDEO"
-    elif d.get("软件名称"):
+    elif d.get("软件名称") or d.get("游戏类型"):
         tname = "SOFTWARE"
     elif d.get("模型名称"):
         tname = "CRAFT"
@@ -108,19 +107,19 @@ async def thbdata(entry: str, udid: str | None = None) -> RespBody:
             cover=cover,
             ptime=ptime,
             author=author,
-            author_name=author_name,
+            author_name=seen,
             tname=tname,
         )
     )
-    await set_cache(final_udid, ret)
+    await set_cache(_CACHE_KEY.format(entry=fulltext), ret)
     if short:
-        await set_cache(_UDID_FMT.format(entry=short), ret)
+        await set_cache(_CACHE_KEY.format(entry=short), ret)
     if urlen:
-        await set_cache(_UDID_FMT.format(entry=urlen), ret)
+        await set_cache(_CACHE_KEY.format(entry=urlen), ret)
     else:
-        await set_cache(_UDID_FMT.format(entry=quote(entry)), ret)
+        await set_cache(_CACHE_KEY.format(entry=quote(entry)), ret)
     if jump:
-        await set_cache(_UDID_FMT.format(entry=jump), ret)
+        await set_cache(_CACHE_KEY.format(entry=jump), ret)
     return ret
 
 

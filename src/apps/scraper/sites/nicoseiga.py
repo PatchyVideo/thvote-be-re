@@ -23,10 +23,16 @@ async def nicoseigadata(imid: str, udid: str | None = None) -> RespBody:
 
     url = f"https://seiga.nicovideo.jp/seiga/im{imid}"
     r = await request_abroad_website(url)
+    if not r.is_success:
+        return RespBody(
+            status="apierr", msg=f"nicoseiga: upstream HTTP {r.status_code}"
+        )
     html = r.content.decode("utf-8")
     try:
         page = etree.HTML(html)
-        title = page.xpath('//div[@class="lg_ttl_illust"]/h1')
+        title = (
+            page.xpath('//div[@class="lg_ttl_illust"]/h1') if page is not None else []
+        )
         if not title:
             return RespBody(status="parsererr", msg="nicoseiga: title not found")
         title = title[0].text

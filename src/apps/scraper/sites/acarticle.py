@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 
 from lxml import etree
@@ -32,20 +33,17 @@ async def acadata(acid: str, udid: str | None = None) -> RespBody:
     html = r.content.decode("utf-8")
     try:
         page = etree.HTML(html)
-        script_els = page.xpath('//*[@id="main"]/script')
-        if not script_els:
+        assignment = next(
+            (
+                match
+                for script in page.xpath('//*[@id="main"]/script/text()')
+                if (match := re.search(r"window\.articleInfo\s*=\s*", script))
+            ),
+            None,
+        )
+        if assignment is None:
             return RespBody(status="parsererr", msg="acarticle: main script not found")
-        script_text = script_els[0].text or ""
-        # Find the last JSON object before the last semicolon
-        positions = [-1, -1, -1]
-        pos = -1
-        while True:
-            pos = script_text.find(";", pos + 1)
-            if pos == -1:
-                break
-            positions = [positions[1], positions[2], pos]
-        chunk = script_text[script_text.find("{") : positions[0]]
-        data = json.loads(chunk)
+        data, _ = json.JSONDecoder().raw_decode(assignment.string, assignment.end())
         cover = data.get("coverUrl", "")
         if "?" in cover:
             cover = cover[: cover.find("?")]

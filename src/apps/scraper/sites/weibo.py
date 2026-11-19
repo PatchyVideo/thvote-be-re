@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 
 from src.apps.scraper.schemas import RespBody, ScrapeData
 from src.apps.scraper.utils.cache import get_cache, set_cache
@@ -27,13 +28,21 @@ async def wbdata(wid: str, udid: str | None = None) -> RespBody:
 
     url = f"https://m.weibo.cn/detail/{wid}"
     r = await request_website(url, headers=_HEADER)
-    html = r.content.decode("utf-8")
+    if r.is_redirect and "visitor.passport.weibo.cn" in r.headers.get("location", ""):
+        return RespBody(
+            status="apierr", msg="weibo: upstream requires a visitor session"
+        )
+    if not r.is_success:
+        return RespBody(status="apierr", msg=f"weibo: upstream HTTP {r.status_code}")
+    assignment = re.search(r"\$render_data\s*=\s*", r.text)
+    if assignment is None:
+        return RespBody(status="parsererr", msg="weibo: render data not found")
     try:
-        chunk = html[html.find("$render_data") :]
-        chunk = chunk[chunk.find("[{") + 1 : chunk.find("}]") + 1]
-        data = json.loads(chunk)["status"]
+        render_data, _ = json.JSONDecoder().raw_decode(r.text, assignment.end())
+        data = render_data[0]["status"]
         uid = data["user"]["id"]
         author = f"weibo-author:{uid}"
+        ptime = _wb_ptime(data["created_at"])
     except Exception as exc:
         return RespBody(status="parsererr", msg=f"weiboparsererr: {repr(exc)}")
 
@@ -43,7 +52,7 @@ async def wbdata(wid: str, udid: str | None = None) -> RespBody:
             udid=udid,
             cover=data.get("bmiddle_pic"),
             desc=data.get("text"),
-            ptime=_wb_ptime(data["created_at"]),
+            ptime=ptime,
             author=[author],
             author_name=[data["user"]["screen_name"]],
             tname="DRAWING",

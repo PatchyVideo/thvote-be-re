@@ -45,6 +45,11 @@ ALL_ROUTES = [
     ("https://www.bilibili.com/video/BV1xx411c7mD", "BV1xx411c7mD", "bilidata"),
     ("https://www.bilibili.com/video/av170001", "170001", "bilidata"),
     ("https://www.bilibili.com/read/cv123456", "123456", "biliarticledata"),
+    (
+        "https://www.bilibili.com/opus/611486841963400434",
+        "611486841963400434",
+        "biliopusdata",
+    ),
     ("https://www.bilibili.com/read/mobile/123456", "123456", "biliarticledata"),
     # Twitter / X
     ("https://twitter.com/someone/status/1234567890", "1234567890", "twidata"),

@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from src.apps.scraper.schemas import RespBody
 from src.apps.scraper.sites.acarticle import acadata
 from src.apps.scraper.sites.acfun import acdata
-from src.apps.scraper.sites.bilibili import biliarticledata, bilidata
+from src.apps.scraper.sites.bilibili import biliarticledata, bilidata, biliopusdata
 from src.apps.scraper.sites.dizzylab import dizzydata
 from src.apps.scraper.sites.dlsite import dlsitedata
 from src.apps.scraper.sites.melon import melondata
@@ -69,6 +69,12 @@ async def parse_url(url: str) -> tuple[str | None, Any | None]:
             url = redirect_url
 
     # ── Bilibili ──────────────────────────────────────────────────────
+    if opus_match := re.match(
+        r"^(?:https?://)?(?:www\.|m\.)?bilibili\.com/opus/(\d+)(?:[/?#]|$)",
+        url,
+        re.IGNORECASE,
+    ):
+        return opus_match.group(1), biliopusdata
     if bv_match := re.search(
         r"(?<![a-zA-Z0-9])(BV[a-zA-Z0-9]{10})(?![a-zA-Z0-9])", url, re.IGNORECASE
     ):

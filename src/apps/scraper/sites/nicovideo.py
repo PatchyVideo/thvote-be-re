@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 
 from lxml import etree
 
@@ -27,17 +28,17 @@ async def nicovideodata(smid: str, udid: str | None = None) -> RespBody:
     html = r.content.decode("utf-8")
     try:
         page = etree.HTML(html)
-        ld_scripts = page.xpath('//script[@class="LdJson"]')
-        if not ld_scripts:
-            return RespBody(status="parsererr", msg="nicovideo: no LdJson script")
-        data = json.loads(ld_scripts[0].text)
-        upload_date = data["uploadDate"]
-        user_url = data["author"]["url"]
-        import re
-
-        uid_match = re.search(r"user/(\d+)", user_url)
-        uid = uid_match.group(1) if uid_match else "unknown"
-        author = f"nicovideo-author:{uid}"
+        data = _video_metadata(page)
+        if data is None:
+            return RespBody(status="parsererr", msg="nicovideo: no video JSON-LD")
+        author = data["author"]
+        author_name = author["name"]
+        uid_match = re.search(r"user/(\d+)", author.get("url", ""))
+        thumbnails = data.get("thumbnailUrl")
+        cover = (
+            next(iter(thumbnails), None) if isinstance(thumbnails, list) else thumbnails
+        )
+        ptime = _nico_ptime(data["uploadDate"]) if data.get("uploadDate") else None
     except Exception as exc:
         return RespBody(status="parsererr", msg=f"nicoparsererr: {repr(exc)}")
 
@@ -45,20 +46,34 @@ async def nicovideodata(smid: str, udid: str | None = None) -> RespBody:
         data=ScrapeData(
             title=data.get("name"),
             udid=udid,
-            cover=(
-                data["thumbnailUrl"][0]
-                if isinstance(data.get("thumbnailUrl"), list)
-                else data.get("thumbnailUrl")
-            ),
+            cover=cover,
             desc=data.get("description"),
-            ptime=_nico_ptime(upload_date),
-            author=[author],
-            author_name=[data["author"]["name"]],
+            ptime=ptime,
+            author=[f"nicovideo-author:{uid_match.group(1)}"] if uid_match else None,
+            author_name=[author_name],
             tname="VIDEO",
         )
     )
     await set_cache(udid, resp)
     return resp
+
+
+def _video_metadata(page: etree._Element | None) -> dict | None:
+    if page is None:
+        return None
+    for script in page.xpath(
+        '//script[@type="application/ld+json" or @class="LdJson"]'
+    ):
+        try:
+            data = json.loads(script.text or "")
+        except ValueError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        is_legacy = script.get("class") == "LdJson" and "@type" not in data
+        if (data.get("@type") == "VideoObject" or is_legacy) and data.get("name"):
+            return data
+    return None
 
 
 def _nico_ptime(upload_date: str) -> str:

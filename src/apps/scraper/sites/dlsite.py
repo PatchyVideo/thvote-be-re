@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
+import re
+from urllib.parse import urljoin
 
 from lxml import etree
 
@@ -33,6 +36,13 @@ _IMAGE_TAGS = {"マンガ", "劇画", "WEBTOON", "CG・イラスト", "画像素
 _TEXT_TAGS = {"ノベル", "官能小説"}
 _VIDEO_TAGS = {"動画", "ボイスコミック"}
 _AUDIO_TAGS = {"音楽", "音素材", "ボイス・ASMR"}
+_WORK_TYPES = {
+    **dict.fromkeys(_SOFT_TAGS, "SOFTWARE"),
+    **dict.fromkeys(_IMAGE_TAGS, "DRAWING"),
+    **dict.fromkeys(_TEXT_TAGS, "ARTICLE"),
+    **dict.fromkeys(_VIDEO_TAGS, "VIDEO"),
+    **dict.fromkeys(_AUDIO_TAGS, "MUSIC"),
+}
 
 
 async def dlsitedata(rjid: str, udid: str | None = None) -> RespBody:
@@ -45,101 +55,126 @@ async def dlsitedata(rjid: str, udid: str | None = None) -> RespBody:
     if cached:
         return cached
 
-    url = f"https://www.dlsite.com/home/work/=/product_id/{rjid}"
+    url = f"https://www.dlsite.com/home/work/=/product_id/{rjid}.html"
     r = await request_abroad_website(url, headers=_HEADER)
-    html = r.content.decode("utf-8")
+    if not r.is_success:
+        return RespBody(status="apierr", msg=f"dlsite: upstream HTTP {r.status_code}")
     try:
-        page = etree.HTML(html)
+        page = etree.HTML(r.text)
         if page is None:
+            return RespBody(status="parsererr", msg="dlsite: empty product page")
+        outline = _work_outline(page)
+        rating = outline.get("年齢指定")
+        if rating is not None and _element_text(rating) != "全年齢":
             return RespBody(status="r18")
-        title_el = page.xpath('//*[@id="work_name"]')
-        if not title_el:
+
+        product = _product_metadata(page, rjid)
+        title = _element_text(next(iter(page.xpath('//*[@id="work_name"]')), None))
+        title = title or product.get("name")
+        if not title:
             return RespBody(status="parsererr", msg="dlsite: work_name not found")
-        # lxml elements have no BeautifulSoup-style text_content(); join their
-        # text nodes explicitly (the title may contain nested <span>).
-        title = "".join(title_el[0].itertext()).strip()
-        media: list[str] = []
-        cover = None
-        for image in page.xpath('//div[@class="product-slider-data"]/div'):
-            img = image.attrib.get("data-src", "")
-            if img:
-                media.append(img.replace("//", "https://"))
-            if "img_main" in img:
-                thumb = image.attrib.get("data-thumb", "")
-                if thumb:
-                    cover = thumb.replace("//", "https://")
-        if not cover and media:
-            cover = media[0]
-        desc_el = page.xpath('/html/head/meta[@property="og:description"]')
-        desc = desc_el[0].attrib["content"] if desc_el else None
-        maker_el = page.xpath('//span[@class="maker_name"]/a')
-        if not maker_el:
+        if rating is None:
+            return RespBody(status="parsererr", msg="dlsite: age rating not found")
+
+        maker = next(iter(page.xpath('//span[@class="maker_name"]/a')), None)
+        brand = product.get("brand") or {}
+        maker_url = maker.get("href", "") if maker is not None else brand.get("url", "")
+        author_name = _element_text(maker) or brand.get("name")
+        maker_id = re.search(r"maker_id[=/]([A-Za-z0-9]+)", maker_url)
+        if not author_name or not maker_id:
             return RespBody(status="parsererr", msg="dlsite: maker not found")
-        maker = maker_el[0]
-        href = maker.attrib.get("href", "")
-        author_id = href[href.find("maker_id") + 9 :].replace(".html", "")
-        author_name = maker.text
-        table = page.xpath('//table[@id="work_outline"]')
-        if not table:
-            return RespBody(
-                status="parsererr", msg="dlsite: work_outline table not found"
-            )
-        heads = page.xpath('//table[@id="work_outline"]/tr/th/text()')
-        status = "ok"
-        msg = ""
-        tname = "OTHER"
-        ptime = None
-        for index, head in enumerate(heads):
-            if head == "販売日":
-                time_els = table[0].xpath(f"//tr[{index + 1}]/td/a")
-                if time_els:
-                    time_str = time_els[0].text or ""
-                    time_str = time_str[: time_str.find("日") + 1]
-                    try:
-                        dt_struct = dt.datetime.strptime(time_str, "%Y年%m月%d日")
-                        ptime = dt_struct.strftime("%Y-%m-%d %H:%M:%S +0800")
-                    except ValueError:
-                        pass
-            elif head == "年齢指定":
-                age_els = table[0].xpath(f"//tr[{index + 1}]/td/div/span")
-                if age_els and age_els[0].text != "全年齢":
-                    return RespBody(status="r18")
-            elif head == "作品形式":
-                type_els = table[0].xpath(f"//tr[{index + 1}]/td/div/a/span")
-                if type_els:
-                    work_type = type_els[0].text or ""
-                    if work_type in _SOFT_TAGS:
-                        tname = "SOFTWARE"
-                    elif work_type in _IMAGE_TAGS:
-                        tname = "DRAWING"
-                    elif work_type in _TEXT_TAGS:
-                        tname = "ARTICLE"
-                    elif work_type in _VIDEO_TAGS:
-                        tname = "VIDEO"
-                    elif work_type in _AUDIO_TAGS:
-                        tname = "MUSIC"
-            elif head == "ジャンル":
-                tags = table[0].xpath(f"//tr[{index + 1}]/td/div/a//text()")
-                if "東方Project" not in tags:
-                    status = "warning"
-                    msg = "may not touhou"
+
+        media, cover = _product_images(page, product.get("image"), url)
+        desc = page.xpath('string(//meta[@property="og:description"]/@content)')
+        ptime = _release_time(_element_text(outline.get("販売日")))
+        work_types = _link_names(outline.get("作品形式"))
+        tname = next(
+            (_WORK_TYPES[name] for name in work_types if name in _WORK_TYPES), "OTHER"
+        )
+        genres = outline.get("ジャンル")
+        warning = genres is not None and "東方Project" not in _link_names(genres)
     except Exception as exc:
         return RespBody(status="parsererr", msg=f"dlsiteparsererr: {repr(exc)}")
 
     result = RespBody(
-        status=status,
-        msg=msg,
+        status="warning" if warning else "ok",
+        msg="may not touhou" if warning else "",
         data=ScrapeData(
             title=title,
             udid=udid,
             cover=cover,
             media=media or None,
-            desc=desc,
+            desc=desc or product.get("description"),
             ptime=ptime,
-            author=[author_id],
+            author=[maker_id.group(1)],
             author_name=[author_name],
             tname=tname,
         ),
     )
     await set_cache(udid, result)
     return result
+
+
+def _element_text(element: etree._Element | None) -> str:
+    return element.xpath("normalize-space(.)") if element is not None else ""
+
+
+def _work_outline(page: etree._Element) -> dict[str, etree._Element]:
+    labels = page.xpath('//table[@id="work_outline"]//th | //dt')
+    fields = {}
+    for label in labels:
+        value = label.getnext()
+        if value is not None and value.tag in ("td", "dd"):
+            fields[_element_text(label)] = value
+    return fields
+
+
+def _product_metadata(page: etree._Element, rjid: str) -> dict:
+    for script in page.xpath('//script[@type="application/ld+json"]/text()'):
+        try:
+            data = json.loads(script)
+        except ValueError:
+            continue
+        if (
+            isinstance(data, dict)
+            and data.get("@type") == "Product"
+            and data.get("sku") == rjid
+        ):
+            return data
+    return {}
+
+
+def _product_images(
+    page: etree._Element, product_images: list[str] | str | None, url: str
+) -> tuple[list[str], str | None]:
+    media = []
+    cover = None
+    for slide in page.xpath('//div[@class="product-slider-data"]/div[@data-src]'):
+        image = slide.get("data-src")
+        if image:
+            media.append(urljoin(url, image))
+            if "img_main" in image and slide.get("data-thumb"):
+                cover = urljoin(url, slide.get("data-thumb"))
+    if not media and product_images:
+        images = [product_images] if isinstance(product_images, str) else product_images
+        media = [urljoin(url, image) for image in images if image]
+    return media, cover or next(iter(media), None)
+
+
+def _release_time(text: str) -> str | None:
+    match = re.search(r"\d{4}年\d{1,2}月\d{1,2}日", text)
+    if match is None:
+        return None
+    try:
+        date = dt.datetime.strptime(match.group(), "%Y年%m月%d日")
+    except ValueError:
+        return None
+    return date.strftime("%Y-%m-%d %H:%M:%S +0800")
+
+
+def _link_names(element: etree._Element | None) -> list[str]:
+    return (
+        [_element_text(link) for link in element.xpath(".//a")]
+        if element is not None
+        else []
+    )

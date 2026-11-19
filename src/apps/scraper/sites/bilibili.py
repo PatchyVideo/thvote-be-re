@@ -5,13 +5,21 @@ Handles scraping data from Bilibili videos and articles.
 
 from __future__ import annotations
 
+import json
+import re
 import time
 from typing import TYPE_CHECKING
+
+from lxml import etree
 
 from src.apps.scraper.schemas import RespBody, ScrapeData
 from src.apps.scraper.utils.biliutils import get_cookies, get_header
 from src.apps.scraper.utils.cache import get_cache, set_cache
-from src.apps.scraper.utils.network import request_api, wait_for_rate_limit
+from src.apps.scraper.utils.network import (
+    request_api,
+    request_website,
+    wait_for_rate_limit,
+)
 
 if TYPE_CHECKING:
     pass
@@ -156,6 +164,10 @@ async def biliarticledata(cv: str, udid: str | None = None) -> RespBody:
         return RespBody(status="apierr", msg=f"请求失败: {str(e)}")
 
     if response.get("data") is None:
+        if response.get("code") == -352:
+            return RespBody(
+                status="apierr", msg="biliarticle: upstream access denied (-352)"
+            )
         return RespBody(
             status="apierr", msg=f"获取文章失败: {response.get('message', 'unknown')}"
         )
@@ -195,6 +207,63 @@ async def biliarticledata(cv: str, udid: str | None = None) -> RespBody:
     result = RespBody(status="ok", msg="", data=scrape_data)
     await set_cache(udid, result)
 
+    return result
+
+
+async def biliopusdata(opus_id: str) -> RespBody:
+    """Read public article metadata from a Bilibili opus page."""
+    await wait_for_rate_limit("biliarticle", limit=0.2)
+    cache_key = f"biliopus:{opus_id}"
+    cached = await get_cache(cache_key)
+    if cached:
+        return cached
+
+    response = await request_website(f"https://www.bilibili.com/opus/{opus_id}")
+    if not response.is_success:
+        return RespBody(
+            status="apierr", msg=f"biliopus: upstream HTTP {response.status_code}"
+        )
+    page = etree.HTML(response.text)
+    if page is None:
+        return RespBody(status="parsererr", msg="biliopus: empty page")
+    script = page.xpath(
+        'string(//script[contains(text(), "window.__INITIAL_STATE__")])'
+    )
+    assignment = re.search(r"window\.__INITIAL_STATE__\s*=\s*", script)
+    if assignment is None:
+        return RespBody(status="parsererr", msg="biliopus: article metadata not found")
+
+    try:
+        state, _ = json.JSONDecoder().raw_decode(script, assignment.end())
+        detail = state["detail"]
+        basic = detail["basic"]
+        if basic["comment_type"] != 12:
+            return RespBody(status="err", msg="biliopus: post is not an article")
+        modules = {module["module_type"]: module for module in detail["modules"]}
+        title = modules["MODULE_TYPE_TITLE"]["module_title"]["text"]
+        author = modules["MODULE_TYPE_AUTHOR"]["module_author"]
+        display = (modules.get("MODULE_TYPE_TOP", {}).get("module_top") or {}).get(
+            "display"
+        ) or {}
+        pictures = (display.get("album") or {}).get("pics") or []
+        media = [picture["url"] for picture in pictures if picture.get("url")]
+        bottom = modules.get("MODULE_TYPE_BOTTOM", {}).get("module_bottom") or {}
+        desc = (bottom.get("share_info") or {}).get("summary")
+        data = ScrapeData(
+            title=title,
+            udid=f"biliarticle:{basic['comment_id_str']}",
+            cover=next(iter(media), None),
+            media=media or None,
+            desc=desc,
+            ptime=_format_ptime(int(author.get("pub_ts") or 0)),
+            author=[f"bilibili-author:{author['mid']}"],
+            author_name=[author["name"]],
+            tname="ARTICLE",
+        )
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return RespBody(status="parsererr", msg="biliopus: invalid article metadata")
+    result = RespBody(data=data)
+    await set_cache(cache_key, result)
     return result
 
 

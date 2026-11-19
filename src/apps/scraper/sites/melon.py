@@ -29,12 +29,20 @@ async def melondata(wid: str, udid: str | None = None) -> RespBody:
 
     url = f"https://www.melonbooks.co.jp/detail/detail.php?product_id={wid}"
     r = await request_abroad_website(url, headers=_HEADER)
+    if r.status_code in (401, 403):
+        return RespBody(
+            status="apierr", msg=f"melon: upstream access denied ({r.status_code})"
+        )
     html = r.content.decode("utf-8")
     try:
         page = etree.HTML(html)
         title_el = page.xpath("/html/head/title")
         if title_el:
             raw_title = title_el[0].text or ""
+            if "海外からのアクセス制限" in raw_title:
+                return RespBody(
+                    status="apierr", msg="melon: upstream restricts overseas access"
+                )
             if "年齢認証" in raw_title:
                 return RespBody(status="r18")
             title = raw_title.replace("の通販・購入", "").strip()
